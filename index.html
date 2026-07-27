@@ -327,6 +327,22 @@ function renderDashboard(){
   `;
 }
 
+function addOneMonth(dateStr){
+  if(!dateStr) return '';
+  const d = new Date(dateStr);
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0,10);
+}
+function membershipStatus(joinDate){
+  const exp = addOneMonth(joinDate);
+  if(!exp) return { label:'-', cls:'' };
+  const today = new Date().toISOString().slice(0,10);
+  const daysLeft = Math.ceil((new Date(exp) - new Date(today)) / 86400000);
+  if(daysLeft < 0) return { label:'Vencida', cls:'inactive', exp };
+  if(daysLeft <= 5) return { label:`Vence en ${daysLeft}d`, cls:'pending', exp };
+  return { label:'Vigente', cls:'active', exp };
+}
+
 /* ---------- VIPS (Miembros VIP) ---------- */
 function renderVips(){
   const rows = filterByDate(state.vips, 'joinDate', 'vips');
@@ -343,18 +359,19 @@ function renderVips(){
       </div>
     </div>
     <div class="card">
-      ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Contacto</th><th>Plan</th><th>Ingreso</th><th>Estado</th><th></th></tr></thead><tbody>
-        ${rows.map(v=>`<tr>
+      ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Contacto</th><th>Plan</th><th>Ingreso</th><th>Vence</th><th>Estado</th><th></th></tr></thead><tbody>
+        ${rows.map(v=>{ const m = membershipStatus(v.joinDate); return `<tr>
           <td>${v.name}</td>
           <td class="mono">${v.contact||'-'}</td>
           <td>${v.plan||'-'}</td>
           <td class="mono">${fmtDate(v.joinDate)}</td>
+          <td class="mono">${m.exp ? fmtDate(m.exp) : '-'} ${m.cls ? `<span class="badge ${m.cls}" style="margin-left:6px;">${m.label}</span>` : ''}</td>
           <td><span class="badge ${v.status}">${v.status==='active'?'Activo':'Inactivo'}</span></td>
           <td class="row-actions">
             <button class="btn secondary small" data-toggle-vip="${v.id}">${v.status==='active'?'Desactivar':'Activar'}</button>
             <button class="btn danger small" data-del-vip="${v.id}">Eliminar</button>
           </td>
-        </tr>`).join('')}
+        </tr>`;}).join('')}
       </tbody></table>` : '<div class="empty">No hay VIPs para mostrar con este filtro.</div>'}
     </div>
   `;
