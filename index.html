@@ -154,7 +154,7 @@ function coerceRow(key, row){
   if(key === 'stakes'){
     return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending' };
   }
-  return { id:String(row.id||''), description:row.description||'', recipient:row.recipient||'', date:row.date||'' };
+  return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
 
 async function loadAll(){
@@ -318,8 +318,8 @@ function renderDashboard(){
         ${recentGifts.length ? recentGifts.map(g=>`
           <div class="list-item">
             <div>
-              <div class="desc">${g.description}</div>
-              <div class="meta">${g.recipient || 'Grupo general'} · ${fmtDate(g.date)}</div>
+              <div class="desc">${g.pick}</div>
+              <div class="meta">${g.recipient || 'Grupo general'} · cuota ${Number(g.odds).toFixed(2)} · ${fmtDate(g.date)}</div>
             </div>
           </div>`).join('') : '<div class="empty">Aún no has registrado regalitos.</div>'}
       </div>
@@ -580,7 +580,7 @@ function openStakeForm(){
   };
 }
 
-/* ---------- GIFTS (regalitos) ---------- */
+/* ---------- GIFTS (regalitos) — same shape as picks + recipient ---------- */
 function renderGifts(){
   const rows = filterByDate(state.gifts, 'date', 'gifts');
   const sorted = [...rows].sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -597,40 +597,66 @@ function renderGifts(){
       </div>
     </div>
     <div class="card">
-      ${sorted.length ? sorted.map(g=>`
-        <div class="list-item">
-          <div>
-            <div class="desc">${g.description}</div>
-            <div class="meta">${g.recipient || 'Grupo general'} · ${fmtDate(g.date)}</div>
-          </div>
-          <button class="btn danger small" data-del-gift="${g.id}">Eliminar</button>
-        </div>`).join('') : '<div class="empty">No hay regalitos para mostrar con este filtro.</div>'}
+      ${sorted.length ? `<table><thead><tr><th>Deporte</th><th>Pick</th><th>Cuota</th><th>Stake</th><th>Para quién</th><th>Resultado</th><th>Fecha</th><th></th></tr></thead><tbody>
+        ${sorted.map(g=>`<tr>
+          <td>${g.sport||'-'}</td>
+          <td>${g.pick}</td>
+          <td class="mono">${Number(g.odds).toFixed(2)}</td>
+          <td class="mono">${fmtMoney(g.stake)}</td>
+          <td>${g.recipient || 'Grupo general'}</td>
+          <td>
+            <select data-result="${g.id}" class="badge ${g.result}" style="background:transparent;border:1px solid var(--border);color:inherit;">
+              <option value="pending" ${g.result==='pending'?'selected':''}>Pendiente</option>
+              <option value="won" ${g.result==='won'?'selected':''}>Ganada</option>
+              <option value="lost" ${g.result==='lost'?'selected':''}>Perdida</option>
+            </select>
+          </td>
+          <td class="mono">${fmtDate(g.date)}</td>
+          <td><button class="btn danger small" data-del-gift="${g.id}">Eliminar</button></td>
+        </tr>`).join('')}
+      </tbody></table>` : '<div class="empty">No hay regalitos para mostrar con este filtro.</div>'}
     </div>
   `;
   wireDateFilter('gifts', renderGifts);
   document.getElementById('addGiftBtn').onclick = openGiftForm;
   document.getElementById('exportGiftBtn').onclick = () => exportCSV('gifts');
   document.querySelectorAll('[data-del-gift]').forEach(b=>b.onclick=()=>delItem('gifts', b.dataset.delGift, renderGifts));
+  document.querySelectorAll('[data-result]').forEach(sel=>{
+    sel.onchange = async ()=>{
+      const item = state.gifts.find(x=>x.id===sel.dataset.result);
+      if(item){ item.result = sel.value; await persist('gifts'); renderGifts(); }
+    };
+  });
 }
 function openGiftForm(){
   openModal(`
     <h3>Nuevo regalito</h3>
-    <div class="field"><label>Descripción</label><input id="f-gdesc" placeholder="Ej: Pick gratis de UFC"></div>
+    <div class="field"><label>Deporte</label><input id="f-gsport" placeholder="Fútbol, tenis de mesa, UFC..."></div>
+    <div class="field"><label>Pick</label><input id="f-gpick" placeholder="Ej: Real Madrid gana"></div>
+    <div class="field"><label>Cuota</label><input id="f-godds" type="number" step="0.01" placeholder="1.85"></div>
+    <div class="field"><label>Stake ($)</label><input id="f-gstake" type="number" step="0.01" placeholder="10"></div>
     <div class="field"><label>Para quién</label><input id="f-grecipient" placeholder="Grupo general o nombre del VIP"></div>
     <div class="field"><label>Fecha</label><input id="f-gdate" type="date"></div>
+    <div class="field"><label>Resultado</label>
+      <select id="f-gresult"><option value="pending">Pendiente</option><option value="won">Ganada</option><option value="lost">Perdida</option></select>
+    </div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="saveGift">Guardar</button>
     </div>
   `);
   document.getElementById('saveGift').onclick = async ()=>{
-    const desc = document.getElementById('f-gdesc').value.trim();
-    if(!desc){ alert('Describe el regalito.'); return; }
+    const pick = document.getElementById('f-gpick').value.trim();
+    const odds = document.getElementById('f-godds').value;
+    if(!pick || !odds){ alert('Completa al menos el pick y la cuota.'); return; }
     state.gifts.push({
       id: uid(),
-      description: desc,
+      sport: document.getElementById('f-gsport').value.trim(),
+      pick, odds: Number(odds),
+      stake: Number(document.getElementById('f-gstake').value)||0,
       recipient: document.getElementById('f-grecipient').value.trim(),
-      date: document.getElementById('f-gdate').value || new Date().toISOString().slice(0,10)
+      date: document.getElementById('f-gdate').value || new Date().toISOString().slice(0,10),
+      result: document.getElementById('f-gresult').value
     });
     closeModal();
     renderGifts();
