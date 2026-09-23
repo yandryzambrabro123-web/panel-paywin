@@ -72,6 +72,7 @@
   .badge.won{background:var(--accent-dim); color:var(--accent);}
   .badge.lost{background:var(--loss-dim); color:#FF8A8E;}
   .badge.pending{background:#4A3B14; color:var(--pending);}
+  .badge.flag{background:#3A1F4A; color:#D9A6FF;}
 
   /* Forms / filters */
   .toolbar{display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; gap:16px; flex-wrap:wrap;}
@@ -163,7 +164,7 @@ function resultLabel(r){ return r==='won'?'Ganada':r==='lost'?'Perdida':'Pendien
 
 function coerceRow(key, row){
   if(key === 'vips' || key === 'vips1x2' || key === 'vips1xbet'){
-    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active' };
+    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true' };
   }
   if(key === 'freeBets' || key === 'vipBets' || key === 'liveBets'){
     return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending' };
@@ -419,7 +420,7 @@ function renderVipGroup(key, title){
       <div><strong>${inactiveTotal} miembro${inactiveTotal>1?'s':''} inactivo${inactiveTotal>1?'s':''}</strong> en ${title}${inactiveNames.length ? `: ${inactiveNames.join(', ')}${inactiveTotal>inactiveNames.length?'…':''}` : ''}. Revisa su renovación o pago.</div>
     </div>` : ''}
     <div class="card" style="overflow-x:auto;">
-      ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Cédula</th><th>Ciudad</th><th>Contacto</th>${isDailyGroup(key) ? '' : '<th>Plan</th>'}<th>Ingreso</th><th>Vence</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Cédula</th><th>Ciudad</th><th>Contacto</th>${isDailyGroup(key) ? '' : '<th>Plan</th>'}<th>Ingreso</th><th>Vence</th><th>Estado</th><th>Notas</th><th></th></tr></thead><tbody>
         ${rows.map(v=>{ const m = membershipStatus(v, key); const st = effectiveStatus(v, key); return `<tr>
           <td>${v.name}</td>
           <td class="mono">${v.cedula||'-'}</td>
@@ -428,10 +429,15 @@ function renderVipGroup(key, title){
           ${isDailyGroup(key) ? '' : `<td style="text-transform:capitalize;">${v.plan||'-'}</td>`}
           <td class="mono">${fmtDate(v.joinDate)}</td>
           <td class="mono">${m.exp ? fmtDate(m.exp) : '-'} ${m.cls ? `<span class="badge ${m.cls}" style="margin-left:6px;">${m.label}</span>` : ''}</td>
-          <td><span class="badge ${st}">${st==='inactive' ? '<span class="alert-dot" style="margin-right:5px; vertical-align:middle;"></span>' : ''}${st==='active'?'Activo':'Inactivo'}</span></td>
+          <td>
+            <span class="badge ${st}">${st==='inactive' ? '<span class="alert-dot" style="margin-right:5px; vertical-align:middle;"></span>' : ''}${st==='active'?'Activo':'Inactivo'}</span>
+            ${v.noReconsumo ? '<div style="margin-top:4px;"><span class="badge flag">No pagó reconsumo</span></div>' : ''}
+          </td>
+          <td style="max-width:180px; white-space:pre-wrap; color:var(--muted); font-size:12.5px;">${v.notes ? v.notes : '-'}</td>
           <td class="row-actions">
             <button class="btn secondary small" data-edit-vip="${v.id}">Editar</button>
             <button class="btn secondary small" data-toggle-vip="${v.id}">${st==='active'?'Desactivar':'Activar'}</button>
+            <button class="btn secondary small" data-reconsumo-vip="${v.id}" style="${v.noReconsumo ? 'border-color:#D9A6FF; color:#D9A6FF;' : ''}">${v.noReconsumo ? 'Quitar marca' : 'No pagó reconsumo'}</button>
             <button class="btn danger small" data-del-vip="${v.id}">Eliminar</button>
           </td>
         </tr>`;}).join('')}
@@ -444,6 +450,7 @@ function renderVipGroup(key, title){
   document.getElementById('exportVipBtn').onclick = () => exportCSV(key);
   document.querySelectorAll('[data-edit-vip]').forEach(b=>b.onclick=()=>openVipForm(key, rerender, b.dataset.editVip));
   document.querySelectorAll('[data-toggle-vip]').forEach(b=>b.onclick=()=>toggleVip(key, b.dataset.toggleVip, rerender));
+  document.querySelectorAll('[data-reconsumo-vip]').forEach(b=>b.onclick=()=>toggleReconsumo(key, b.dataset.reconsumoVip, rerender));
   document.querySelectorAll('[data-del-vip]').forEach(b=>b.onclick=()=>delItem(key, b.dataset.delVip, rerender));
   updateNavBadges();
 }
@@ -508,6 +515,13 @@ async function toggleVip(key, id, rerender){
   rerender();
   await persist(key);
   updateNavBadges();
+}
+async function toggleReconsumo(key, id, rerender){
+  const v = state[key].find(x=>x.id===id);
+  if(!v) return;
+  v.noReconsumo = !v.noReconsumo;
+  rerender();
+  await persist(key);
 }
 async function delItem(key, id, rerenderFn){
   if(!confirm('¿Eliminar este registro?')) return;
