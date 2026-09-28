@@ -73,6 +73,10 @@
   .badge.lost{background:var(--loss-dim); color:#FF8A8E;}
   .badge.pending{background:#4A3B14; color:var(--pending);}
   .badge.flag{background:#3A1F4A; color:#D9A6FF;}
+  .search-wrap{position:relative; margin-bottom:16px; max-width:460px;}
+  .search-wrap input{width:100%; padding:10px 14px 10px 38px; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; font-family:var(--body);}
+  .search-wrap input:focus{outline:none; border-color:var(--accent);}
+  .search-icon{position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; opacity:.7; pointer-events:none;}
   .day-tabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;}
   .day-tab{padding:8px 14px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border); color:var(--muted); font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap;}
   .day-tab:hover{border-color:var(--accent);}
@@ -150,7 +154,7 @@
 
 <script>
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhbzMCcoJ5jDjp1lgsaGjLMkGI47SVAfemVMuMnggWd_k-ubqzmBEMlA/exec';
-const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', gifts: 'Regalitos' };
+const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos' };
 const VIP_GROUPS = [
   { key:'vips', title:'Miembros VIP' },
   { key:'vips1x2', title:'Miembros VIP 1X2' },
@@ -158,7 +162,7 @@ const VIP_GROUPS = [
 ];
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], gifts: [],
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], vipSearch: {}, stakeSectionId: '', failedKeys: [],
   view: 'dashboard', loaded: false, syncError: false,
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''} }
 };
@@ -176,7 +180,10 @@ function coerceRow(key, row){
     return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending' };
   }
   if(key === 'stakeSales'){
-    return { id:String(row.id||''), day:row.day||'', name:row.name||'', phone:row.phone||'', amount:Number(row.amount)||0, status:row.status||'paid' };
+    return { id:String(row.id||''), sectionId:String(row.sectionId||''), day:row.day||'', name:row.name||'', phone:row.phone||'', amount:Number(row.amount)||0, status:row.status||'paid' };
+  }
+  if(key === 'stakeSections'){
+    return { id:String(row.id||''), day:row.day||'', title:row.title||'Stake', price:Number(row.price)||0 };
   }
   if(key === 'stakes'){
     return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending' };
@@ -192,8 +199,9 @@ async function loadAll(){
       const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
       const json = await res.json();
       state[key] = (json.data || []).map(row => coerceRow(key, row));
-    }catch(e){ console.error('Error cargando', key, e); state[key] = []; state.syncError = true; }
+    }catch(e){ console.error('Error cargando', key, e); state[key] = []; state.syncError = true; state.failedKeys.push(key); }
   }
+  await migrateStakeSales();
   state.loaded = true;
   render();
 }
@@ -409,7 +417,13 @@ function updateNavBadges(){
 
 
 function renderVipGroup(key, title){
-  const rows = filterByDate(state[key], 'joinDate', key);
+  const q = (state.vipSearch[key] || '').trim();
+  const norm = t => String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const rows = filterByDate(state[key], 'joinDate', key).filter(v=>{
+    if(!q) return true;
+    const nq = norm(q);
+    return norm(v.name).includes(nq) || norm(v.cedula).includes(nq) || norm(v.contact).includes(nq);
+  });
   const inactiveTotal = state[key].filter(v=>effectiveStatus(v, key)==='inactive').length;
   const inactiveNames = state[key].filter(v=>effectiveStatus(v, key)==='inactive').map(v=>v.name).slice(0,4);
   document.getElementById('main').innerHTML = `
@@ -423,6 +437,10 @@ function renderVipGroup(key, title){
         <button class="btn secondary" id="exportVipBtn">Exportar CSV</button>
         <button class="btn" id="addVipBtn">+ Nuevo miembro</button>
       </div>
+    </div>
+    <div class="search-wrap">
+      <span class="search-icon">&#128269;</span>
+      <input id="vipSearchInput" type="search" placeholder="Buscar por nombre, cédula o teléfono..." value="${q.replace(/"/g,'&quot;')}" autocomplete="off">
     </div>
     ${inactiveTotal > 0 ? `<div class="alert-banner">
       <span class="alert-dot"></span>
@@ -455,6 +473,13 @@ function renderVipGroup(key, title){
   `;
   const rerender = ()=>renderVipGroup(key, title);
   wireDateFilter(key, rerender);
+  const searchEl = document.getElementById('vipSearchInput');
+  searchEl.oninput = ()=>{
+    state.vipSearch[key] = searchEl.value;
+    rerender();
+    const el = document.getElementById('vipSearchInput');
+    el.focus(); el.setSelectionRange(el.value.length, el.value.length);
+  };
   document.getElementById('addVipBtn').onclick = ()=>openVipForm(key, rerender);
   document.getElementById('exportVipBtn').onclick = () => exportCSV(key);
   document.querySelectorAll('[data-edit-vip]').forEach(b=>b.onclick=()=>openVipForm(key, rerender, b.dataset.editVip));
@@ -697,19 +722,69 @@ function openStakeForm(){
   };
 }
 
-/* ---------- VENTA DE STAKES (por día, nombre+teléfono, pagó/compensación) ---------- */
+/* ---------- VENTA DE STAKES (secciones creadas por ti: título + fecha + precio) ---------- */
+function saleAmount(s){
+  const sec = state.stakeSections.find(x=>x.id===s.sectionId);
+  return sec ? (Number(sec.price)||0) : (Number(s.amount)||0);
+}
+function sectionTotal(secId){
+  return state.stakeSales.filter(s=>s.sectionId===secId && s.status==='paid').reduce((sum,s)=>sum+saleAmount(s),0);
+}
+// Registros viejos (creados antes de existir las secciones) se agrupan por día en una sección "Stake".
+async function migrateStakeSales(){
+  const legacy = state.stakeSales.filter(s=>!s.sectionId);
+  if(!legacy.length) return;
+  const byDay = {};
+  legacy.forEach(s=>{ const d = s.day || ''; (byDay[d] = byDay[d] || []).push(s); });
+  Object.entries(byDay).forEach(([day, list])=>{
+    const sec = { id: uid(), day, title:'Stake', price: Number(list[0].amount)||0 };
+    state.stakeSections.push(sec);
+    list.forEach(x=>{ x.sectionId = sec.id; });
+  });
+  const ok = !state.failedKeys.includes('stakeSections') && !state.failedKeys.includes('stakeSales');
+  if(ok){ await persist('stakeSections'); await persist('stakeSales'); }
+}
+
 function renderStakeSales(){
-  if(!state.stakeSalesDay) state.stakeSalesDay = new Date().toISOString().slice(0,10);
-  const today = state.stakeSalesDay;
-  const daySet = new Set(state.stakeSales.map(s=>s.day));
-  daySet.add(today);
-  const days = [...daySet].sort((a,b)=> new Date(b) - new Date(a));
-  const dayRows = state.stakeSales.filter(s=>s.day===today);
-  const paidRows = dayRows.filter(s=>s.status==='paid');
-  const compRows = dayRows.filter(s=>s.status==='comp');
-  const totalDay = paidRows.reduce((sum,s)=>sum+s.amount,0);
-  const totalAll = state.stakeSales.filter(s=>s.status==='paid').reduce((sum,s)=>sum+s.amount,0);
-  const defaultPrice = localStorage.getItem('stakeSalePrice') || '';
+  const sections = [...state.stakeSections].sort((a,b)=> new Date(b.day||0) - new Date(a.day||0));
+  if(!sections.find(x=>x.id===state.stakeSectionId)) state.stakeSectionId = sections[0] ? sections[0].id : '';
+  const cur = sections.find(x=>x.id===state.stakeSectionId);
+  const totalAll = sections.reduce((sum,sec)=>sum+sectionTotal(sec.id),0);
+
+  let body = '';
+  if(cur){
+    const rows = state.stakeSales.filter(s=>s.sectionId===cur.id);
+    const paid = rows.filter(s=>s.status==='paid');
+    const comp = rows.filter(s=>s.status==='comp');
+    body = `
+      <div class="card" style="margin-bottom:16px; display:flex; gap:28px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="score-cell" style="flex:0;"><div class="score-label">Precio por stake</div><div class="score-value">${fmtMoney(cur.price)}</div></div>
+        <div class="score-cell" style="flex:0;"><div class="score-label">Registrados</div><div class="score-value">${rows.length}</div></div>
+        <div class="score-cell" style="flex:0;"><div class="score-label">Pagaron</div><div class="score-value win">${paid.length}</div></div>
+        <div class="score-cell" style="flex:0;"><div class="score-label">Compensación</div><div class="score-value">${comp.length}</div></div>
+        <div class="score-cell" style="flex:0;"><div class="score-label">Total en ventas</div><div class="score-value win">${fmtMoney(sectionTotal(cur.id))}</div></div>
+        <div style="margin-left:auto; display:flex; gap:8px;">
+          <button class="btn secondary small" id="editSectionBtn">Editar sección</button>
+          <button class="btn danger small" id="delSectionBtn">Eliminar sección</button>
+        </div>
+      </div>
+      <div class="card">
+        ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Monto</th><th>Estado</th><th></th></tr></thead><tbody>
+          ${rows.map(s=>`<tr>
+            <td>${s.name}</td>
+            <td class="mono">${s.phone||'-'}</td>
+            <td class="mono">${fmtMoney(saleAmount(s))}</td>
+            <td><span class="badge ${s.status==='paid'?'active':'pending'}">${s.status==='paid'?'Pagó':'Compensación'}</span></td>
+            <td class="row-actions">
+              <button class="btn secondary small" data-toggle-sale="${s.id}">${s.status==='paid'?'Marcar compensación':'Marcar pagó'}</button>
+              <button class="btn danger small" data-del-sale="${s.id}">Eliminar</button>
+            </td>
+          </tr>`).join('')}
+        </tbody></table>` : `<div class="empty">Todavía no hay compradores en esta sección.</div>`}
+      </div>`;
+  } else {
+    body = `<div class="card"><div class="empty">Aún no tienes secciones. Crea una con el botón "+ Nueva sección" (por ejemplo "Stake 1", con su fecha y precio).</div></div>`;
+  }
 
   document.getElementById('main').innerHTML = `
     <div class="toolbar">
@@ -718,75 +793,80 @@ function renderStakeSales(){
         <div class="page-sub">Total histórico en ventas: ${fmtMoney(totalAll)}</div>
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
-        <input id="newDayPicker" type="date" value="${today}">
         <button class="btn secondary" id="exportStakeSalesBtn">Exportar CSV</button>
-        <button class="btn" id="addStakeSaleBtn">+ Registrar comprador</button>
+        <button class="btn secondary" id="addSectionBtn">+ Nueva sección</button>
+        ${cur ? '<button class="btn" id="addStakeSaleBtn">+ Registrar comprador</button>' : ''}
       </div>
     </div>
     <div class="day-tabs">
-      ${days.map(d=>{
-        const dTotal = state.stakeSales.filter(s=>s.day===d && s.status==='paid').reduce((sum,s)=>sum+s.amount,0);
-        return `<div class="day-tab ${d===today?'active':''}" data-day="${d}">${fmtDate(d)}<span class="day-tab-sub">· ${fmtMoney(dTotal)}</span></div>`;
-      }).join('')}
+      ${sections.map(sec=>`<div class="day-tab ${cur && sec.id===cur.id?'active':''}" data-section="${sec.id}">${sec.title}<span class="day-tab-sub">· ${fmtDate(sec.day)} · ${fmtMoney(sectionTotal(sec.id))}</span></div>`).join('')}
     </div>
-    <div class="card" style="margin-bottom:16px; display:flex; gap:28px; flex-wrap:wrap; align-items:flex-end;">
-      <div>
-        <div class="page-sub" style="margin-bottom:6px;">Precio por stake (se aplica a nuevos registros)</div>
-        <input id="stakeSalePriceInput" type="number" step="0.01" placeholder="Ej: 5.00" value="${defaultPrice}" style="width:140px;">
-      </div>
-      <div class="score-cell" style="flex:0;">
-        <div class="score-label">Registrados este día</div>
-        <div class="score-value">${dayRows.length}</div>
-      </div>
-      <div class="score-cell" style="flex:0;">
-        <div class="score-label">Pagaron</div>
-        <div class="score-value win">${paidRows.length}</div>
-      </div>
-      <div class="score-cell" style="flex:0;">
-        <div class="score-label">Compensación</div>
-        <div class="score-value">${compRows.length}</div>
-      </div>
-      <div class="score-cell" style="flex:0;">
-        <div class="score-label">Total en ventas · ${fmtDate(today)}</div>
-        <div class="score-value win">${fmtMoney(totalDay)}</div>
-      </div>
-    </div>
-    <div class="card">
-      ${dayRows.length ? `<table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Monto</th><th>Estado</th><th></th></tr></thead><tbody>
-        ${dayRows.map(s=>`<tr>
-          <td>${s.name}</td>
-          <td class="mono">${s.phone||'-'}</td>
-          <td class="mono">${fmtMoney(s.amount)}</td>
-          <td><span class="badge ${s.status==='paid'?'active':'pending'}">${s.status==='paid'?'Pagó':'Compensación'}</span></td>
-          <td class="row-actions">
-            <button class="btn secondary small" data-toggle-sale="${s.id}">${s.status==='paid'?'Marcar compensación':'Marcar pagó'}</button>
-            <button class="btn danger small" data-del-sale="${s.id}">Eliminar</button>
-          </td>
-        </tr>`).join('')}
-      </tbody></table>` : `<div class="empty">Todavía no hay compradores registrados el ${fmtDate(today)}.</div>`}
-    </div>
+    ${body}
   `;
 
-  document.getElementById('addStakeSaleBtn').onclick = ()=>openStakeSaleForm(today);
   document.getElementById('exportStakeSalesBtn').onclick = ()=>exportCSV('stakeSales');
-  document.getElementById('newDayPicker').onchange = (e)=>{
-    state.stakeSalesDay = e.target.value || new Date().toISOString().slice(0,10);
-    renderStakeSales();
-  };
-  document.getElementById('stakeSalePriceInput').onchange = (e)=>{
-    localStorage.setItem('stakeSalePrice', e.target.value);
-  };
-  document.querySelectorAll('[data-day]').forEach(el=>{
-    el.onclick = ()=>{ state.stakeSalesDay = el.dataset.day; renderStakeSales(); };
+  document.getElementById('addSectionBtn').onclick = ()=>openStakeSectionForm();
+  if(cur){
+    document.getElementById('addStakeSaleBtn').onclick = ()=>openStakeSaleForm(cur.id);
+    document.getElementById('editSectionBtn').onclick = ()=>openStakeSectionForm(cur.id);
+    document.getElementById('delSectionBtn').onclick = async ()=>{
+      const n = state.stakeSales.filter(s=>s.sectionId===cur.id).length;
+      if(!confirm(`¿Eliminar la sección "${cur.title}"${n ? ` y sus ${n} registro${n>1?'s':''}` : ''}?`)) return;
+      state.stakeSections = state.stakeSections.filter(x=>x.id!==cur.id);
+      state.stakeSales = state.stakeSales.filter(s=>s.sectionId!==cur.id);
+      renderStakeSales();
+      await persist('stakeSections');
+      await persist('stakeSales');
+    };
+  }
+  document.querySelectorAll('[data-section]').forEach(el=>{
+    el.onclick = ()=>{ state.stakeSectionId = el.dataset.section; renderStakeSales(); };
   });
   document.querySelectorAll('[data-toggle-sale]').forEach(b=>b.onclick=()=>toggleStakeSale(b.dataset.toggleSale));
   document.querySelectorAll('[data-del-sale]').forEach(b=>b.onclick=()=>delItem('stakeSales', b.dataset.delSale, renderStakeSales));
 }
 
-function openStakeSaleForm(day){
-  const defaultPrice = localStorage.getItem('stakeSalePrice') || '0';
+function openStakeSectionForm(editId){
+  const existing = editId ? state.stakeSections.find(x=>x.id===editId) : null;
   openModal(`
-    <h3>Registrar comprador — ${fmtDate(day)}</h3>
+    <h3>${existing ? 'Editar sección' : 'Nueva sección de venta'}</h3>
+    <div class="field"><label>Título</label><input id="f-secTitle" placeholder="Ej: Stake 1, Stake Champions..." value="${existing ? existing.title : ''}"></div>
+    <div class="field"><label>Fecha</label><input id="f-secDay" type="date" value="${existing ? existing.day : new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Precio por stake ($)</label><input id="f-secPrice" type="number" step="0.01" placeholder="5.00" value="${existing ? existing.price : ''}"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveSection">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveSection').onclick = async ()=>{
+    const title = document.getElementById('f-secTitle').value.trim();
+    if(!title){ alert('Ponle un título a la sección.'); return; }
+    const data = {
+      title,
+      day: document.getElementById('f-secDay').value || new Date().toISOString().slice(0,10),
+      price: Number(document.getElementById('f-secPrice').value) || 0
+    };
+    if(existing){
+      Object.assign(existing, data);
+      state.stakeSales.forEach(s=>{ if(s.sectionId===existing.id){ s.day = data.day; s.amount = data.price; } });
+      state.stakeSectionId = existing.id;
+    } else {
+      const sec = { id: uid(), ...data };
+      state.stakeSections.push(sec);
+      state.stakeSectionId = sec.id;
+    }
+    closeModal();
+    renderStakeSales();
+    await persist('stakeSections');
+    if(existing) await persist('stakeSales');
+  };
+}
+
+function openStakeSaleForm(sectionId){
+  const sec = state.stakeSections.find(x=>x.id===sectionId);
+  if(!sec) return;
+  openModal(`
+    <h3>Registrar comprador — ${sec.title}</h3>
     <div class="field"><label>Nombre</label><input id="f-saleName" placeholder="Nombre del comprador"></div>
     <div class="field"><label>Número de teléfono</label><input id="f-salePhone" placeholder="0999999999"></div>
     <div class="modal-actions">
@@ -799,10 +879,11 @@ function openStakeSaleForm(day){
     if(!name){ alert('Ponle un nombre al comprador.'); return; }
     state.stakeSales.push({
       id: uid(),
-      day,
+      sectionId: sec.id,
+      day: sec.day,
       name,
       phone: document.getElementById('f-salePhone').value.trim(),
-      amount: Number(defaultPrice) || 0,
+      amount: Number(sec.price) || 0,
       status: 'paid'
     });
     closeModal();
