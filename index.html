@@ -862,27 +862,49 @@ function openStakeSectionForm(editId){
   };
 }
 
+// "Memoria" de compradores: junta nombre+teléfono de TODAS las secciones/días anteriores,
+// quedándose con el teléfono más reciente registrado para cada nombre.
+function getKnownBuyers(){
+  const map = new Map();
+  state.stakeSales.forEach(s=>{
+    if(!s.name) return;
+    map.set(s.name.trim().toLowerCase(), { name: s.name.trim(), phone: s.phone||'' });
+  });
+  return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name));
+}
+
 function openStakeSaleForm(sectionId){
   const sec = state.stakeSections.find(x=>x.id===sectionId);
   if(!sec) return;
+  const buyers = getKnownBuyers();
   openModal(`
     <h3>Registrar comprador — ${sec.title}</h3>
-    <div class="field"><label>Nombre</label><input id="f-saleName" placeholder="Nombre del comprador"></div>
+    <div class="field">
+      <label>Nombre</label>
+      <input id="f-saleName" list="buyersDatalist" placeholder="Escribe el nombre — si ya compró antes, elígelo de la lista" autocomplete="off">
+      <datalist id="buyersDatalist">${buyers.map(b=>`<option value="${b.name.replace(/"/g,'&quot;')}"></option>`).join('')}</datalist>
+    </div>
     <div class="field"><label>Número de teléfono</label><input id="f-salePhone" placeholder="0999999999"></div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="saveStakeSale">Guardar</button>
     </div>
   `);
+  const nameEl = document.getElementById('f-saleName');
+  const phoneEl = document.getElementById('f-salePhone');
+  nameEl.addEventListener('input', ()=>{
+    const match = buyers.find(b=>b.name.toLowerCase()===nameEl.value.trim().toLowerCase());
+    if(match) phoneEl.value = match.phone;
+  });
   document.getElementById('saveStakeSale').onclick = async ()=>{
-    const name = document.getElementById('f-saleName').value.trim();
+    const name = nameEl.value.trim();
     if(!name){ alert('Ponle un nombre al comprador.'); return; }
     state.stakeSales.push({
       id: uid(),
       sectionId: sec.id,
       day: sec.day,
       name,
-      phone: document.getElementById('f-salePhone').value.trim(),
+      phone: phoneEl.value.trim(),
       amount: Number(sec.price) || 0,
       status: 'paid'
     });
