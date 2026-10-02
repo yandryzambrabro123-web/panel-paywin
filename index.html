@@ -73,6 +73,13 @@
   .badge.lost{background:var(--loss-dim); color:#FF8A8E;}
   .badge.pending{background:#4A3B14; color:var(--pending);}
   .badge.flag{background:#3A1F4A; color:#D9A6FF;}
+  .badge.combo{background:#1C2E4A; color:#8FC1FF;}
+  .badge.simple{background:var(--surface-2); color:var(--muted);}
+  .result-select{padding:4px 10px; border-radius:20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; border:1px solid transparent; cursor:pointer; font-family:var(--body);}
+  .result-select.pending{background:#4A3B14; color:var(--pending);}
+  .result-select.won{background:var(--accent-dim); color:var(--accent);}
+  .result-select.lost{background:var(--loss-dim); color:#FF8A8E;}
+  .combo-line-row{display:flex; gap:8px; margin-bottom:8px; align-items:center;}
   .search-wrap{position:relative; margin-bottom:16px; max-width:460px;}
   .search-wrap input{width:100%; padding:10px 14px 10px 38px; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; font-family:var(--body);}
   .search-wrap input:focus{outline:none; border-color:var(--accent);}
@@ -170,6 +177,7 @@ let state = {
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmtMoney(n){ return '$' + (Number(n)||0).toFixed(2); }
 function fmtDate(d){ if(!d) return '-'; const dt = new Date(d); return dt.toLocaleDateString('es-EC',{day:'2-digit',month:'short',year:'numeric'}); }
+function getLines(b){ try{ const l = JSON.parse(b.lines || '[]'); return Array.isArray(l) ? l : []; }catch(e){ return []; } }
 function resultLabel(r){ return r==='won'?'Ganada':r==='lost'?'Perdida':'Pendiente'; }
 
 function coerceRow(key, row){
@@ -177,7 +185,7 @@ function coerceRow(key, row){
     return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true' };
   }
   if(key === 'freeBets' || key === 'vipBets' || key === 'liveBets'){
-    return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending' };
+    return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]') };
   }
   if(key === 'stakeSales'){
     return { id:String(row.id||''), sectionId:String(row.sectionId||''), day:row.day||'', name:row.name||'', phone:row.phone||'', amount:Number(row.amount)||0, status:row.status||'paid' };
@@ -344,8 +352,9 @@ function renderDashboard(){
     <div class="grid-2">
       <div class="card">
         <div class="card-title">Últimas apuestas VIP</div>
-        ${vipBetsRecent.length ? `<table><thead><tr><th>Pick</th><th>Cuota</th><th>Stake</th><th>Resultado</th><th>Fecha</th></tr></thead><tbody>
+        ${vipBetsRecent.length ? `<table><thead><tr><th>Evento</th><th>Pick</th><th>Cuota</th><th>Stake</th><th>Resultado</th><th>Fecha</th></tr></thead><tbody>
           ${vipBetsRecent.map(b=>`<tr>
+            <td>${b.event||'-'}</td>
             <td>${b.pick}</td>
             <td class="mono">${Number(b.odds).toFixed(2)}</td>
             <td class="mono">${fmtMoney(b.stake)}</td>
@@ -580,23 +589,30 @@ function renderPicks(key, title){
         <button class="btn" id="addBtn">+ Nueva apuesta</button>
       </div>
     </div>
-    <div class="card">
-      ${sorted.length ? `<table><thead><tr><th>Deporte</th><th>Pick</th><th>Cuota</th><th>Stake</th><th>Resultado</th><th>Fecha</th><th></th></tr></thead><tbody>
-        ${sorted.map(b=>`<tr>
-          <td>${b.sport||'-'}</td>
-          <td>${b.pick}</td>
+    <div class="card" style="overflow-x:auto;">
+      ${sorted.length ? `<table><thead><tr><th>Evento</th><th>Tipo</th><th>Pick</th><th>Cuota</th><th>Stake</th><th>Resultado</th><th>Fecha</th><th></th></tr></thead><tbody>
+        ${sorted.map(b=>{ const lines = getLines(b); return `<tr>
+          <td>${b.event||'-'}</td>
+          <td><span class="badge ${b.betType==='combo'?'combo':'simple'}">${b.betType==='combo'?'Combinada':'Simple'}</span></td>
+          <td style="max-width:260px;">
+            ${b.sport ? `<div style="font-size:11px; color:var(--muted); margin-bottom:3px;">${b.sport}</div>` : ''}
+            ${b.betType==='combo' && lines.length ? `<ol style="margin:0 0 0 16px; padding:0; font-size:12.5px;">${lines.map(l=>`<li>${l.pick} <span class="mono" style="color:var(--muted);">@${Number(l.odds).toFixed(2)}</span></li>`).join('')}</ol>` : `<div>${b.pick}</div>`}
+          </td>
           <td class="mono">${Number(b.odds).toFixed(2)}</td>
           <td class="mono">${fmtMoney(b.stake)}</td>
           <td>
-            <select data-result="${b.id}" class="badge ${b.result}" style="background:transparent;border:1px solid var(--border);color:inherit;">
+            <select data-result="${b.id}" class="result-select ${b.result}">
               <option value="pending" ${b.result==='pending'?'selected':''}>Pendiente</option>
               <option value="won" ${b.result==='won'?'selected':''}>Ganada</option>
               <option value="lost" ${b.result==='lost'?'selected':''}>Perdida</option>
             </select>
           </td>
           <td class="mono">${fmtDate(b.date)}</td>
-          <td><button class="btn danger small" data-del="${b.id}">Eliminar</button></td>
-        </tr>`).join('')}
+          <td class="row-actions">
+            <button class="btn secondary small" data-edit="${b.id}">Editar</button>
+            <button class="btn danger small" data-del="${b.id}">Eliminar</button>
+          </td>
+        </tr>`;}).join('')}
       </tbody></table>` : '<div class="empty">No hay apuestas para mostrar con este filtro.</div>'}
     </div>
   `;
@@ -604,6 +620,7 @@ function renderPicks(key, title){
   wireDateFilter(key, rerender);
   document.getElementById('addBtn').onclick = ()=>openPickForm(key, rerender);
   document.getElementById('exportBtn').onclick = () => exportCSV(key);
+  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openPickForm(key, rerender, b.dataset.edit));
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>delItem(key, b.dataset.del, rerender));
   document.querySelectorAll('[data-result]').forEach(sel=>{
     sel.onchange = async ()=>{
@@ -612,34 +629,106 @@ function renderPicks(key, title){
     };
   });
 }
-function openPickForm(key, rerender){
+function openPickForm(key, rerender, editId){
+  const existing = editId ? state[key].find(x=>x.id===editId) : null;
+  const isCombo = existing ? existing.betType==='combo' : false;
+  let comboLinesData = isCombo ? getLines(existing).map(l=>({pick:l.pick||'', odds:l.odds||''})) : [{pick:'',odds:''},{pick:'',odds:''}];
+  if(!comboLinesData.length) comboLinesData = [{pick:'',odds:''},{pick:'',odds:''}];
+
   openModal(`
-    <h3>Nueva apuesta</h3>
-    <div class="field"><label>Deporte</label><input id="f-sport" placeholder="Fútbol, tenis de mesa, UFC..."></div>
-    <div class="field"><label>Pick</label><input id="f-pick" placeholder="Ej: Real Madrid gana"></div>
-    <div class="field"><label>Cuota</label><input id="f-odds" type="number" step="0.01" placeholder="1.85"></div>
-    <div class="field"><label>Stake ($)</label><input id="f-stake" type="number" step="0.01" placeholder="10"></div>
-    <div class="field"><label>Fecha</label><input id="f-bdate" type="date"></div>
+    <h3>${existing ? 'Editar apuesta' : 'Nueva apuesta'}</h3>
+    <div class="field"><label>Evento</label><input id="f-event" placeholder="Ej: España vs Portugal" value="${existing?(existing.event||'').replace(/"/g,'&quot;'):''}"></div>
+    <div class="field"><label>Deporte</label><input id="f-sport" placeholder="Fútbol, tenis de mesa, UFC..." value="${existing?(existing.sport||'').replace(/"/g,'&quot;'):''}"></div>
+    <div class="field"><label>Tipo de apuesta</label>
+      <select id="f-betType">
+        <option value="simple" ${!isCombo?'selected':''}>Simple</option>
+        <option value="combo" ${isCombo?'selected':''}>Combinada</option>
+      </select>
+    </div>
+    <div id="simpleFields" style="${isCombo?'display:none;':''}">
+      <div class="field"><label>Pick</label><input id="f-pick" placeholder="Ej: Real Madrid gana" value="${existing&&!isCombo?(existing.pick||'').replace(/"/g,'&quot;'):''}"></div>
+      <div class="field"><label>Cuota</label><input id="f-odds" type="number" step="0.01" placeholder="1.85" value="${existing&&!isCombo?existing.odds||'':''}"></div>
+    </div>
+    <div id="comboFields" style="${isCombo?'':'display:none;'}">
+      <label style="display:block; margin-bottom:8px; font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:.3px;">Líneas de la combinada</label>
+      <div id="comboLines"></div>
+      <button type="button" class="btn secondary small" id="addLineBtn" style="margin-top:2px;">+ Agregar línea</button>
+      <div class="field" style="margin-top:12px;"><label>Cuota combinada total (automática)</label><input id="f-comboOdds" class="mono" disabled value="0.00"></div>
+    </div>
+    <div class="field"><label>Stake ($)</label><input id="f-stake" type="number" step="0.01" placeholder="10" value="${existing?existing.stake||'':''}"></div>
+    <div class="field"><label>Fecha</label><input id="f-bdate" type="date" value="${existing?existing.date||'':''}"></div>
     <div class="field"><label>Resultado</label>
-      <select id="f-result"><option value="pending">Pendiente</option><option value="won">Ganada</option><option value="lost">Perdida</option></select>
+      <select id="f-result">
+        <option value="pending" ${!existing||existing.result==='pending'?'selected':''}>Pendiente</option>
+        <option value="won" ${existing&&existing.result==='won'?'selected':''}>Ganada</option>
+        <option value="lost" ${existing&&existing.result==='lost'?'selected':''}>Perdida</option>
+      </select>
     </div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="savePick">Guardar</button>
     </div>
   `);
+
+  function paintComboLines(){
+    const wrap = document.getElementById('comboLines');
+    wrap.innerHTML = comboLinesData.map((l,i)=>`
+      <div class="combo-line-row">
+        <input class="combo-pick" data-i="${i}" placeholder="Línea ${i+1}: ej. Real Madrid gana" value="${(l.pick||'').replace(/"/g,'&quot;')}" style="flex:2;">
+        <input class="combo-odds" data-i="${i}" type="number" step="0.01" placeholder="Cuota" value="${l.odds||''}" style="flex:1; max-width:100px;">
+        <button type="button" class="btn danger small" data-remove-line="${i}" ${comboLinesData.length<=1?'disabled':''} style="${comboLinesData.length<=1?'opacity:.3;':''}">✕</button>
+      </div>`).join('');
+    wrap.querySelectorAll('.combo-pick').forEach(el=>el.oninput=()=>{ comboLinesData[Number(el.dataset.i)].pick = el.value; });
+    wrap.querySelectorAll('.combo-odds').forEach(el=>el.oninput=()=>{ comboLinesData[Number(el.dataset.i)].odds = el.value; updateComboTotal(); });
+    wrap.querySelectorAll('[data-remove-line]').forEach(b=>b.onclick=()=>{
+      if(comboLinesData.length<=1) return;
+      comboLinesData.splice(Number(b.dataset.removeLine),1);
+      paintComboLines();
+    });
+    updateComboTotal();
+  }
+  function updateComboTotal(){
+    const total = comboLinesData.reduce((acc,l)=> acc * (Number(l.odds)||1), 1);
+    document.getElementById('f-comboOdds').value = total.toFixed(2);
+  }
+  paintComboLines();
+
+  document.getElementById('addLineBtn').onclick = ()=>{ comboLinesData.push({pick:'',odds:''}); paintComboLines(); };
+  document.getElementById('f-betType').onchange = (e)=>{
+    const combo = e.target.value === 'combo';
+    document.getElementById('simpleFields').style.display = combo ? 'none' : '';
+    document.getElementById('comboFields').style.display = combo ? '' : 'none';
+  };
+
   document.getElementById('savePick').onclick = async ()=>{
-    const pick = document.getElementById('f-pick').value.trim();
-    const odds = document.getElementById('f-odds').value;
-    if(!pick || !odds){ alert('Completa al menos el pick y la cuota.'); return; }
-    state[key].push({
-      id: uid(),
+    const betType = document.getElementById('f-betType').value;
+    const event = document.getElementById('f-event').value.trim();
+    let pick, odds, linesStr;
+    if(betType === 'combo'){
+      const validLines = comboLinesData.filter(l=>l.pick && l.pick.trim() && Number(l.odds)>0);
+      if(validLines.length < 2){ alert('Agrega al menos 2 líneas con pick y cuota para una combinada.'); return; }
+      pick = validLines.map(l=>l.pick.trim()).join(' + ');
+      odds = validLines.reduce((acc,l)=>acc*Number(l.odds), 1);
+      linesStr = JSON.stringify(validLines.map(l=>({pick:l.pick.trim(), odds:Number(l.odds)})));
+    } else {
+      pick = document.getElementById('f-pick').value.trim();
+      odds = Number(document.getElementById('f-odds').value);
+      if(!pick || !odds){ alert('Completa al menos el pick y la cuota.'); return; }
+      linesStr = '[]';
+    }
+    const data = {
       sport: document.getElementById('f-sport').value.trim(),
-      pick, odds: Number(odds),
+      event, betType, pick, odds,
       stake: Number(document.getElementById('f-stake').value)||0,
       date: document.getElementById('f-bdate').value || new Date().toISOString().slice(0,10),
-      result: document.getElementById('f-result').value
-    });
+      result: document.getElementById('f-result').value,
+      lines: linesStr
+    };
+    if(existing){
+      Object.assign(existing, data);
+    } else {
+      state[key].push({ id: uid(), ...data });
+    }
     closeModal();
     rerender();
     await persist(key);
@@ -668,21 +757,25 @@ function renderStakes(){
           <td>${s.description}</td>
           <td class="mono">${fmtMoney(s.amount)}</td>
           <td>
-            <select data-result="${s.id}" class="badge ${s.result}" style="background:transparent;border:1px solid var(--border);color:inherit;">
+            <select data-result="${s.id}" class="result-select ${s.result}">
               <option value="pending" ${s.result==='pending'?'selected':''}>Pendiente</option>
               <option value="won" ${s.result==='won'?'selected':''}>Ganado</option>
               <option value="lost" ${s.result==='lost'?'selected':''}>Perdido</option>
             </select>
           </td>
           <td class="mono">${fmtDate(s.date)}</td>
-          <td><button class="btn danger small" data-del-stake="${s.id}">Eliminar</button></td>
+          <td class="row-actions">
+            <button class="btn secondary small" data-edit-stake="${s.id}">Editar</button>
+            <button class="btn danger small" data-del-stake="${s.id}">Eliminar</button>
+          </td>
         </tr>`).join('')}
       </tbody></table>` : '<div class="empty">No hay stakes para mostrar con este filtro.</div>'}
     </div>
   `;
   wireDateFilter('stakes', renderStakes);
-  document.getElementById('addStakeBtn').onclick = openStakeForm;
+  document.getElementById('addStakeBtn').onclick = ()=>openStakeForm();
   document.getElementById('exportStakeBtn').onclick = () => exportCSV('stakes');
+  document.querySelectorAll('[data-edit-stake]').forEach(b=>b.onclick=()=>openStakeForm(b.dataset.editStake));
   document.querySelectorAll('[data-del-stake]').forEach(b=>b.onclick=()=>delItem('stakes', b.dataset.delStake, renderStakes));
   document.querySelectorAll('[data-result]').forEach(sel=>{
     sel.onchange = async ()=>{
@@ -691,14 +784,19 @@ function renderStakes(){
     };
   });
 }
-function openStakeForm(){
+function openStakeForm(editId){
+  const existing = editId ? state.stakes.find(x=>x.id===editId) : null;
   openModal(`
-    <h3>Nuevo stake</h3>
-    <div class="field"><label>Descripción</label><input id="f-sdesc" placeholder="Ej: Stake VIP Champions League"></div>
-    <div class="field"><label>Monto ($)</label><input id="f-samount" type="number" step="0.01" placeholder="20"></div>
-    <div class="field"><label>Fecha</label><input id="f-sdate" type="date"></div>
+    <h3>${existing ? 'Editar stake' : 'Nuevo stake'}</h3>
+    <div class="field"><label>Descripción</label><input id="f-sdesc" placeholder="Ej: Stake VIP Champions League" value="${existing?(existing.description||'').replace(/"/g,'&quot;'):''}"></div>
+    <div class="field"><label>Monto ($)</label><input id="f-samount" type="number" step="0.01" placeholder="20" value="${existing?existing.amount||'':''}"></div>
+    <div class="field"><label>Fecha</label><input id="f-sdate" type="date" value="${existing?existing.date||'':''}"></div>
     <div class="field"><label>Resultado</label>
-      <select id="f-sresult"><option value="pending">Pendiente</option><option value="won">Ganado</option><option value="lost">Perdido</option></select>
+      <select id="f-sresult">
+        <option value="pending" ${!existing||existing.result==='pending'?'selected':''}>Pendiente</option>
+        <option value="won" ${existing&&existing.result==='won'?'selected':''}>Ganado</option>
+        <option value="lost" ${existing&&existing.result==='lost'?'selected':''}>Perdido</option>
+      </select>
     </div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -709,13 +807,17 @@ function openStakeForm(){
     const desc = document.getElementById('f-sdesc').value.trim();
     const amount = document.getElementById('f-samount').value;
     if(!desc || !amount){ alert('Completa la descripción y el monto.'); return; }
-    state.stakes.push({
-      id: uid(),
+    const data = {
       description: desc,
       amount: Number(amount),
       date: document.getElementById('f-sdate').value || new Date().toISOString().slice(0,10),
       result: document.getElementById('f-sresult').value
-    });
+    };
+    if(existing){
+      Object.assign(existing, data);
+    } else {
+      state.stakes.push({ id: uid(), ...data });
+    }
     closeModal();
     renderStakes();
     await persist('stakes');
