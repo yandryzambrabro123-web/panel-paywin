@@ -1078,6 +1078,7 @@ function renderFinance(){
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         ${!seedApplied ? `<button class="btn secondary" id="loadSeedBtn">💾 Cargar saldo inicial real (10/10)</button>` : ''}
+        <button class="btn danger" id="resetFinanceBtn">🗑️ Reiniciar todo (borra historial)</button>
         <button class="btn secondary" id="exportFinanceBtn">Exportar CSV</button>
         <button class="btn secondary" id="addTransferBtn">+ Transferencia (caja → banco)</button>
         <button class="btn secondary" id="addMovementBtn">+ Registrar movimiento</button>
@@ -1143,6 +1144,7 @@ function renderFinance(){
   document.getElementById('addTransferBtn').onclick = ()=>openFinanceTransferForm(rerender);
   document.getElementById('addReceiptBtn').onclick = ()=>openFinanceReceiptForm(rerender);
   if(document.getElementById('loadSeedBtn')) document.getElementById('loadSeedBtn').onclick = ()=>loadFinanceSeed(rerender);
+  document.getElementById('resetFinanceBtn').onclick = ()=>resetFinanceAll(rerender);
   document.querySelectorAll('[data-edit-fin]').forEach(b=>b.onclick=()=>openFinanceMovementForm(rerender, b.dataset.editFin));
   document.querySelectorAll('[data-del-fin]').forEach(b=>b.onclick=()=>delItem('financeMovements', b.dataset.delFin, rerender));
   document.querySelectorAll('[data-view-receipt]').forEach(img=>img.onclick=()=>openReceiptPhoto(img.src));
@@ -1157,6 +1159,17 @@ async function loadFinanceSeed(rerender){
   FINANCE_SEED.forEach(s=>{
     state.financeMovements.push({ id: uid(), accountId: s.accountId, type:'in', amount: s.amount, date, note: FINANCE_SEED_NOTE, comprobanteNumero:'', receiptImage:'', transferId:'' });
   });
+  rerender();
+  await persist('financeMovements');
+}
+
+// Borra TODO el historial de Cuadre Financiero (pruebas incluidas) y deja únicamente el
+// saldo inicial real como punto de partida limpio. Pide doble confirmación por ser irreversible.
+async function resetFinanceAll(rerender){
+  if(!confirm('Esto va a BORRAR todos los movimientos de Cuadre Financiero (incluyendo los de prueba) y va a dejar solo el saldo inicial real del 10/10. No se puede deshacer. ¿Seguro que quieres continuar?')) return;
+  if(!confirm('Confirma una vez más: se eliminarán ' + state.financeMovements.length + ' movimiento(s) del historial. ¿Reiniciar de todas formas?')) return;
+  const date = '2026-10-10';
+  state.financeMovements = FINANCE_SEED.map(s=>({ id: uid(), accountId: s.accountId, type:'in', amount: s.amount, date, note: FINANCE_SEED_NOTE, comprobanteNumero:'', receiptImage:'', transferId:'' }));
   rerender();
   await persist('financeMovements');
 }
