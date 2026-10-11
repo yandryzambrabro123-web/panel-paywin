@@ -1108,6 +1108,7 @@ function renderFinance(){
       <div>
         <div class="page-title">Cuadre Financiero</div>
         <div class="page-sub">Saldo por cuenta y movimiento del dinero entre cajas y bancos</div>
+        <div style="font-size:11.5px; color:var(--accent); margin-top:2px;">📎 Arrastra o pega (Ctrl+V) la foto del comprobante en cualquier parte de esta pantalla para leerla</div>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         ${!seedApplied ? `<button class="btn secondary" id="loadSeedBtn">💾 Cargar saldo inicial real (10/10)</button>` : ''}
@@ -1430,6 +1431,7 @@ function openFinanceReceiptForm(rerender){
   dropzone.ondragleave = ()=>{ dropzone.style.borderColor = 'var(--border)'; };
   dropzone.ondrop = (e)=>{
     e.preventDefault();
+    e.stopPropagation(); // evita que el listener global de arrastrar-y-soltar lo procese dos veces
     dropzone.style.borderColor = 'var(--border)';
     if(e.dataTransfer.files && e.dataTransfer.files[0]) handleReceiptFile(e.dataTransfer.files[0], rerender);
   };
@@ -1463,6 +1465,58 @@ async function handleReceiptFile(file, rerender){
     showReceiptError('No se pudo leer el comprobante. Revisa tu conexión e intenta de nuevo.', rerender);
   }
 }
+
+// Modo rápido para cuando entran muchos comprobantes seguidos: estando en Cuadre Financiero,
+// arrastra la imagen (desde la carpeta de Descargas, por ejemplo) a CUALQUIER parte de la
+// pantalla, o cópiala (Ctrl+C en WhatsApp/galería) y pégala con Ctrl+V — sin tener que abrir
+// el botón "Leer comprobante" primero. Así el flujo queda: pega y confirma, pega y confirma...
+let _financeDragDepth = 0;
+function financeDropOverlay(show){
+  let el = document.getElementById('financeDropOverlay');
+  if(show && !el){
+    el = document.createElement('div');
+    el.id = 'financeDropOverlay';
+    el.style.cssText = 'position:fixed; inset:0; z-index:500; background:rgba(212,175,106,0.12); border:3px dashed var(--accent); display:flex; align-items:center; justify-content:center; pointer-events:none;';
+    el.innerHTML = '<div style="background:var(--surface); border:1px solid var(--accent); border-radius:10px; padding:18px 26px; font-size:15px; font-weight:700; color:var(--accent);">📎 Suelta aquí para leer el comprobante</div>';
+    document.body.appendChild(el);
+  } else if(!show && el){
+    el.remove();
+  }
+}
+window.addEventListener('dragenter', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  e.preventDefault();
+  _financeDragDepth++;
+  financeDropOverlay(true);
+});
+window.addEventListener('dragover', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  e.preventDefault();
+});
+window.addEventListener('dragleave', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  _financeDragDepth = Math.max(0, _financeDragDepth-1);
+  if(_financeDragDepth === 0) financeDropOverlay(false);
+});
+window.addEventListener('drop', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  e.preventDefault();
+  _financeDragDepth = 0;
+  financeDropOverlay(false);
+  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(file && file.type && file.type.startsWith('image/')) handleReceiptFile(file, renderFinance);
+});
+window.addEventListener('paste', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  const items = (e.clipboardData && e.clipboardData.items) || [];
+  for(const item of items){
+    if(item.type && item.type.startsWith('image/')){
+      const file = item.getAsFile();
+      if(file){ e.preventDefault(); handleReceiptFile(file, renderFinance); }
+      break;
+    }
+  }
+});
 
 function showReceiptError(message, rerender){
   openModal(`
