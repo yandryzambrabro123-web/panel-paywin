@@ -1331,21 +1331,34 @@ function fileToCompressedImage(file){
 }
 
 // Versión chiquita de la misma imagen, solo para guardarla en el historial (Google Sheets
-// tiene un límite de ~50.000 caracteres por celda, así que esta va bien liviana).
+// tiene un límite de ~50.000 caracteres por celda). Va probando con tamaños y calidades cada
+// vez más chicos hasta que el resultado entre bien holgado en ese límite — las capturas de
+// pantalla con texto nítido a veces pesan más de lo esperado aunque se vean "chiquitas".
 function fileToThumbnail(file){
+  const MAX_CHARS = 38000;
+  const steps = [
+    { w: 480, q: 0.55 }, { w: 480, q: 0.4 }, { w: 360, q: 0.5 },
+    { w: 360, q: 0.35 }, { w: 260, q: 0.4 }, { w: 200, q: 0.35 }, { w: 160, q: 0.3 }
+  ];
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onload = ()=>{
       const img = new Image();
       img.onload = ()=>{
-        const maxW = 480;
-        const scale = Math.min(1, maxW / img.width);
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
         const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.55));
+        const ctx = canvas.getContext('2d');
+        let result = '';
+        for(const step of steps){
+          const scale = Math.min(1, step.w / img.width);
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          canvas.width = w; canvas.height = h;
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', step.q);
+          if(dataUrl.length <= MAX_CHARS){ result = dataUrl; break; }
+          result = dataUrl; // nos quedamos con el más chico probado por si ninguno entra
+        }
+        resolve(result.length <= MAX_CHARS ? result : '');
       };
       img.onerror = ()=>reject(new Error('No se pudo leer la imagen.'));
       img.src = reader.result;
@@ -1400,7 +1413,7 @@ async function handleReceiptFile(file, rerender){
   try{
     const { base64, mediaType, previewUrl } = await fileToCompressedImage(file);
     let thumb = '';
-    try{ thumb = await fileToThumbnail(file); if(thumb.length > 45000) thumb = ''; }catch(e){ thumb = ''; }
+    try{ thumb = await fileToThumbnail(file); }catch(e){ thumb = ''; }
     const res = await fetch('/api/leer-comprobante', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1443,6 +1456,7 @@ function showReceiptConfirm(result, previewUrl, thumb, rerender){
     <h3>Confirmar movimiento</h3>
     <img src="${previewUrl}" style="max-width:100%; max-height:160px; border-radius:8px; margin-bottom:12px; display:block;">
     ${lowConfidence ? `<div style="background:#4A3B14; color:var(--pending); border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">No estoy 100% seguro de algunos datos — revísalos antes de confirmar.${result.reason ? ' ' + result.reason : ''}</div>` : ''}
+    ${!thumb ? `<div style="background:#4A3B14; color:var(--pending); border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">⚠️ Esta foto pesa demasiado y no se pudo guardar en el historial (sí se registrará el movimiento, solo que sin la foto).</div>` : ''}
     ${result.detectedText ? `<div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Leído: "${String(result.detectedText).replace(/"/g,'&quot;')}"</div>` : ''}
     <div id="dupWarning"></div>
     <div class="field"><label>Cuenta</label>
