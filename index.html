@@ -160,6 +160,7 @@
     <div class="nav-item" data-view="stakeSales"><span class="nav-icon">&#128722;</span> Venta de Stakes</div>
     <div class="nav-item" data-view="gifts"><span class="nav-icon">&#127873;</span> Regalitos</div>
     <div class="nav-item" data-view="finance"><span class="nav-icon">&#127974;</span> Cuadre Financiero</div>
+    <div class="nav-item" data-view="staffFinance"><span class="nav-icon">&#128101;</span> Finanzas de Personal</div>
     <div class="nav-item" id="logoutBtn" style="margin-top:auto; border-top:1px solid var(--border); padding-top:16px;"><span class="nav-icon">&#128274;</span> Cerrar sesión</div>
   </div>
   <div id="main"></div>
@@ -194,7 +195,7 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos' };
+const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos' };
 const VIP_GROUPS = [
   { key:'vips', title:'Miembros VIP' },
   { key:'vips1x2', title:'Miembros VIP 1X2' },
@@ -226,7 +227,7 @@ const FINANCE_LATEST_BASE = {
 };
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -255,6 +256,15 @@ function coerceRow(key, row){
   }
   if(key === 'financeMovements'){
     return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'', comprobanteNumero:row.comprobanteNumero||'', receiptImage:row.receiptImage||'' };
+  }
+  if(key === 'staff'){
+    return { id:String(row.id||''), name:row.name||'', role:row.role||'', betCommissionPct:Number(row.betCommissionPct)||0, stakeCommissionPct:Number(row.stakeCommissionPct)||0, appliesStakeCommission: row.appliesStakeCommission===true||row.appliesStakeCommission==='true', notes:row.notes||'' };
+  }
+  if(key === 'staffBets'){
+    return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'', pick:row.pick||'', invested:Number(row.invested)||0, returned:Number(row.returned)||0, note:row.note||'' };
+  }
+  if(key === 'staffAdvances'){
+    return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'', amount:Number(row.amount)||0, note:row.note||'' };
   }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
@@ -354,7 +364,7 @@ function exportCSV(key){
 // Qué vistas puede ver cada rol. null = todas (admin).
 function allowedViewsForRole(){
   if(state.role === 'socio') return ['stakeSales'];
-  if(state.role === 'colaboradora') return ['vips','vips1x2','vips1xbet','gifts','finance'];
+  if(state.role === 'colaboradora') return ['vips','vips1x2','vips1xbet','stakeSales','finance'];
   return null;
 }
 function setView(v){
@@ -1348,6 +1358,251 @@ function renderFinanceCharts(rows){
   });
 }
 
+/* ---------- FINANZAS DE PERSONAL (comisiones por apuestas y por venta de stakes, y anticipos) ---------- */
+function staffMember(id){ return state.staff.find(s=>s.id===id); }
+
+function staffBetCommissionTotal(staffId){
+  const s = staffMember(staffId);
+  if(!s) return 0;
+  const bets = state.staffBets.filter(b=>b.staffId===staffId);
+  return bets.reduce((sum,b)=> sum + Math.max(0, Number(b.returned)-Number(b.invested)) * (Number(s.betCommissionPct)/100), 0);
+}
+
+// Agrupa TODAS las ventas de stakes pagadas por día, y calcula cuánto le toca a esta persona
+// ese día según su % de comisión de stakes — así queda conectado con Venta de Stakes.
+function staffStakesDaily(staffId){
+  const s = staffMember(staffId);
+  if(!s || !s.appliesStakeCommission) return [];
+  const byDay = {};
+  state.stakeSections.forEach(sec=>{
+    const total = sectionTotal(sec.id);
+    if(!total) return;
+    const day = sec.day || '-';
+    byDay[day] = (byDay[day]||0) + total;
+  });
+  return Object.keys(byDay).sort((a,b)=>new Date(b)-new Date(a)).map(day=>({
+    day, total: byDay[day], commission: byDay[day] * (Number(s.stakeCommissionPct)/100)
+  }));
+}
+function staffStakesCommissionTotal(staffId){
+  return staffStakesDaily(staffId).reduce((sum,d)=>sum+d.commission,0);
+}
+function staffAdvancesTotal(staffId){
+  return state.staffAdvances.filter(a=>a.staffId===staffId).reduce((sum,a)=>sum+Number(a.amount),0);
+}
+
+function renderStaffFinance(){
+  const members = [...state.staff].sort((a,b)=>a.name.localeCompare(b.name));
+  if(!members.find(x=>x.id===state.staffId)) state.staffId = members[0] ? members[0].id : '';
+  const cur = members.find(x=>x.id===state.staffId);
+
+  let body = '';
+  if(cur){
+    const bets = state.staffBets.filter(b=>b.staffId===cur.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const betCommission = staffBetCommissionTotal(cur.id);
+    const stakesDaily = staffStakesDaily(cur.id);
+    const stakesCommission = staffStakesCommissionTotal(cur.id);
+    const advances = state.staffAdvances.filter(a=>a.staffId===cur.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const advancesTotal = staffAdvancesTotal(cur.id);
+    const totalOwed = betCommission + stakesCommission - advancesTotal;
+
+    body = `
+      <div class="card" style="margin-bottom:16px; display:flex; gap:28px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="score-cell" style="flex:0;"><div class="score-label">Comisión apuestas (${cur.betCommissionPct}%)</div><div class="score-value win">${fmtMoney(betCommission)}</div></div>
+        <div class="score-cell" style="flex:0;"><div class="score-label">Comisión stakes (${cur.stakeCommissionPct}%)</div><div class="score-value win">${fmtMoney(stakesCommission)}</div></div>
+        <div class="score-cell" style="flex:0;"><div class="score-label">Anticipos pagados</div><div class="score-value">${fmtMoney(advancesTotal)}</div></div>
+        <div class="score-cell" style="flex:0;"><div class="score-label">Total pendiente por pagar</div><div class="score-value ${totalOwed<0?'loss':'win'}">${fmtMoney(totalOwed)}</div></div>
+        <div style="margin-left:auto; display:flex; gap:8px;">
+          <button class="btn secondary small" id="editStaffBtn">Editar persona</button>
+          <button class="btn danger small" id="delStaffBtn">Eliminar persona</button>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:16px;">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:10px;">
+            <div class="card-title" style="margin:0;">Apuestas (comisión ${cur.betCommissionPct}% sobre ganancia)</div>
+            <button class="btn small" id="addStaffBetBtn">+ Registrar apuesta</button>
+          </div>
+          ${bets.length ? `<table><thead><tr><th>Fecha</th><th>Pick</th><th>Invertido</th><th>Devuelto</th><th>Ganancia</th><th>Comisión</th><th></th></tr></thead><tbody>
+            ${bets.map(b=>{ const profit = Number(b.returned)-Number(b.invested); const comm = Math.max(0,profit)*(Number(cur.betCommissionPct)/100); return `<tr>
+              <td class="mono">${fmtDate(b.date)}</td>
+              <td>${b.pick||'-'}</td>
+              <td class="mono">${fmtMoney(b.invested)}</td>
+              <td class="mono">${fmtMoney(b.returned)}</td>
+              <td class="mono" style="${profit<0?'color:var(--loss);':''}">${fmtMoney(profit)}</td>
+              <td class="mono">${fmtMoney(comm)}</td>
+              <td class="row-actions"><button class="btn danger small" data-del-staffbet="${b.id}">Eliminar</button></td>
+            </tr>`; }).join('')}
+          </tbody></table>` : `<div class="empty">Sin apuestas registradas todavía.</div>`}
+        </div>
+
+        <div class="card">
+          <div class="card-title">Comisión por venta de stakes (${cur.stakeCommissionPct}% del total vendido cada día)</div>
+          ${cur.appliesStakeCommission ? (stakesDaily.length ? `<table><thead><tr><th>Día</th><th>Vendido</th><th>Comisión</th></tr></thead><tbody>
+            ${stakesDaily.map(d=>`<tr><td class="mono">${fmtDate(d.day)}</td><td class="mono">${fmtMoney(d.total)}</td><td class="mono">${fmtMoney(d.commission)}</td></tr>`).join('')}
+          </tbody></table>` : `<div class="empty">Todavía no hay ventas de stakes registradas en "Venta de Stakes".</div>`)
+          : `<div class="empty">Esta persona no tiene activada la comisión por venta de stakes (actívala en "Editar persona").</div>`}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar" style="margin-bottom:10px;">
+          <div class="card-title" style="margin:0;">Anticipos pagados</div>
+          <button class="btn secondary small" id="addAdvanceBtn">+ Registrar anticipo</button>
+        </div>
+        ${advances.length ? `<table><thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th><th></th></tr></thead><tbody>
+          ${advances.map(a=>`<tr>
+            <td class="mono">${fmtDate(a.date)}</td>
+            <td class="mono">${fmtMoney(a.amount)}</td>
+            <td style="color:var(--muted); font-size:12.5px;">${a.note||'-'}</td>
+            <td class="row-actions"><button class="btn danger small" data-del-advance="${a.id}">Eliminar</button></td>
+          </tr>`).join('')}
+        </tbody></table>` : `<div class="empty">Sin anticipos registrados.</div>`}
+      </div>
+    `;
+  } else {
+    body = `<div class="card"><div class="empty">Aún no tienes personas registradas. Crea una con el botón "+ Nueva persona".</div></div>`;
+  }
+
+  document.getElementById('main').innerHTML = `
+    <div class="toolbar">
+      <div>
+        <div class="page-title">Finanzas de Personal</div>
+        <div class="page-sub">Comisiones, anticipos y pagos de tu equipo</div>
+      </div>
+      <button class="btn" id="addStaffBtn">+ Nueva persona</button>
+    </div>
+    <div class="day-tabs">
+      ${members.map(m=>`<div class="day-tab ${cur && m.id===cur.id?'active':''}" data-staff="${m.id}">${m.name}<span class="day-tab-sub">· ${m.role||'Equipo'}</span></div>`).join('')}
+    </div>
+    ${body}
+  `;
+
+  document.getElementById('addStaffBtn').onclick = ()=>openStaffForm();
+  document.querySelectorAll('[data-staff]').forEach(el=>{
+    el.onclick = ()=>{ state.staffId = el.dataset.staff; renderStaffFinance(); };
+  });
+  if(cur){
+    document.getElementById('editStaffBtn').onclick = ()=>openStaffForm(cur.id);
+    document.getElementById('delStaffBtn').onclick = async ()=>{
+      if(!confirm(`¿Eliminar a "${cur.name}"? Esto también borra sus apuestas y anticipos registrados.`)) return;
+      const removedBetIds = state.staffBets.filter(b=>b.staffId===cur.id).map(b=>b.id);
+      const removedAdvIds = state.staffAdvances.filter(a=>a.staffId===cur.id).map(a=>a.id);
+      state.staff = state.staff.filter(x=>x.id!==cur.id);
+      state.staffBets = state.staffBets.filter(b=>b.staffId!==cur.id);
+      state.staffAdvances = state.staffAdvances.filter(a=>a.staffId!==cur.id);
+      state.staffId = '';
+      renderStaffFinance();
+      await persist('staff', { deletedIds: [cur.id] });
+      await persist('staffBets', { deletedIds: removedBetIds });
+      await persist('staffAdvances', { deletedIds: removedAdvIds });
+    };
+    document.getElementById('addStaffBetBtn').onclick = ()=>openStaffBetForm(cur.id);
+    document.getElementById('addAdvanceBtn').onclick = ()=>openStaffAdvanceForm(cur.id);
+    document.querySelectorAll('[data-del-staffbet]').forEach(b=>b.onclick=()=>delItem('staffBets', b.dataset.delStaffbet, renderStaffFinance));
+    document.querySelectorAll('[data-del-advance]').forEach(b=>b.onclick=()=>delItem('staffAdvances', b.dataset.delAdvance, renderStaffFinance));
+  }
+}
+
+function openStaffForm(editId){
+  const existing = editId ? staffMember(editId) : null;
+  openModal(`
+    <h3>${existing ? 'Editar persona' : 'Nueva persona'}</h3>
+    <div class="field"><label>Nombre</label><input id="f-stName" placeholder="Ej: Ayrton" value="${existing?existing.name:''}"></div>
+    <div class="field"><label>Rol (opcional)</label><input id="f-stRole" placeholder="Ej: Pronosticador" value="${existing?existing.role||'':''}"></div>
+    <div class="field"><label>% Comisión por apuestas (sobre la ganancia)</label><input id="f-stBetPct" type="number" step="0.01" placeholder="20" value="${existing?existing.betCommissionPct||'':''}"></div>
+    <div class="field"><label>¿Gana comisión por venta de stakes?</label>
+      <select id="f-stAppliesStake">
+        <option value="no" ${!existing||!existing.appliesStakeCommission?'selected':''}>No</option>
+        <option value="si" ${existing&&existing.appliesStakeCommission?'selected':''}>Sí</option>
+      </select>
+    </div>
+    <div class="field"><label>% Comisión sobre venta de stakes</label><input id="f-stStakePct" type="number" step="0.01" placeholder="25" value="${existing?existing.stakeCommissionPct||'':''}"></div>
+    <div class="field"><label>Notas (opcional)</label><textarea id="f-stNotes">${existing?existing.notes||'':''}</textarea></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveStaff">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveStaff').onclick = async ()=>{
+    const name = document.getElementById('f-stName').value.trim();
+    if(!name){ alert('Ponle un nombre.'); return; }
+    const data = {
+      name,
+      role: document.getElementById('f-stRole').value.trim(),
+      betCommissionPct: Number(document.getElementById('f-stBetPct').value)||0,
+      appliesStakeCommission: document.getElementById('f-stAppliesStake').value === 'si',
+      stakeCommissionPct: Number(document.getElementById('f-stStakePct').value)||0,
+      notes: document.getElementById('f-stNotes').value.trim()
+    };
+    if(existing){
+      Object.assign(existing, data);
+    } else {
+      const s = { id: uid(), ...data };
+      state.staff.push(s);
+      state.staffId = s.id;
+    }
+    closeModal();
+    renderStaffFinance();
+    await persist('staff');
+  };
+}
+
+function openStaffBetForm(staffId){
+  openModal(`
+    <h3>Registrar apuesta</h3>
+    <div class="field"><label>Pick / descripción (opcional)</label><input id="f-sbPick" placeholder="Ej: Real Madrid gana"></div>
+    <div class="field"><label>Invertido ($)</label><input id="f-sbInvested" type="number" step="0.01" placeholder="50"></div>
+    <div class="field"><label>Devuelto / cobrado ($)</label><input id="f-sbReturned" type="number" step="0.01" placeholder="80"></div>
+    <div class="field"><label>Fecha</label><input id="f-sbDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota (opcional)</label><input id="f-sbNote"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveStaffBet">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveStaffBet').onclick = async ()=>{
+    const invested = Number(document.getElementById('f-sbInvested').value)||0;
+    const returned = Number(document.getElementById('f-sbReturned').value)||0;
+    state.staffBets.push({
+      id: uid(), staffId,
+      pick: document.getElementById('f-sbPick').value.trim(),
+      invested, returned,
+      date: document.getElementById('f-sbDate').value || new Date().toISOString().slice(0,10),
+      note: document.getElementById('f-sbNote').value.trim()
+    });
+    closeModal();
+    renderStaffFinance();
+    await persist('staffBets');
+  };
+}
+
+function openStaffAdvanceForm(staffId){
+  openModal(`
+    <h3>Registrar anticipo</h3>
+    <div class="field"><label>Monto ($)</label><input id="f-advAmount" type="number" step="0.01" placeholder="20"></div>
+    <div class="field"><label>Fecha</label><input id="f-advDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota (opcional)</label><input id="f-advNote" placeholder="Ej: anticipo en efectivo"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveAdvance">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveAdvance').onclick = async ()=>{
+    const amount = Number(document.getElementById('f-advAmount').value);
+    if(!amount || amount<=0){ alert('Pon un monto válido.'); return; }
+    state.staffAdvances.push({
+      id: uid(), staffId, amount,
+      date: document.getElementById('f-advDate').value || new Date().toISOString().slice(0,10),
+      note: document.getElementById('f-advNote').value.trim()
+    });
+    closeModal();
+    renderStaffFinance();
+    await persist('staffAdvances');
+  };
+}
+
 function openFinanceMovementForm(rerender, editId){
   const existing = editId ? state.financeMovements.find(x=>x.id===editId) : null;
   openModal(`
@@ -1805,12 +2060,13 @@ function render(){
   else if(state.view==='stakeSales') renderStakeSales();
   else if(state.view==='gifts') renderGifts();
   else if(state.view==='finance') renderFinance();
+  else if(state.view==='staffFinance') renderStaffFinance();
 }
 
 /* ---------- AUTH ---------- */
 function enterApp(role){
   state.role = role;
-  const allowed = (role === 'socio') ? ['stakeSales'] : (role === 'colaboradora') ? ['vips','vips1x2','vips1xbet','gifts','finance'] : null;
+  const allowed = (role === 'socio') ? ['stakeSales'] : (role === 'colaboradora') ? ['vips','vips1x2','vips1xbet','stakeSales','finance'] : null;
   state.view = allowed ? allowed[0] : 'dashboard';
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
