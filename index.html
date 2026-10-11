@@ -172,6 +172,21 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhbzMCcoJ5jDjp1lgsaGjLMkGI47SVAfemVMuMnggWd_k-ubqzmBEMlA/exec';
+// Acceso del socio: usuario y contraseña fijos aquí mismo (no pasan por el Google Sheet de
+// login). Solo ve "Venta de Stakes", con nombre y teléfono censurados, sin poder editar nada.
+// Puedes cambiar estos dos valores cuando quieras, directo en este archivo.
+const PARTNER_USER = 'socio';
+const PARTNER_PASS = 'Ayrto2026';
+function maskName(name){
+  if(!name) return '-';
+  return String(name).trim().split(/\s+/).map(w => w[0] ? (w[0].toUpperCase() + '*'.repeat(Math.max(w.length-1,2))) : '').join(' ');
+}
+function maskPhone(phone){
+  if(!phone) return '-';
+  const digits = String(phone).trim();
+  if(digits.length <= 2) return '*'.repeat(digits.length);
+  return '*'.repeat(digits.length-2) + digits.slice(-2);
+}
 const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos' };
 const VIP_GROUPS = [
   { key:'vips', title:'Miembros VIP' },
@@ -200,7 +215,7 @@ const FINANCE_SEED = [
 
 let state = {
   vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
-  view: 'dashboard', loaded: false, syncError: false,
+  view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
 
@@ -279,9 +294,19 @@ function exportCSV(key){
 }
 
 function setView(v){
+  if(state.role === 'socio' && v !== 'stakeSales') return; // el socio solo puede ver Venta de Stakes
   state.view = v;
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===v));
   render();
+}
+// Deja visible en el menú solo lo que el rol actual puede ver.
+function applyRoleToNav(){
+  const allowed = state.role === 'socio' ? ['stakeSales'] : null;
+  document.querySelectorAll('.nav-item[data-view]').forEach(el=>{
+    el.style.display = (!allowed || allowed.includes(el.dataset.view)) ? '' : 'none';
+  });
+  const brandText = document.querySelector('.brand-text');
+  if(brandText) brandText.innerHTML = state.role === 'socio' ? 'Panel Socio<br>Pay Win · Stakes' : 'Panel<br>Administración<br>Pay Win';
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(el=>{ el.addEventListener('click', ()=>setView(el.dataset.view)); });
 
@@ -881,6 +906,7 @@ async function migrateStakeSales(){
 }
 
 function renderStakeSales(){
+  const readOnly = state.role === 'socio';
   const sections = [...state.stakeSections].sort((a,b)=> new Date(b.day||0) - new Date(a.day||0));
   if(!sections.find(x=>x.id===state.stakeSectionId)) state.stakeSectionId = sections[0] ? sections[0].id : '';
   const cur = sections.find(x=>x.id===state.stakeSectionId);
@@ -898,27 +924,27 @@ function renderStakeSales(){
         <div class="score-cell" style="flex:0;"><div class="score-label">Pagaron</div><div class="score-value win">${paid.length}</div></div>
         <div class="score-cell" style="flex:0;"><div class="score-label">Compensación</div><div class="score-value">${comp.length}</div></div>
         <div class="score-cell" style="flex:0;"><div class="score-label">Total en ventas</div><div class="score-value win">${fmtMoney(sectionTotal(cur.id))}</div></div>
-        <div style="margin-left:auto; display:flex; gap:8px;">
+        ${readOnly ? '' : `<div style="margin-left:auto; display:flex; gap:8px;">
           <button class="btn secondary small" id="editSectionBtn">Editar sección</button>
           <button class="btn danger small" id="delSectionBtn">Eliminar sección</button>
-        </div>
+        </div>`}
       </div>
       <div class="card">
-        ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Monto</th><th>Estado</th><th></th></tr></thead><tbody>
+        ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Monto</th><th>Estado</th>${readOnly ? '' : '<th></th>'}</tr></thead><tbody>
           ${rows.map(s=>`<tr>
-            <td>${s.name}</td>
-            <td class="mono">${s.phone||'-'}</td>
+            <td>${readOnly ? maskName(s.name) : s.name}</td>
+            <td class="mono">${readOnly ? maskPhone(s.phone) : (s.phone||'-')}</td>
             <td class="mono">${fmtMoney(saleAmount(s))}</td>
             <td><span class="badge ${s.status==='paid'?'active':'pending'}">${s.status==='paid'?'Pagó':'Compensación'}</span></td>
-            <td class="row-actions">
+            ${readOnly ? '' : `<td class="row-actions">
               <button class="btn secondary small" data-toggle-sale="${s.id}">${s.status==='paid'?'Marcar compensación':'Marcar pagó'}</button>
               <button class="btn danger small" data-del-sale="${s.id}">Eliminar</button>
-            </td>
+            </td>`}
           </tr>`).join('')}
         </tbody></table>` : `<div class="empty">Todavía no hay compradores en esta sección.</div>`}
       </div>`;
   } else {
-    body = `<div class="card"><div class="empty">Aún no tienes secciones. Crea una con el botón "+ Nueva sección" (por ejemplo "Stake 1", con su fecha y precio).</div></div>`;
+    body = `<div class="card"><div class="empty">Aún no tienes secciones. ${readOnly ? '' : 'Crea una con el botón "+ Nueva sección" (por ejemplo "Stake 1", con su fecha y precio).'}</div></div>`;
   }
 
   document.getElementById('main').innerHTML = `
@@ -928,9 +954,9 @@ function renderStakeSales(){
         <div class="page-sub">Total histórico en ventas: ${fmtMoney(totalAll)}</div>
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
-        <button class="btn secondary" id="exportStakeSalesBtn">Exportar CSV</button>
+        ${readOnly ? '' : `<button class="btn secondary" id="exportStakeSalesBtn">Exportar CSV</button>
         <button class="btn secondary" id="addSectionBtn">+ Nueva sección</button>
-        ${cur ? '<button class="btn" id="addStakeSaleBtn">+ Registrar comprador</button>' : ''}
+        ${cur ? '<button class="btn" id="addStakeSaleBtn">+ Registrar comprador</button>' : ''}`}
       </div>
     </div>
     <div class="day-tabs">
@@ -938,6 +964,13 @@ function renderStakeSales(){
     </div>
     ${body}
   `;
+
+  if(readOnly){
+    document.querySelectorAll('[data-section]').forEach(el=>{
+      el.onclick = ()=>{ state.stakeSectionId = el.dataset.section; renderStakeSales(); };
+    });
+    return;
+  }
 
   document.getElementById('exportStakeSalesBtn').onclick = ()=>exportCSV('stakeSales');
   document.getElementById('addSectionBtn').onclick = ()=>openStakeSectionForm();
@@ -1626,12 +1659,31 @@ function render(){
 }
 
 /* ---------- AUTH ---------- */
+function enterApp(role){
+  state.role = role;
+  state.view = role === 'socio' ? 'stakeSales' : 'dashboard';
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===state.view));
+  applyRoleToNav();
+  loadAll();
+}
+
 async function attemptLogin(){
   const user = document.getElementById('loginUser').value.trim();
   const pass = document.getElementById('loginPass').value;
   const errEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
   errEl.style.display = 'none';
+
+  // Acceso del socio: credencial fija definida arriba, no pasa por el Sheet de login.
+  if(user === PARTNER_USER && pass === PARTNER_PASS){
+    localStorage.setItem('panelVipAuth', 'true');
+    localStorage.setItem('panelRole', 'socio');
+    enterApp('socio');
+    return;
+  }
+
   btn.textContent = 'Verificando...';
   btn.disabled = true;
   try{
@@ -1639,9 +1691,8 @@ async function attemptLogin(){
     const json = await res.json();
     if(json.ok){
       localStorage.setItem('panelVipAuth', 'true');
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('app').style.display = 'flex';
-      loadAll();
+      localStorage.setItem('panelRole', 'admin');
+      enterApp('admin');
     }else{
       errEl.style.display = 'block';
     }
@@ -1657,12 +1708,11 @@ document.getElementById('loginBtn').addEventListener('click', attemptLogin);
 document.getElementById('loginPass').addEventListener('keydown', (e)=>{ if(e.key==='Enter') attemptLogin(); });
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
   localStorage.removeItem('panelVipAuth');
+  localStorage.removeItem('panelRole');
   location.reload();
 });
 
 if(localStorage.getItem('panelVipAuth') === 'true'){
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  loadAll();
+  enterApp(localStorage.getItem('panelRole') === 'socio' ? 'socio' : 'admin');
 }
 </script>
