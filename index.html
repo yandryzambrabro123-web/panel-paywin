@@ -1174,6 +1174,24 @@ function financeTotal(){
   return FINANCE_ACCOUNTS.reduce((sum,a)=>sum+financeBalance(a.id), 0);
 }
 
+// Trae de nuevo SOLO los movimientos de Cuadre Financiero desde Google Sheets y repinta
+// nada más esa sección — para cuando otra persona (tu colaborador) está registrando cuadres
+// al mismo tiempo que tú tienes la página abierta, sin tener que recargar todo el panel.
+async function refreshFinanceData(){
+  const btn = document.getElementById('refreshFinanceBtn');
+  if(btn){ btn.disabled = true; btn.textContent = '🔄 Actualizando...'; }
+  try{
+    const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES.financeMovements}`);
+    const json = await res.json();
+    state.financeMovements = (json.data || []).map(row => coerceRow('financeMovements', row));
+    state.syncError = false;
+  }catch(e){
+    console.error('Error actualizando Cuadre Financiero', e);
+    state.syncError = true;
+  }
+  renderFinance();
+}
+
 function renderFinance(){
   const addOnly = state.role === 'colaboradora'; // solo puede registrar ingresos/egresos, nada más
   const accFilter = state.financeAccountFilter;
@@ -1189,6 +1207,7 @@ function renderFinance(){
         <div style="font-size:11.5px; color:var(--accent); margin-top:2px;">📎 Arrastra o pega (Ctrl+V) la foto del comprobante en cualquier parte de esta pantalla para leerla</div>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn secondary" id="refreshFinanceBtn" title="Actualizar solo Cuadre Financiero">🔄 Actualizar</button>
         ${addOnly ? '' : `<button class="btn secondary" id="dailyBalanceBtn">📅 Actualizar saldo del día</button>
         <button class="btn danger" id="resetFinanceBtn">🗑️ Reiniciar todo (borra historial)</button>
         <button class="btn secondary" id="exportFinanceBtn">Exportar CSV</button>
@@ -1251,6 +1270,7 @@ function renderFinance(){
   const rerender = renderFinance;
   wireDateFilter('financeMovements', rerender);
   document.getElementById('financeAccFilter').onchange = (e)=>{ state.financeAccountFilter = e.target.value; rerender(); };
+  document.getElementById('refreshFinanceBtn').onclick = ()=>refreshFinanceData();
   document.getElementById('addMovementBtn').onclick = ()=>openFinanceMovementForm(rerender);
   document.getElementById('addReceiptBtn').onclick = ()=>openFinanceReceiptForm(rerender);
   document.querySelectorAll('[data-view-receipt]').forEach(img=>img.onclick=()=>openReceiptPhoto(img.src));
