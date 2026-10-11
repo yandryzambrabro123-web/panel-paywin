@@ -202,16 +202,21 @@ const FINANCE_ACCOUNTS = [
   { id:'onexbet', name:'Caja OneXBet', type:'caja' },
   { id:'masparley', name:'Caja Más Parley', type:'caja' }
 ];
-// Saldo inicial real (foto "BASE FINANCIERA" del sábado 10/10/26). Se usa una sola vez
-// desde el botón "Cargar saldo inicial real" en Cuadre Financiero.
-const FINANCE_SEED_NOTE = 'Saldo inicial real (sáb 10/10/26)';
-const FINANCE_SEED = [
-  { accountId:'pichincha', amount:30.14 },
-  { accountId:'guayaquil', amount:10 },
-  { accountId:'pacifico', amount:15 },
-  { accountId:'ecuabet', amount:46.65 },
-  { accountId:'masparley', amount:102.19 }
-];
+// Prefijo de la nota que marca un "saldo inicial del día" (la base financiera que mandas
+// cada mañana por WhatsApp). Se usa desde el botón "Actualizar saldo del día" en Cuadre
+// Financiero, para no tener que pedirme un redeploy cada vez que cambian los montos.
+const FINANCE_DAILY_NOTE_PREFIX = 'Saldo inicial del día';
+// Última "BASE FINANCIERA" que me pasaste (domingo 11/10/26) — queda precargada en el
+// formulario "Actualizar saldo del día" para que solo tengas que revisar y darle Guardar.
+// La próxima vez que me mandes la base del día, actualizo estos valores y te paso el archivo.
+const FINANCE_LATEST_BASE = {
+  pichincha: 0.14,
+  guayaquil: 10,
+  pacifico: 15,
+  ecuabet: 51.65,
+  masparley: 0.19
+  // onexbet no viene en la base que mandas — se deja en blanco a propósito
+};
 
 let state = {
   vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
@@ -1101,7 +1106,6 @@ function renderFinance(){
   const allRows = accFilter ? state.financeMovements.filter(m=>m.accountId===accFilter) : state.financeMovements;
   const rows = filterByDate(allRows, 'date', 'financeMovements');
   const sorted = [...rows].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const seedApplied = state.financeMovements.some(m=>m.note===FINANCE_SEED_NOTE);
 
   document.getElementById('main').innerHTML = `
     <div class="toolbar">
@@ -1111,7 +1115,7 @@ function renderFinance(){
         <div style="font-size:11.5px; color:var(--accent); margin-top:2px;">📎 Arrastra o pega (Ctrl+V) la foto del comprobante en cualquier parte de esta pantalla para leerla</div>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        ${!seedApplied ? `<button class="btn secondary" id="loadSeedBtn">💾 Cargar saldo inicial real (10/10)</button>` : ''}
+        <button class="btn secondary" id="dailyBalanceBtn">📅 Actualizar saldo del día</button>
         <button class="btn danger" id="resetFinanceBtn">🗑️ Reiniciar todo (borra historial)</button>
         <button class="btn secondary" id="exportFinanceBtn">Exportar CSV</button>
         <button class="btn secondary" id="addTransferBtn">+ Transferencia (caja → banco)</button>
@@ -1177,7 +1181,7 @@ function renderFinance(){
   document.getElementById('addMovementBtn').onclick = ()=>openFinanceMovementForm(rerender);
   document.getElementById('addTransferBtn').onclick = ()=>openFinanceTransferForm(rerender);
   document.getElementById('addReceiptBtn').onclick = ()=>openFinanceReceiptForm(rerender);
-  if(document.getElementById('loadSeedBtn')) document.getElementById('loadSeedBtn').onclick = ()=>loadFinanceSeed(rerender);
+  document.getElementById('dailyBalanceBtn').onclick = ()=>openDailyBalanceForm(rerender);
   document.getElementById('resetFinanceBtn').onclick = ()=>resetFinanceAll(rerender);
   document.querySelectorAll('[data-edit-fin]').forEach(b=>b.onclick=()=>openFinanceMovementForm(rerender, b.dataset.editFin));
   document.querySelectorAll('[data-del-fin]').forEach(b=>b.onclick=()=>delItem('financeMovements', b.dataset.delFin, rerender));
@@ -1185,27 +1189,51 @@ function renderFinance(){
   renderFinanceCharts(sorted);
 }
 
-// Carga una sola vez el saldo inicial real (foto "BASE FINANCIERA" del sábado 10/10/26) como
-// un movimiento de ingreso por cuenta, sin tocar nada de lo que ya estaba registrado.
-async function loadFinanceSeed(rerender){
-  if(!confirm('Esto va a agregar un movimiento de "saldo inicial" en cada cuenta con los montos reales del 10/10. No borra nada de lo que ya tienes. ¿Confirmas?')) return;
-  const date = '2026-10-10';
-  FINANCE_SEED.forEach(s=>{
-    state.financeMovements.push({ id: uid(), accountId: s.accountId, type:'in', amount: s.amount, date, note: FINANCE_SEED_NOTE, comprobanteNumero:'', receiptImage:'', transferId:'' });
-  });
-  rerender();
-  await persist('financeMovements');
+// Cada mañana mandas por WhatsApp la "BASE FINANCIERA" del día (cuánto hay en cada cuenta
+// al arrancar). Este formulario registra esos montos directo en el panel, sin tener que
+// pedirme un redeploy cada vez que cambian — solo escribes los números y confirmas.
+function openDailyBalanceForm(rerender){
+  const today = new Date().toISOString().slice(0,10);
+  openModal(`
+    <h3>Actualizar saldo del día</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Ya viene precargado con la última "BASE FINANCIERA" que me pasaste — revisa los montos y dale Guardar. Se agrega como un movimiento de ingreso fechado hoy; deja en blanco la cuenta que no quieras tocar.</div>
+    <div class="field"><label>Fecha</label><input id="f-dbDate" type="date" value="${today}"></div>
+    ${FINANCE_ACCOUNTS.map(a=>`
+      <div class="field"><label>${a.name} ($)</label><input id="f-db-${a.id}" type="number" step="0.01" placeholder="0.00" value="${FINANCE_LATEST_BASE[a.id] !== undefined ? FINANCE_LATEST_BASE[a.id] : ''}"></div>
+    `).join('')}
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveDailyBalance">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveDailyBalance').onclick = async ()=>{
+    const date = document.getElementById('f-dbDate').value || today;
+    const note = `${FINANCE_DAILY_NOTE_PREFIX} (${fmtDate(date)})`;
+    let added = 0;
+    FINANCE_ACCOUNTS.forEach(a=>{
+      const raw = document.getElementById(`f-db-${a.id}`).value;
+      if(raw === '') return;
+      const amount = Number(raw);
+      if(isNaN(amount)) return;
+      state.financeMovements.push({ id: uid(), accountId: a.id, type:'in', amount, date, note, comprobanteNumero:'', receiptImage:'', transferId:'' });
+      added++;
+    });
+    if(!added){ alert('Escribe al menos un monto.'); return; }
+    closeModal();
+    rerender();
+    await persist('financeMovements');
+  };
 }
 
-// Borra TODO el historial de Cuadre Financiero (pruebas incluidas) y deja únicamente el
-// saldo inicial real como punto de partida limpio. Pide doble confirmación por ser irreversible.
+// Borra TODO el historial de Cuadre Financiero (pruebas y movimientos incluidos) para empezar
+// limpio, y abre de una vez el formulario de saldo del día. Pide doble confirmación por ser irreversible.
 async function resetFinanceAll(rerender){
-  if(!confirm('Esto va a BORRAR todos los movimientos de Cuadre Financiero (incluyendo los de prueba) y va a dejar solo el saldo inicial real del 10/10. No se puede deshacer. ¿Seguro que quieres continuar?')) return;
+  if(!confirm('Esto va a BORRAR todos los movimientos de Cuadre Financiero. No se puede deshacer. ¿Seguro que quieres continuar?')) return;
   if(!confirm('Confirma una vez más: se eliminarán ' + state.financeMovements.length + ' movimiento(s) del historial. ¿Reiniciar de todas formas?')) return;
-  const date = '2026-10-10';
-  state.financeMovements = FINANCE_SEED.map(s=>({ id: uid(), accountId: s.accountId, type:'in', amount: s.amount, date, note: FINANCE_SEED_NOTE, comprobanteNumero:'', receiptImage:'', transferId:'' }));
+  state.financeMovements = [];
   rerender();
   await persist('financeMovements');
+  openDailyBalanceForm(rerender);
 }
 
 // Gráficos de Cuadre Financiero: barras de saldo actual por cuenta, y línea del total
