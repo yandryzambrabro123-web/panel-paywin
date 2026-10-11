@@ -203,7 +203,7 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos', staffVipSales: 'PersonalVentasVIP' };
+const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos', staffVipSales: 'PersonalVentasVIP', staffStakePayments: 'PersonalPagosStakes' };
 const VIP_GROUPS = [
   { key:'vips', title:'Miembros VIP' },
   { key:'vips1x2', title:'Miembros VIP 1X2' },
@@ -235,7 +235,7 @@ const FINANCE_LATEST_BASE = {
 };
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -270,6 +270,7 @@ function coerceRow(key, row){
       id:String(row.id||''), code:row.code||'', name:row.name||'', cedula:row.cedula||'', role:row.role||'',
       paymentType: (row.paymentType==='sueldo'||row.paymentType==='ambos'||row.paymentType==='comision') ? row.paymentType : 'comision',
       salaryAmount:Number(row.salaryAmount)||0,
+      startDate: row.startDate||'',
       betCommissionPct:Number(row.betCommissionPct)||0,
       appliesStakeCommission: row.appliesStakeCommission===true||row.appliesStakeCommission==='true',
       stakeCommissionPct:Number(row.stakeCommissionPct)||0,
@@ -279,13 +280,16 @@ function coerceRow(key, row){
     };
   }
   if(key === 'staffBets'){
-    return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'', pick:row.pick||'', invested:Number(row.invested)||0, returned:Number(row.returned)||0, note:row.note||'', receiptImage:row.receiptImage||'' };
+    return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'', pick:row.pick||'', invested:Number(row.invested)||0, returned:Number(row.returned)||0, note:row.note||'', receiptImage:row.receiptImage||'', paid: row.paid===true||row.paid==='true' };
   }
   if(key === 'staffAdvances'){
     return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'', amount:Number(row.amount)||0, note:row.note||'' };
   }
   if(key === 'staffVipSales'){
-    return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'', vipName:row.vipName||'', amount:Number(row.amount)||0, receiptImage:row.receiptImage||'', note:row.note||'' };
+    return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'', vipName:row.vipName||'', amount:Number(row.amount)||0, receiptImage:row.receiptImage||'', note:row.note||'', paid: row.paid===true||row.paid==='true' };
+  }
+  if(key === 'staffStakePayments'){
+    return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'' };
   }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
@@ -1416,6 +1420,18 @@ function myAyrtonRecord(){
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 
+// Si la persona tiene una "fecha de inicio" puesta (en "Editar persona"), ignora cualquier
+// comisión de fechas anteriores — así no se le atribuye venta de stakes de antes de que
+// empezara a trabajar.
+function dateOnOrAfterStart(s, dateStr){
+  if(!s || !s.startDate) return true;
+  return String(dateStr||'') >= s.startDate;
+}
+
+function isStakeDayPaid(staffId, date){
+  return state.staffStakePayments.some(p=>p.staffId===staffId && p.date===date);
+}
+
 // Totales "directos" (en $, sin desglose ni porcentajes) para el modo visualizador de Ayrton
 // y Erika: lo que comisionó en una fecha puntual, o en un mes completo.
 function staffDirectTotalForDate(staffId, dateStr){
@@ -1423,18 +1439,18 @@ function staffDirectTotalForDate(staffId, dateStr){
   if(!s) return 0;
   let total = 0;
   if(s.betCommissionPct>0){
-    state.staffBets.filter(b=>b.staffId===staffId && b.date===dateStr).forEach(b=>{
+    state.staffBets.filter(b=>b.staffId===staffId && b.date===dateStr && dateOnOrAfterStart(s,b.date)).forEach(b=>{
       total += Math.max(0, Number(b.returned)-Number(b.invested)) * (Number(s.betCommissionPct)/100);
     });
   }
   if(s.appliesStakeCommission){
-    state.stakeSections.filter(sec=>sec.day===dateStr).forEach(sec=>{
+    state.stakeSections.filter(sec=>sec.day===dateStr && dateOnOrAfterStart(s,sec.day)).forEach(sec=>{
       const t = sectionTotal(sec.id);
       if(t) total += t * (Number(s.stakeCommissionPct)/100);
     });
   }
   if(s.appliesVipCommission){
-    state.staffVipSales.filter(v=>v.staffId===staffId && v.date===dateStr).forEach(v=>{
+    state.staffVipSales.filter(v=>v.staffId===staffId && v.date===dateStr && dateOnOrAfterStart(s,v.date)).forEach(v=>{
       total += Number(v.amount) * (Number(s.vipCommissionPct)/100);
     });
   }
@@ -1445,18 +1461,18 @@ function staffDirectTotalForMonth(staffId, monthStr){
   if(!s) return 0;
   let total = 0;
   if(s.betCommissionPct>0){
-    state.staffBets.filter(b=>b.staffId===staffId && String(b.date||'').slice(0,7)===monthStr).forEach(b=>{
+    state.staffBets.filter(b=>b.staffId===staffId && String(b.date||'').slice(0,7)===monthStr && dateOnOrAfterStart(s,b.date)).forEach(b=>{
       total += Math.max(0, Number(b.returned)-Number(b.invested)) * (Number(s.betCommissionPct)/100);
     });
   }
   if(s.appliesStakeCommission){
-    state.stakeSections.filter(sec=>String(sec.day||'').slice(0,7)===monthStr).forEach(sec=>{
+    state.stakeSections.filter(sec=>String(sec.day||'').slice(0,7)===monthStr && dateOnOrAfterStart(s,sec.day)).forEach(sec=>{
       const t = sectionTotal(sec.id);
       if(t) total += t * (Number(s.stakeCommissionPct)/100);
     });
   }
   if(s.appliesVipCommission){
-    state.staffVipSales.filter(v=>v.staffId===staffId && String(v.date||'').slice(0,7)===monthStr).forEach(v=>{
+    state.staffVipSales.filter(v=>v.staffId===staffId && String(v.date||'').slice(0,7)===monthStr && dateOnOrAfterStart(s,v.date)).forEach(v=>{
       total += Number(v.amount) * (Number(s.vipCommissionPct)/100);
     });
   }
@@ -1479,7 +1495,7 @@ function staffDayList(staffId){
   state.staffDay = ''; // al armar la lista de días disponibles, se ignora el filtro de día (solo el de mes)
   const map = {};
   if(s.betCommissionPct>0){
-    state.staffBets.filter(b=>b.staffId===staffId && inSelectedMonth(b.date)).forEach(b=>{
+    state.staffBets.filter(b=>b.staffId===staffId && inSelectedMonth(b.date) && dateOnOrAfterStart(s,b.date)).forEach(b=>{
       const profit = Math.max(0, Number(b.returned)-Number(b.invested));
       const comm = profit * (Number(s.betCommissionPct)/100);
       if(b.date) map[b.date] = (map[b.date]||0) + comm;
@@ -1487,7 +1503,7 @@ function staffDayList(staffId){
   }
   if(s.appliesStakeCommission){
     state.stakeSections.forEach(sec=>{
-      if(!inSelectedMonth(sec.day)) return;
+      if(!inSelectedMonth(sec.day) || !dateOnOrAfterStart(s,sec.day)) return;
       const total = sectionTotal(sec.id);
       if(!total || !sec.day) return;
       const comm = total * (Number(s.stakeCommissionPct)/100);
@@ -1495,7 +1511,7 @@ function staffDayList(staffId){
     });
   }
   if(s.appliesVipCommission){
-    state.staffVipSales.filter(v=>v.staffId===staffId && inSelectedMonth(v.date)).forEach(v=>{
+    state.staffVipSales.filter(v=>v.staffId===staffId && inSelectedMonth(v.date) && dateOnOrAfterStart(s,v.date)).forEach(v=>{
       const comm = Number(v.amount) * (Number(s.vipCommissionPct)/100);
       if(v.date) map[v.date] = (map[v.date]||0) + comm;
     });
@@ -1510,32 +1526,34 @@ function staffDayList(staffId){
 function staffBetCommissionTotal(staffId){
   const s = staffMember(staffId);
   if(!s) return 0;
-  const bets = state.staffBets.filter(b=>b.staffId===staffId && inSelectedMonth(b.date));
+  const bets = state.staffBets.filter(b=>b.staffId===staffId && inSelectedMonth(b.date) && dateOnOrAfterStart(s,b.date));
   return bets.reduce((sum,b)=> sum + Math.max(0, Number(b.returned)-Number(b.invested)) * (Number(s.betCommissionPct)/100), 0);
 }
 
 // Agrupa TODAS las ventas de stakes pagadas por día, y calcula cuánto le toca a esta persona
-// ese día según su % de comisión de stakes — así queda conectado con Venta de Stakes.
+// ese día según su % de comisión de stakes — así queda conectado con Venta de Stakes. Cada día
+// también lleva su estado de "pagado" (ver staffStakePayments / isStakeDayPaid).
 function staffStakesDaily(staffId){
   const s = staffMember(staffId);
   if(!s || !s.appliesStakeCommission) return [];
   const byDay = {};
   state.stakeSections.forEach(sec=>{
-    if(!inSelectedMonth(sec.day)) return;
+    if(!inSelectedMonth(sec.day) || !dateOnOrAfterStart(s,sec.day)) return;
     const total = sectionTotal(sec.id);
     if(!total) return;
     const day = sec.day || '-';
     byDay[day] = (byDay[day]||0) + total;
   });
   return Object.keys(byDay).sort((a,b)=>new Date(b)-new Date(a)).map(day=>({
-    day, total: byDay[day], commission: byDay[day] * (Number(s.stakeCommissionPct)/100)
+    day, total: byDay[day], commission: byDay[day] * (Number(s.stakeCommissionPct)/100), paid: isStakeDayPaid(staffId, day)
   }));
 }
 function staffStakesCommissionTotal(staffId){
   return staffStakesDaily(staffId).reduce((sum,d)=>sum+d.commission,0);
 }
 function staffVipSalesList(staffId){
-  return state.staffVipSales.filter(v=>v.staffId===staffId && inSelectedMonth(v.date)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const s = staffMember(staffId);
+  return state.staffVipSales.filter(v=>v.staffId===staffId && inSelectedMonth(v.date) && dateOnOrAfterStart(s,v.date)).sort((a,b)=>new Date(b.date)-new Date(a.date));
 }
 function staffVipCommissionTotal(staffId){
   const s = staffMember(staffId);
@@ -1544,6 +1562,26 @@ function staffVipCommissionTotal(staffId){
 }
 function staffAdvancesTotal(staffId){
   return state.staffAdvances.filter(a=>a.staffId===staffId && inSelectedMonth(a.date)).reduce((sum,a)=>sum+Number(a.amount),0);
+}
+
+// Trae de nuevo de Google Sheets todo lo que usa Finanzas de Personal (sin recargar el panel
+// entero) — para cuando acabas de registrar algo desde otro dispositivo y acá se quedó viejo.
+async function refreshStaffFinanceData(){
+  const btn = document.getElementById('refreshStaffBtn');
+  if(btn){ btn.disabled = true; btn.textContent = '🔄 Actualizando...'; }
+  const keys = ['staff','staffBets','staffAdvances','staffVipSales','staffStakePayments','stakeSections','stakeSales'];
+  try{
+    for(const key of keys){
+      const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
+      const json = await res.json();
+      state[key] = (json.data || []).map(row => coerceRow(key, row));
+    }
+    state.syncError = false;
+  }catch(e){
+    console.error('Error actualizando Finanzas de Personal', e);
+    state.syncError = true;
+  }
+  renderStaffFinance();
 }
 
 function renderStaffFinance(){
@@ -1585,12 +1623,13 @@ function renderStaffFinance(){
               <div class="card-title" style="margin:0;">Mis ventas VIP de este mes</div>
               <button class="btn small" id="addVipSaleBtn">+ Registrar venta VIP</button>
             </div>
-            ${vipSalesThisMonth.length ? `<table><thead><tr><th>Fecha</th><th>VIP</th><th>Comisión</th><th>Foto</th></tr></thead><tbody>
+            ${vipSalesThisMonth.length ? `<table><thead><tr><th>Fecha</th><th>VIP</th><th>Comisión</th><th>Foto</th><th>Estado</th></tr></thead><tbody>
               ${vipSalesThisMonth.map(v=>{ const comm = Number(v.amount)*(Number(cur.vipCommissionPct)/100); return `<tr>
                 <td class="mono">${fmtDate(v.date)}</td>
                 <td>${v.vipName||'-'}</td>
                 <td class="mono">${fmtMoney(comm)}</td>
                 <td>${v.receiptImage?`<span style="cursor:pointer;" data-view-vip-receipt="${v.id}">📎 Ver</span>`:'-'}</td>
+                <td>${v.paid?'<span class="badge won">Pagado</span>':'<span class="badge pending">Pendiente</span>'}</td>
               </tr>`; }).join('')}
             </tbody></table>` : `<div class="empty">Sin ventas VIP registradas este mes.</div>`}
           </div>
@@ -1602,9 +1641,11 @@ function renderStaffFinance(){
     document.getElementById('main').innerHTML = `
       <div class="toolbar">
         <div><div class="page-title">Finanzas de Personal</div><div class="page-sub">Lo que llevas comisionado</div></div>
+        <button class="btn secondary" id="refreshStaffBtn" title="Actualizar">🔄 Actualizar</button>
       </div>
       ${viewerBody}
     `;
+    document.getElementById('refreshStaffBtn').onclick = ()=>refreshStaffFinanceData();
     if(cur){
       const addVipBtn = document.getElementById('addVipSaleBtn');
       if(addVipBtn) addVipBtn.onclick = ()=>openStaffVipSaleForm(cur.id);
@@ -1651,7 +1692,12 @@ function renderStaffFinance(){
     const advances = state.staffAdvances.filter(a=>a.staffId===cur.id && inSelectedMonth(a.date)).sort((a,b)=>new Date(b.date)-new Date(a.date));
     const advancesTotal = staffAdvancesTotal(cur.id);
     const salaryPart = showsSalary ? (Number(cur.salaryAmount)||0) : 0;
-    const totalOwed = betCommission + stakesCommission + vipCommission + salaryPart - advancesTotal;
+    // "Total pendiente" cuenta solo lo que todavía NO se ha marcado como pagado (ver el botón
+    // "Pagado" en cada tabla) — así refleja lo que de verdad falta por pagarle.
+    const betCommissionUnpaid = bets.filter(b=>!b.paid).reduce((sum,b)=> sum + Math.max(0,Number(b.returned)-Number(b.invested))*(Number(cur.betCommissionPct)/100), 0);
+    const stakesCommissionUnpaid = stakesDaily.filter(d=>!d.paid).reduce((sum,d)=>sum+d.commission,0);
+    const vipCommissionUnpaid = vipSales.filter(v=>!v.paid).reduce((sum,v)=> sum + Number(v.amount)*(Number(cur.vipCommissionPct)/100), 0);
+    const totalOwed = betCommissionUnpaid + stakesCommissionUnpaid + vipCommissionUnpaid + salaryPart - advancesTotal;
 
     const summaryCells = `
       ${showsSalary ? `<div class="score-cell" style="flex:0;"><div class="score-label">Sueldo${periodLabel || ' (mensual)'}</div><div class="score-value">${fmtMoney(salaryPart)}</div></div>` : ''}
@@ -1671,7 +1717,7 @@ function renderStaffFinance(){
             <button class="btn small" id="addStaffBetBtn">+ Registrar manual</button>
           </div>
         </div>
-        ${bets.length ? `<table><thead><tr><th>Fecha</th><th>Pick</th><th>Invertido</th><th>Devuelto</th><th>Ganancia</th><th>Comisión</th><th></th></tr></thead><tbody>
+        ${bets.length ? `<table><thead><tr><th>Fecha</th><th>Pick</th><th>Invertido</th><th>Devuelto</th><th>Ganancia</th><th>Comisión</th><th>Pagado</th><th></th></tr></thead><tbody>
           ${bets.map(b=>{ const profit = Number(b.returned)-Number(b.invested); const comm = Math.max(0,profit)*(Number(cur.betCommissionPct)/100); return `<tr>
             <td class="mono">${fmtDate(b.date)}</td>
             <td>${b.pick||'-'}${b.receiptImage?` <span style="cursor:pointer;" data-view-receipt="${b.id}" title="Ver foto">📎</span>`:''}</td>
@@ -1679,6 +1725,7 @@ function renderStaffFinance(){
             <td class="mono">${fmtMoney(b.returned)}</td>
             <td class="mono" style="${profit<0?'color:var(--loss);':''}">${fmtMoney(profit)}</td>
             <td class="mono">${fmtMoney(comm)}</td>
+            <td>${b.paid?`<span class="badge won">Pagado</span>`:`<button class="btn secondary small" data-pay-staffbet="${b.id}">Marcar pagado</button>`}</td>
             <td class="row-actions"><button class="btn danger small" data-del-staffbet="${b.id}">Eliminar</button></td>
           </tr>`; }).join('')}
         </tbody></table>` : `<div class="empty">Sin apuestas registradas ${periodEmptyLabel}.</div>`}
@@ -1688,8 +1735,13 @@ function renderStaffFinance(){
     const stakesSection = (!isCollab && showsCommission && cur.appliesStakeCommission) ? `
       <div class="card">
         <div class="card-title">Comisión por venta de stakes (${cur.stakeCommissionPct}% del total vendido cada día)</div>
-        ${stakesDaily.length ? `<table><thead><tr><th>Día</th><th>Vendido</th><th>Comisión</th></tr></thead><tbody>
-          ${stakesDaily.map(d=>`<tr><td class="mono">${fmtDate(d.day)}</td><td class="mono">${fmtMoney(d.total)}</td><td class="mono">${fmtMoney(d.commission)}</td></tr>`).join('')}
+        ${stakesDaily.length ? `<table><thead><tr><th>Día</th><th>Vendido</th><th>Comisión</th><th>Pagado</th></tr></thead><tbody>
+          ${stakesDaily.map(d=>`<tr>
+            <td class="mono">${fmtDate(d.day)}</td>
+            <td class="mono">${fmtMoney(d.total)}</td>
+            <td class="mono">${fmtMoney(d.commission)}</td>
+            <td>${d.paid?`<span class="badge won">Pagado</span>`:`<button class="btn secondary small" data-pay-stakeday="${d.day}">Marcar pagado</button>`}</td>
+          </tr>`).join('')}
         </tbody></table>` : `<div class="empty">Todavía no hay ventas de stakes registradas ${(state.staffMonth||state.staffDay)?periodEmptyLabel:'en "Venta de Stakes"'}.</div>`}
       </div>
     ` : '';
@@ -1700,13 +1752,14 @@ function renderStaffFinance(){
           <div class="card-title" style="margin:0;">Ventas VIP (comisión ${cur.vipCommissionPct}%)</div>
           <button class="btn small" id="addVipSaleBtn">+ Registrar venta VIP</button>
         </div>
-        ${vipSales.length ? `<table><thead><tr><th>Fecha</th><th>VIP</th><th>Monto</th><th>Comisión</th><th>Foto</th><th></th></tr></thead><tbody>
+        ${vipSales.length ? `<table><thead><tr><th>Fecha</th><th>VIP</th><th>Monto</th><th>Comisión</th><th>Foto</th><th>Pagado</th><th></th></tr></thead><tbody>
           ${vipSales.map(v=>{ const comm = Number(v.amount)*(Number(cur.vipCommissionPct)/100); return `<tr>
             <td class="mono">${fmtDate(v.date)}</td>
             <td>${v.vipName||'-'}</td>
             <td class="mono">${fmtMoney(v.amount)}</td>
             <td class="mono">${fmtMoney(comm)}</td>
             <td>${v.receiptImage?`<span style="cursor:pointer;" data-view-vip-receipt="${v.id}">📎 Ver</span>`:'-'}</td>
+            <td>${v.paid?`<span class="badge won">Pagado</span>`:`<button class="btn secondary small" data-pay-vipsale="${v.id}">Marcar pagado</button>`}</td>
             <td class="row-actions">${!isCollab?`<button class="btn danger small" data-del-vipsale="${v.id}">Eliminar</button>`:''}</td>
           </tr>`; }).join('')}
         </tbody></table>` : `<div class="empty">Sin ventas VIP registradas ${periodEmptyLabel}.</div>`}
@@ -1755,6 +1808,7 @@ function renderStaffFinance(){
       </div>
       <div style="display:flex; gap:10px; align-items:flex-end;">
         ${monthFilterHTML}
+        <button class="btn secondary" id="refreshStaffBtn" title="Actualizar">🔄 Actualizar</button>
         ${!isCollab ? `<button class="btn" id="addStaffBtn">+ Nueva persona</button>` : ''}
       </div>
     </div>
@@ -1764,6 +1818,7 @@ function renderStaffFinance(){
     ${body}
   `;
 
+  document.getElementById('refreshStaffBtn').onclick = ()=>refreshStaffFinanceData();
   const monthInput = document.getElementById('f-staffMonth');
   if(monthInput) monthInput.onchange = (e)=>{ state.staffMonth = e.target.value; state.staffDay = ''; renderStaffFinance(); };
   const clearBtn = document.getElementById('clearStaffMonth');
@@ -1808,6 +1863,28 @@ function renderStaffFinance(){
       document.querySelectorAll('[data-del-staffbet]').forEach(b=>b.onclick=()=>delItem('staffBets', b.dataset.delStaffbet, renderStaffFinance));
       document.querySelectorAll('[data-del-advance]').forEach(b=>b.onclick=()=>delItem('staffAdvances', b.dataset.delAdvance, renderStaffFinance));
       document.querySelectorAll('[data-del-vipsale]').forEach(b=>b.onclick=()=>delItem('staffVipSales', b.dataset.delVipsale, renderStaffFinance));
+      document.querySelectorAll('[data-pay-staffbet]').forEach(b=>{
+        b.onclick = async ()=>{
+          const bet = state.staffBets.find(x=>x.id===b.dataset.payStaffbet);
+          if(bet){ bet.paid = true; renderStaffFinance(); await persist('staffBets'); }
+        };
+      });
+      document.querySelectorAll('[data-pay-vipsale]').forEach(b=>{
+        b.onclick = async ()=>{
+          const v = state.staffVipSales.find(x=>x.id===b.dataset.payVipsale);
+          if(v){ v.paid = true; renderStaffFinance(); await persist('staffVipSales'); }
+        };
+      });
+      document.querySelectorAll('[data-pay-stakeday]').forEach(b=>{
+        b.onclick = async ()=>{
+          const date = b.dataset.payStakeday;
+          if(!isStakeDayPaid(cur.id, date)){
+            state.staffStakePayments.push({ id: uid(), staffId: cur.id, date });
+            renderStaffFinance();
+            await persist('staffStakePayments');
+          }
+        };
+      });
     }
     const addVipBtn = document.getElementById('addVipSaleBtn');
     if(addVipBtn) addVipBtn.onclick = ()=>openStaffVipSaleForm(cur.id);
@@ -1835,6 +1912,9 @@ function openStaffForm(editId){
     <div class="field"><label>Nombre completo</label><input id="f-stName" placeholder="Ej: Ayrton Pérez" value="${existing?existing.name:''}"></div>
     <div class="field"><label>Cédula</label><input id="f-stCedula" placeholder="Ej: 0912345678" value="${existing?existing.cedula||'':''}"></div>
     <div class="field"><label>Rol (opcional)</label><input id="f-stRole" placeholder="Ej: Pronosticador" value="${existing?existing.role||'':''}"></div>
+    <div class="field"><label>Fecha de inicio (opcional)</label><input id="f-stStartDate" type="date" value="${existing?existing.startDate||'':''}">
+      <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Si la pones, se ignora cualquier venta de stakes (y otras comisiones) de fechas ANTERIORES a esta — útil si la persona empezó a trabajar después de que ya había ventas registradas.</div>
+    </div>
     <div class="field"><label>Tipo de pago</label>
       <select id="f-stPaymentType">
         <option value="sueldo" ${paymentType==='sueldo'?'selected':''}>Solo sueldo</option>
@@ -1886,6 +1966,7 @@ function openStaffForm(editId){
       name,
       cedula: document.getElementById('f-stCedula').value.trim(),
       role: document.getElementById('f-stRole').value.trim(),
+      startDate: document.getElementById('f-stStartDate').value || '',
       paymentType: typeSelect.value,
       salaryAmount: Number(document.getElementById('f-stSalary').value)||0,
       betCommissionPct: Number(document.getElementById('f-stBetPct').value)||0,
