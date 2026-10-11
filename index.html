@@ -267,15 +267,61 @@ async function loadAll(){
   render();
 }
 
-async function persist(key){
+// IMPORTANTE (varios dispositivos a la vez): antes esto mandaba SIEMPRE el arreglo completo
+// que tenía cada dispositivo en memoria, pisando entero lo que hubiera en la hoja. Si un
+// dispositivo cargó con algún fallo de red, o simplemente llevaba un rato abierto mientras
+// otro guardaba cosas nuevas, su próximo guardado borraba todo lo que el otro había agregado.
+// Ahora, antes de guardar, se trae lo último del servidor y se MEZCLA: lo que edites/agregues
+// tú manda, lo que hayan agregado otros dispositivos mientras tanto se conserva, y solo se
+// quita lo que tú explícitamente borraste (deletedIds). "force:true" se usa nada más para un
+// reinicio explícito (como "Reiniciar todo" en Cuadre Financiero), donde sí quieres pisarlo todo.
+async function persist(key, options = {}){
+  const deletedIds = options.deletedIds || [];
+  const force = !!options.force;
+
+  if(force){
+    try{
+      await fetch(SHEETS_API_URL, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ sheet: SHEET_NAMES[key], data: state[key] })
+      });
+      state.syncError = false;
+    }catch(e){
+      console.error('Error guardando', key, e);
+      state.syncError = true;
+    }
+    return;
+  }
+
   try{
+    let serverArr = null;
+    try{
+      const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
+      const json = await res.json();
+      serverArr = (json.data || []).map(row => coerceRow(key, row));
+    }catch(e){
+      serverArr = null; // no se pudo refrescar — se guarda igual lo que hay localmente, sin mezclar
+    }
+
+    let toSend = state[key];
+    if(serverArr){
+      const map = new Map();
+      serverArr.forEach(item => { if(item && item.id) map.set(item.id, item); });
+      state[key].forEach(item => { if(item && item.id) map.set(item.id, item); }); // local manda sobre servidor
+      deletedIds.forEach(id => map.delete(id));
+      toSend = Array.from(map.values());
+      state[key] = toSend; // refleja la mezcla real (incluye lo que trajo el servidor)
+    }
+
     await fetch(SHEETS_API_URL, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ sheet: SHEET_NAMES[key], data: state[key] })
+      body: JSON.stringify({ sheet: SHEET_NAMES[key], data: toSend })
     });
     state.syncError = false;
+    render(); // por si llegó algo nuevo de otro dispositivo en la mezcla
   }catch(e){
     console.error('Error guardando', key, e);
     state.syncError = true;
@@ -633,7 +679,7 @@ async function delItem(key, id, rerenderFn){
   if(!confirm('¿Eliminar este registro?')) return;
   state[key] = state[key].filter(x=>x.id!==id);
   rerenderFn ? rerenderFn() : render();
-  await persist(key);
+  await persist(key, { deletedIds: [id] });
 }
 
 /* ---------- PICKS (Apuestas Gratis / Apuestas VIP) — generic ---------- */
@@ -983,13 +1029,14 @@ function renderStakeSales(){
     document.getElementById('addStakeSaleBtn').onclick = ()=>openStakeSaleForm(cur.id);
     document.getElementById('editSectionBtn').onclick = ()=>openStakeSectionForm(cur.id);
     document.getElementById('delSectionBtn').onclick = async ()=>{
-      const n = state.stakeSales.filter(s=>s.sectionId===cur.id).length;
+      const removedSaleIds = state.stakeSales.filter(s=>s.sectionId===cur.id).map(s=>s.id);
+      const n = removedSaleIds.length;
       if(!confirm(`¿Eliminar la sección "${cur.title}"${n ? ` y sus ${n} registro${n>1?'s':''}` : ''}?`)) return;
       state.stakeSections = state.stakeSections.filter(x=>x.id!==cur.id);
       state.stakeSales = state.stakeSales.filter(s=>s.sectionId!==cur.id);
       renderStakeSales();
-      await persist('stakeSections');
-      await persist('stakeSales');
+      await persist('stakeSections', { deletedIds: [cur.id] });
+      await persist('stakeSales', { deletedIds: removedSaleIds });
     };
   }
   document.querySelectorAll('[data-section]').forEach(el=>{
@@ -1228,11 +1275,12 @@ function openDailyBalanceForm(rerender){
 // Borra TODO el historial de Cuadre Financiero (pruebas y movimientos incluidos) para empezar
 // limpio, y abre de una vez el formulario de saldo del día. Pide doble confirmación por ser irreversible.
 async function resetFinanceAll(rerender){
-  if(!confirm('Esto va a BORRAR todos los movimientos de Cuadre Financiero. No se puede deshacer. ¿Seguro que quieres continuar?')) return;
-  if(!confirm('Confirma una vez más: se eliminarán ' + state.financeMovements.length + ' movimiento(s) del historial. ¿Reiniciar de todas formas?')) return;
+  if(!confirm('Esto va a BORRAR todos los movimientos de Cuadre Financiero (' + state.financeMovements.length + ' en total). No se puede deshacer.')) return;
+  const typed = prompt('Para confirmar, escribe BORRAR (en mayúsculas) y presiona aceptar:');
+  if(typed !== 'BORRAR'){ alert('No escribiste "BORRAR" exactamente — no se borró nada.'); return; }
   state.financeMovements = [];
   rerender();
-  await persist('financeMovements');
+  await persist('financeMovements', { force: true }); // reinicio explícito: sí se pisa lo del servidor
   openDailyBalanceForm(rerender);
 }
 
