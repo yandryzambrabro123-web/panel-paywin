@@ -177,6 +177,13 @@ const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhb
 // Puedes cambiar estos dos valores cuando quieras, directo en este archivo.
 const PARTNER_USER = 'socio';
 const PARTNER_PASS = 'Ayrto2026';
+// Acceso de colaboradora (Erika): otro usuario/contraseña fijo aquí mismo. Solo ve Miembros
+// VIP (los 3 grupos), Regalitos y Cuadre Financiero — y en Cuadre Financiero solo puede
+// registrar ingresos/egresos (manual o leyendo comprobante con IA): no ve "Actualizar saldo
+// del día", "Reiniciar todo", "Exportar CSV", "Transferencia", ni puede editar/eliminar
+// movimientos ya registrados.
+const COLLAB_USER = 'Erika';
+const COLLAB_PASS = 'Erika-PayWin26!';
 function maskName(name){
   if(!name) return '-';
   return String(name).trim().split(/\s+/).map(w => w[0] ? (w[0].toUpperCase() + '*'.repeat(Math.max(w.length-1,2))) : '').join(' ');
@@ -344,20 +351,29 @@ function exportCSV(key){
   URL.revokeObjectURL(url);
 }
 
+// Qué vistas puede ver cada rol. null = todas (admin).
+function allowedViewsForRole(){
+  if(state.role === 'socio') return ['stakeSales'];
+  if(state.role === 'colaboradora') return ['vips','vips1x2','vips1xbet','gifts','finance'];
+  return null;
+}
 function setView(v){
-  if(state.role === 'socio' && v !== 'stakeSales') return; // el socio solo puede ver Venta de Stakes
+  const allowed = allowedViewsForRole();
+  if(allowed && !allowed.includes(v)) return;
   state.view = v;
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===v));
   render();
 }
 // Deja visible en el menú solo lo que el rol actual puede ver.
 function applyRoleToNav(){
-  const allowed = state.role === 'socio' ? ['stakeSales'] : null;
+  const allowed = allowedViewsForRole();
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>{
     el.style.display = (!allowed || allowed.includes(el.dataset.view)) ? '' : 'none';
   });
   const brandText = document.querySelector('.brand-text');
-  if(brandText) brandText.innerHTML = state.role === 'socio' ? 'Panel Socio<br>Pay Win · Stakes' : 'Panel<br>Administración<br>Pay Win';
+  if(brandText) brandText.innerHTML = state.role === 'socio' ? 'Panel Socio<br>Pay Win · Stakes'
+    : state.role === 'colaboradora' ? 'Panel<br>Pay Win · Erika'
+    : 'Panel<br>Administración<br>Pay Win';
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(el=>{ el.addEventListener('click', ()=>setView(el.dataset.view)); });
 
@@ -1149,6 +1165,7 @@ function financeTotal(){
 }
 
 function renderFinance(){
+  const addOnly = state.role === 'colaboradora'; // solo puede registrar ingresos/egresos, nada más
   const accFilter = state.financeAccountFilter;
   const allRows = accFilter ? state.financeMovements.filter(m=>m.accountId===accFilter) : state.financeMovements;
   const rows = filterByDate(allRows, 'date', 'financeMovements');
@@ -1162,10 +1179,10 @@ function renderFinance(){
         <div style="font-size:11.5px; color:var(--accent); margin-top:2px;">📎 Arrastra o pega (Ctrl+V) la foto del comprobante en cualquier parte de esta pantalla para leerla</div>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="btn secondary" id="dailyBalanceBtn">📅 Actualizar saldo del día</button>
+        ${addOnly ? '' : `<button class="btn secondary" id="dailyBalanceBtn">📅 Actualizar saldo del día</button>
         <button class="btn danger" id="resetFinanceBtn">🗑️ Reiniciar todo (borra historial)</button>
         <button class="btn secondary" id="exportFinanceBtn">Exportar CSV</button>
-        <button class="btn secondary" id="addTransferBtn">+ Transferencia (caja → banco)</button>
+        <button class="btn secondary" id="addTransferBtn">+ Transferencia (caja → banco)</button>`}
         <button class="btn secondary" id="addMovementBtn">+ Registrar movimiento</button>
         <button class="btn" id="addReceiptBtn">📎 Leer comprobante (IA)</button>
       </div>
@@ -1212,10 +1229,10 @@ function renderFinance(){
           <td>${m.receiptImage ? `<img src="${m.receiptImage}" data-view-receipt="${m.id}" style="width:38px; height:38px; object-fit:cover; border-radius:6px; cursor:pointer; border:1px solid var(--border);">` : '-'}</td>
           <td style="max-width:220px; white-space:pre-wrap; color:var(--muted); font-size:12.5px;">${m.note||'-'}</td>
           <td>${m.transferId ? '<span class="badge combo">Transferencia</span>' : ''}</td>
-          <td class="row-actions">
+          ${addOnly ? '' : `<td class="row-actions">
             <button class="btn secondary small" data-edit-fin="${m.id}">Editar</button>
             <button class="btn danger small" data-del-fin="${m.id}">Eliminar</button>
-          </td>
+          </td>`}
         </tr>`;}).join('')}
       </tbody></table>` : `<div class="empty">No hay movimientos para mostrar con este filtro.</div>`}
     </div>
@@ -1224,15 +1241,17 @@ function renderFinance(){
   const rerender = renderFinance;
   wireDateFilter('financeMovements', rerender);
   document.getElementById('financeAccFilter').onchange = (e)=>{ state.financeAccountFilter = e.target.value; rerender(); };
-  document.getElementById('exportFinanceBtn').onclick = () => exportCSV('financeMovements');
   document.getElementById('addMovementBtn').onclick = ()=>openFinanceMovementForm(rerender);
-  document.getElementById('addTransferBtn').onclick = ()=>openFinanceTransferForm(rerender);
   document.getElementById('addReceiptBtn').onclick = ()=>openFinanceReceiptForm(rerender);
-  document.getElementById('dailyBalanceBtn').onclick = ()=>openDailyBalanceForm(rerender);
-  document.getElementById('resetFinanceBtn').onclick = ()=>resetFinanceAll(rerender);
-  document.querySelectorAll('[data-edit-fin]').forEach(b=>b.onclick=()=>openFinanceMovementForm(rerender, b.dataset.editFin));
-  document.querySelectorAll('[data-del-fin]').forEach(b=>b.onclick=()=>delItem('financeMovements', b.dataset.delFin, rerender));
   document.querySelectorAll('[data-view-receipt]').forEach(img=>img.onclick=()=>openReceiptPhoto(img.src));
+  if(!addOnly){
+    document.getElementById('exportFinanceBtn').onclick = () => exportCSV('financeMovements');
+    document.getElementById('addTransferBtn').onclick = ()=>openFinanceTransferForm(rerender);
+    document.getElementById('dailyBalanceBtn').onclick = ()=>openDailyBalanceForm(rerender);
+    document.getElementById('resetFinanceBtn').onclick = ()=>resetFinanceAll(rerender);
+    document.querySelectorAll('[data-edit-fin]').forEach(b=>b.onclick=()=>openFinanceMovementForm(rerender, b.dataset.editFin));
+    document.querySelectorAll('[data-del-fin]').forEach(b=>b.onclick=()=>delItem('financeMovements', b.dataset.delFin, rerender));
+  }
   renderFinanceCharts(sorted);
 }
 
@@ -1791,7 +1810,8 @@ function render(){
 /* ---------- AUTH ---------- */
 function enterApp(role){
   state.role = role;
-  state.view = role === 'socio' ? 'stakeSales' : 'dashboard';
+  const allowed = (role === 'socio') ? ['stakeSales'] : (role === 'colaboradora') ? ['vips','vips1x2','vips1xbet','gifts','finance'] : null;
+  state.view = allowed ? allowed[0] : 'dashboard';
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===state.view));
@@ -1806,11 +1826,19 @@ async function attemptLogin(){
   const btn = document.getElementById('loginBtn');
   errEl.style.display = 'none';
 
-  // Acceso del socio: credencial fija definida arriba, no pasa por el Sheet de login.
-  if(user === PARTNER_USER && pass === PARTNER_PASS){
+  // Acceso del socio y de la colaboradora: credenciales fijas definidas arriba, no pasan por el Sheet de login.
+  // El usuario no distingue mayúsculas/minúsculas (la contraseña sí, tal cual se definió arriba).
+  const userLower = user.toLowerCase();
+  if(userLower === PARTNER_USER.toLowerCase() && pass === PARTNER_PASS){
     localStorage.setItem('panelVipAuth', 'true');
     localStorage.setItem('panelRole', 'socio');
     enterApp('socio');
+    return;
+  }
+  if(userLower === COLLAB_USER.toLowerCase() && pass === COLLAB_PASS){
+    localStorage.setItem('panelVipAuth', 'true');
+    localStorage.setItem('panelRole', 'colaboradora');
+    enterApp('colaboradora');
     return;
   }
 
@@ -1843,6 +1871,7 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 });
 
 if(localStorage.getItem('panelVipAuth') === 'true'){
-  enterApp(localStorage.getItem('panelRole') === 'socio' ? 'socio' : 'admin');
+  const savedRole = localStorage.getItem('panelRole');
+  enterApp((savedRole === 'socio' || savedRole === 'colaboradora') ? savedRole : 'admin');
 }
 </script>
