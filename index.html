@@ -74,6 +74,15 @@
   .badge.pending{background:#4A3B14; color:var(--pending);}
   .badge.flag{background:#3A1F4A; color:#D9A6FF;}
   .badge.combo{background:#1C2E4A; color:#8FC1FF;}
+  .badge.banco{background:#1C2E4A; color:#8FC1FF;}
+  .badge.caja{background:#3A2E12; color:#E8B339;}
+  .finance-acc-card{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; min-width:160px;}
+  .finance-acc-card .acc-name{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; font-weight:700; margin-bottom:6px;}
+  .finance-acc-card .acc-balance{font-family:var(--mono); font-size:22px; font-weight:600;}
+  .finance-acc-card .acc-balance.neg{color:var(--loss);}
+  .finance-total-card{background:var(--accent-dim); border:1px solid var(--accent); border-radius:10px; padding:16px; min-width:200px;}
+  .finance-total-card .acc-name{color:var(--accent-light);}
+  .finance-total-card .acc-balance{color:var(--accent); font-size:26px;}
   .badge.simple{background:var(--surface-2); color:var(--muted);}
   .result-select{padding:4px 10px; border-radius:20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; border:1px solid transparent; cursor:pointer; font-family:var(--body);}
   .result-select.pending{background:#4A3B14; color:var(--pending);}
@@ -150,6 +159,7 @@
     <div class="nav-item" data-view="stakes"><span class="nav-icon">&#128176;</span> Stakes</div>
     <div class="nav-item" data-view="stakeSales"><span class="nav-icon">&#128722;</span> Venta de Stakes</div>
     <div class="nav-item" data-view="gifts"><span class="nav-icon">&#127873;</span> Regalitos</div>
+    <div class="nav-item" data-view="finance"><span class="nav-icon">&#127974;</span> Cuadre Financiero</div>
     <div class="nav-item" id="logoutBtn" style="margin-top:auto; border-top:1px solid var(--border); padding-top:16px;"><span class="nav-icon">&#128274;</span> Cerrar sesión</div>
   </div>
   <div id="main"></div>
@@ -161,17 +171,25 @@
 
 <script>
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhbzMCcoJ5jDjp1lgsaGjLMkGI47SVAfemVMuMnggWd_k-ubqzmBEMlA/exec';
-const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos' };
+const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos' };
 const VIP_GROUPS = [
   { key:'vips', title:'Miembros VIP' },
   { key:'vips1x2', title:'Miembros VIP 1X2' },
   { key:'vips1xbet', title:'Miembros VIP 1XBET' }
 ];
+// Cuentas del cuadre financiero. ProduBanco queda fuera a propósito: es la cuenta personal.
+const FINANCE_ACCOUNTS = [
+  { id:'pichincha', name:'Banco Pichincha', type:'banco' },
+  { id:'guayaquil', name:'Banco Guayaquil', type:'banco' },
+  { id:'ecuabet', name:'Caja Ecuabet', type:'caja' },
+  { id:'onexbet', name:'Caja OneXBet', type:'caja' },
+  { id:'masparley', name:'Caja Más Parley', type:'caja' }
+];
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], vipSearch: {}, stakeSectionId: '', failedKeys: [],
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
   view: 'dashboard', loaded: false, syncError: false,
-  filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''} }
+  filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -195,6 +213,9 @@ function coerceRow(key, row){
   }
   if(key === 'stakes'){
     return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending' };
+  }
+  if(key === 'financeMovements'){
+    return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'' };
   }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
@@ -1021,6 +1042,317 @@ async function toggleStakeSale(id){
   if(s){ s.status = s.status==='paid' ? 'comp' : 'paid'; renderStakeSales(); await persist('stakeSales'); }
 }
 
+/* ---------- CUADRE FINANCIERO ---------- */
+function financeAccount(id){ return FINANCE_ACCOUNTS.find(a=>a.id===id); }
+function financeBalance(accountId){
+  return state.financeMovements.filter(m=>m.accountId===accountId).reduce((sum,m)=> sum + (m.type==='in' ? Number(m.amount) : -Number(m.amount)), 0);
+}
+function financeTotal(){
+  return FINANCE_ACCOUNTS.reduce((sum,a)=>sum+financeBalance(a.id), 0);
+}
+
+function renderFinance(){
+  const accFilter = state.financeAccountFilter;
+  const allRows = accFilter ? state.financeMovements.filter(m=>m.accountId===accFilter) : state.financeMovements;
+  const rows = filterByDate(allRows, 'date', 'financeMovements');
+  const sorted = [...rows].sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+  document.getElementById('main').innerHTML = `
+    <div class="toolbar">
+      <div>
+        <div class="page-title">Cuadre Financiero</div>
+        <div class="page-sub">Saldo por cuenta y movimiento del dinero entre cajas y bancos</div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn secondary" id="exportFinanceBtn">Exportar CSV</button>
+        <button class="btn secondary" id="addTransferBtn">+ Transferencia (caja → banco)</button>
+        <button class="btn secondary" id="addMovementBtn">+ Registrar movimiento</button>
+        <button class="btn" id="addReceiptBtn">📎 Leer comprobante (IA)</button>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:20px;">
+      ${FINANCE_ACCOUNTS.map(a=>{
+        const bal = financeBalance(a.id);
+        return `<div class="finance-acc-card">
+          <div class="acc-name">${a.name} <span class="badge ${a.type}" style="margin-left:4px;">${a.type==='banco'?'Banco':'Caja'}</span></div>
+          <div class="acc-balance ${bal<0?'neg':''}">${fmtMoney(bal)}</div>
+        </div>`;
+      }).join('')}
+      <div class="finance-total-card">
+        <div class="acc-name">Total general</div>
+        <div class="acc-balance">${fmtMoney(financeTotal())}</div>
+      </div>
+    </div>
+
+    <div class="toolbar" style="margin-bottom:10px;">
+      <div></div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <select id="financeAccFilter">
+          <option value="">Todas las cuentas</option>
+          ${FINANCE_ACCOUNTS.map(a=>`<option value="${a.id}" ${accFilter===a.id?'selected':''}>${a.name}</option>`).join('')}
+        </select>
+        ${dateFilterHTML('financeMovements')}
+      </div>
+    </div>
+
+    <div class="card" style="overflow-x:auto;">
+      ${sorted.length ? `<table><thead><tr><th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Monto</th><th>Nota</th><th></th><th></th></tr></thead><tbody>
+        ${sorted.map(m=>{ const a = financeAccount(m.accountId); return `<tr>
+          <td class="mono">${fmtDate(m.date)}</td>
+          <td>${a ? a.name : '-'} ${a ? `<span class="badge ${a.type}" style="margin-left:4px;">${a.type==='banco'?'Banco':'Caja'}</span>` : ''}</td>
+          <td><span class="badge ${m.type==='in'?'active':'inactive'}">${m.type==='in'?'Ingreso':'Egreso'}</span></td>
+          <td class="mono">${fmtMoney(m.amount)}</td>
+          <td style="max-width:220px; white-space:pre-wrap; color:var(--muted); font-size:12.5px;">${m.note||'-'}</td>
+          <td>${m.transferId ? '<span class="badge combo">Transferencia</span>' : ''}</td>
+          <td class="row-actions">
+            <button class="btn secondary small" data-edit-fin="${m.id}">Editar</button>
+            <button class="btn danger small" data-del-fin="${m.id}">Eliminar</button>
+          </td>
+        </tr>`;}).join('')}
+      </tbody></table>` : `<div class="empty">No hay movimientos para mostrar con este filtro.</div>`}
+    </div>
+  `;
+
+  const rerender = renderFinance;
+  wireDateFilter('financeMovements', rerender);
+  document.getElementById('financeAccFilter').onchange = (e)=>{ state.financeAccountFilter = e.target.value; rerender(); };
+  document.getElementById('exportFinanceBtn').onclick = () => exportCSV('financeMovements');
+  document.getElementById('addMovementBtn').onclick = ()=>openFinanceMovementForm(rerender);
+  document.getElementById('addTransferBtn').onclick = ()=>openFinanceTransferForm(rerender);
+  document.getElementById('addReceiptBtn').onclick = ()=>openFinanceReceiptForm(rerender);
+  document.querySelectorAll('[data-edit-fin]').forEach(b=>b.onclick=()=>openFinanceMovementForm(rerender, b.dataset.editFin));
+  document.querySelectorAll('[data-del-fin]').forEach(b=>b.onclick=()=>delItem('financeMovements', b.dataset.delFin, rerender));
+}
+
+function openFinanceMovementForm(rerender, editId){
+  const existing = editId ? state.financeMovements.find(x=>x.id===editId) : null;
+  openModal(`
+    <h3>${existing ? 'Editar movimiento' : 'Registrar movimiento'}</h3>
+    ${existing && existing.transferId ? `<div style="background:#1C2E4A; color:#8FC1FF; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">Este movimiento forma parte de una transferencia. Si lo editas, el otro lado (caja o banco) no cambia automáticamente — revísalo también si hace falta.</div>` : ''}
+    <div class="field"><label>Cuenta</label>
+      <select id="f-finAcc">
+        ${FINANCE_ACCOUNTS.map(a=>`<option value="${a.id}" ${existing&&existing.accountId===a.id?'selected':''}>${a.name} (${a.type==='banco'?'Banco':'Caja'})</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Tipo</label>
+      <select id="f-finType">
+        <option value="in" ${!existing||existing.type==='in'?'selected':''}>Ingreso (entra dinero)</option>
+        <option value="out" ${existing&&existing.type==='out'?'selected':''}>Egreso (sale dinero)</option>
+      </select>
+    </div>
+    <div class="field"><label>Monto ($)</label><input id="f-finAmount" type="number" step="0.01" placeholder="50" value="${existing?existing.amount||'':''}"></div>
+    <div class="field"><label>Fecha</label><input id="f-finDate" type="date" value="${existing?existing.date||'':new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota</label><textarea id="f-finNote" placeholder="Ej: depósito de Jhon, comisión, ajuste...">${existing?existing.note||'':''}</textarea></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveFinMovement">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveFinMovement').onclick = async ()=>{
+    const amount = Number(document.getElementById('f-finAmount').value);
+    if(!amount || amount<=0){ alert('Pon un monto válido.'); return; }
+    const data = {
+      accountId: document.getElementById('f-finAcc').value,
+      type: document.getElementById('f-finType').value,
+      amount,
+      date: document.getElementById('f-finDate').value || new Date().toISOString().slice(0,10),
+      note: document.getElementById('f-finNote').value.trim()
+    };
+    if(existing){
+      Object.assign(existing, data);
+    } else {
+      state.financeMovements.push({ id: uid(), transferId:'', ...data });
+    }
+    closeModal();
+    rerender();
+    await persist('financeMovements');
+  };
+}
+
+// Transferencia: registra en un solo paso el egreso en la caja y el ingreso en el banco
+// (p.ej. cuando se "efectiviza" una recarga: sale de la caja de la casa de apuestas y entra al banco).
+function openFinanceTransferForm(rerender){
+  const cajas = FINANCE_ACCOUNTS.filter(a=>a.type==='caja');
+  const bancos = FINANCE_ACCOUNTS.filter(a=>a.type==='banco');
+  openModal(`
+    <h3>Transferencia: caja → banco</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Registra a la vez la salida de la caja y la entrada al banco por un mismo movimiento de dinero (ej. una recarga que se efectiviza).</div>
+    <div class="field"><label>Caja de origen (sale el dinero)</label>
+      <select id="f-trFrom">${cajas.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>Banco de destino (entra el dinero)</label>
+      <select id="f-trTo">${bancos.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>Monto ($)</label><input id="f-trAmount" type="number" step="0.01" placeholder="50"></div>
+    <div class="field"><label>Fecha</label><input id="f-trDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota</label><input id="f-trNote" placeholder="Ej: recarga Más Parley - Jordy"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveTransfer">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveTransfer').onclick = async ()=>{
+    const amount = Number(document.getElementById('f-trAmount').value);
+    if(!amount || amount<=0){ alert('Pon un monto válido.'); return; }
+    const from = document.getElementById('f-trFrom').value;
+    const to = document.getElementById('f-trTo').value;
+    const date = document.getElementById('f-trDate').value || new Date().toISOString().slice(0,10);
+    const note = document.getElementById('f-trNote').value.trim();
+    const transferId = uid();
+    state.financeMovements.push({ id: uid(), accountId: from, type:'out', amount, date, note, transferId });
+    state.financeMovements.push({ id: uid(), accountId: to, type:'in', amount, date, note, transferId });
+    closeModal();
+    rerender();
+    await persist('financeMovements');
+  };
+}
+
+// Comprime y convierte la imagen del comprobante a base64 antes de mandarla a leer,
+// para que la subida sea rápida y liviana en datos móviles.
+function fileToCompressedImage(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const maxW = 1100;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        resolve({ base64: dataUrl.split(',')[1], mediaType: 'image/jpeg', previewUrl: dataUrl });
+      };
+      img.onerror = ()=>reject(new Error('No se pudo leer la imagen.'));
+      img.src = reader.result;
+    };
+    reader.onerror = ()=>reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function openFinanceReceiptForm(rerender){
+  openModal(`
+    <h3>Leer comprobante con IA</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Sube una captura de una transferencia bancaria o de un retiro de caja. El sistema va a leer el monto y la cuenta — tú solo confirmas antes de que se registre.</div>
+    <div id="receiptDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:30px 16px; text-align:center; cursor:pointer;">
+      <div style="font-size:28px; margin-bottom:8px;">📎</div>
+      <div style="font-size:13.5px; color:var(--muted);">Arrastra la captura aquí, o haz clic para elegirla</div>
+    </div>
+    <input id="receiptFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+    </div>
+  `);
+
+  const dropzone = document.getElementById('receiptDropzone');
+  const fileInput = document.getElementById('receiptFileInput');
+  dropzone.onclick = ()=>fileInput.click();
+  dropzone.ondragover = (e)=>{ e.preventDefault(); dropzone.style.borderColor = 'var(--accent)'; };
+  dropzone.ondragleave = ()=>{ dropzone.style.borderColor = 'var(--border)'; };
+  dropzone.ondrop = (e)=>{
+    e.preventDefault();
+    dropzone.style.borderColor = 'var(--border)';
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleReceiptFile(e.dataTransfer.files[0], rerender);
+  };
+  fileInput.onchange = ()=>{
+    if(fileInput.files && fileInput.files[0]) handleReceiptFile(fileInput.files[0], rerender);
+  };
+}
+
+async function handleReceiptFile(file, rerender){
+  openModal(`
+    <h3>Leyendo comprobante...</h3>
+    <div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>
+  `);
+  try{
+    const { base64, mediaType, previewUrl } = await fileToCompressedImage(file);
+    const res = await fetch('/api/leer-comprobante', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, mediaType })
+    });
+    const result = await res.json();
+    if(!res.ok){
+      showReceiptError(result.error || 'No se pudo leer el comprobante.', rerender);
+      return;
+    }
+    showReceiptConfirm(result, previewUrl, rerender);
+  }catch(e){
+    console.error(e);
+    showReceiptError('No se pudo leer el comprobante. Revisa tu conexión e intenta de nuevo.', rerender);
+  }
+}
+
+function showReceiptError(message, rerender){
+  openModal(`
+    <h3>No se pudo leer</h3>
+    <div style="background:var(--loss-dim); color:#FF8A8E; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:16px;">${message}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="retryReceiptBtn">Intentar de nuevo</button>
+      <button class="btn secondary" id="manualFallbackBtn">Registrar manual</button>
+    </div>
+  `);
+  document.getElementById('retryReceiptBtn').onclick = ()=>openFinanceReceiptForm(rerender);
+  document.getElementById('manualFallbackBtn').onclick = ()=>openFinanceMovementForm(rerender);
+}
+
+function showReceiptConfirm(result, previewUrl, rerender){
+  const accountId = FINANCE_ACCOUNTS.find(a=>a.id===result.accountId) ? result.accountId : '';
+  const type = result.type === 'out' ? 'out' : (result.type === 'in' ? 'in' : 'in');
+  const amount = typeof result.amount === 'number' ? result.amount : '';
+  const lowConfidence = result.confidence === 'baja' || !accountId || !amount;
+
+  openModal(`
+    <h3>Confirmar movimiento</h3>
+    <img src="${previewUrl}" style="max-width:100%; max-height:160px; border-radius:8px; margin-bottom:12px; display:block;">
+    ${lowConfidence ? `<div style="background:#4A3B14; color:var(--pending); border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">No estoy 100% seguro de algunos datos — revísalos antes de confirmar.${result.reason ? ' ' + result.reason : ''}</div>` : ''}
+    ${result.detectedText ? `<div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Leído: "${String(result.detectedText).replace(/"/g,'&quot;')}"</div>` : ''}
+    <div class="field"><label>Cuenta</label>
+      <select id="f-rcAcc">
+        <option value="">Selecciona una cuenta</option>
+        ${FINANCE_ACCOUNTS.map(a=>`<option value="${a.id}" ${accountId===a.id?'selected':''}>${a.name} (${a.type==='banco'?'Banco':'Caja'})</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Tipo</label>
+      <select id="f-rcType">
+        <option value="in" ${type==='in'?'selected':''}>Ingreso (entra dinero)</option>
+        <option value="out" ${type==='out'?'selected':''}>Egreso (sale dinero)</option>
+      </select>
+    </div>
+    <div class="field"><label>Monto ($)</label><input id="f-rcAmount" type="number" step="0.01" value="${amount}"></div>
+    <div class="field"><label>Fecha</label><input id="f-rcDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota</label><input id="f-rcNote" value="${result.detectedText ? String(result.detectedText).replace(/"/g,'&quot;') : ''}"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="confirmReceiptBtn">Confirmar y registrar</button>
+    </div>
+  `);
+
+  document.getElementById('confirmReceiptBtn').onclick = async ()=>{
+    const acc = document.getElementById('f-rcAcc').value;
+    const amt = Number(document.getElementById('f-rcAmount').value);
+    if(!acc){ alert('Elige a qué cuenta pertenece.'); return; }
+    if(!amt || amt<=0){ alert('Pon un monto válido.'); return; }
+    state.financeMovements.push({
+      id: uid(),
+      accountId: acc,
+      type: document.getElementById('f-rcType').value,
+      amount: amt,
+      date: document.getElementById('f-rcDate').value || new Date().toISOString().slice(0,10),
+      note: document.getElementById('f-rcNote').value.trim(),
+      transferId: ''
+    });
+    closeModal();
+    rerender();
+    await persist('financeMovements');
+  };
+}
+
 /* ---------- GIFTS (regalitos) — same shape as picks + recipient ---------- */
 function renderGifts(){
   const rows = filterByDate(state.gifts, 'date', 'gifts');
@@ -1120,6 +1452,7 @@ function render(){
   else if(state.view==='stakes') renderStakes();
   else if(state.view==='stakeSales') renderStakeSales();
   else if(state.view==='gifts') renderGifts();
+  else if(state.view==='finance') renderFinance();
 }
 
 /* ---------- AUTH ---------- */
