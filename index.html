@@ -169,6 +169,7 @@
   <div class="modal" id="modalBody"></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhbzMCcoJ5jDjp1lgsaGjLMkGI47SVAfemVMuMnggWd_k-ubqzmBEMlA/exec';
 const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos' };
@@ -181,9 +182,20 @@ const VIP_GROUPS = [
 const FINANCE_ACCOUNTS = [
   { id:'pichincha', name:'Banco Pichincha', type:'banco' },
   { id:'guayaquil', name:'Banco Guayaquil', type:'banco' },
+  { id:'pacifico', name:'Banco Pacífico', type:'banco' },
   { id:'ecuabet', name:'Caja Ecuabet', type:'caja' },
   { id:'onexbet', name:'Caja OneXBet', type:'caja' },
   { id:'masparley', name:'Caja Más Parley', type:'caja' }
+];
+// Saldo inicial real (foto "BASE FINANCIERA" del sábado 10/10/26). Se usa una sola vez
+// desde el botón "Cargar saldo inicial real" en Cuadre Financiero.
+const FINANCE_SEED_NOTE = 'Saldo inicial real (sáb 10/10/26)';
+const FINANCE_SEED = [
+  { accountId:'pichincha', amount:30.14 },
+  { accountId:'guayaquil', amount:10 },
+  { accountId:'pacifico', amount:15 },
+  { accountId:'ecuabet', amount:46.65 },
+  { accountId:'masparley', amount:102.19 }
 ];
 
 let state = {
@@ -215,7 +227,7 @@ function coerceRow(key, row){
     return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending' };
   }
   if(key === 'financeMovements'){
-    return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'' };
+    return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'', comprobanteNumero:row.comprobanteNumero||'', receiptImage:row.receiptImage||'' };
   }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
@@ -1056,6 +1068,7 @@ function renderFinance(){
   const allRows = accFilter ? state.financeMovements.filter(m=>m.accountId===accFilter) : state.financeMovements;
   const rows = filterByDate(allRows, 'date', 'financeMovements');
   const sorted = [...rows].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const seedApplied = state.financeMovements.some(m=>m.note===FINANCE_SEED_NOTE);
 
   document.getElementById('main').innerHTML = `
     <div class="toolbar">
@@ -1064,6 +1077,7 @@ function renderFinance(){
         <div class="page-sub">Saldo por cuenta y movimiento del dinero entre cajas y bancos</div>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        ${!seedApplied ? `<button class="btn secondary" id="loadSeedBtn">💾 Cargar saldo inicial real (10/10)</button>` : ''}
         <button class="btn secondary" id="exportFinanceBtn">Exportar CSV</button>
         <button class="btn secondary" id="addTransferBtn">+ Transferencia (caja → banco)</button>
         <button class="btn secondary" id="addMovementBtn">+ Registrar movimiento</button>
@@ -1085,6 +1099,11 @@ function renderFinance(){
       </div>
     </div>
 
+    <div class="grid-2" style="margin-bottom:20px;">
+      <div class="card"><div class="card-title">Saldo por cuenta</div><canvas id="financeBarChart" height="170"></canvas></div>
+      <div class="card"><div class="card-title">Evolución del total general</div><canvas id="financeLineChart" height="170"></canvas></div>
+    </div>
+
     <div class="toolbar" style="margin-bottom:10px;">
       <div></div>
       <div style="display:flex; gap:10px; align-items:center;">
@@ -1097,12 +1116,14 @@ function renderFinance(){
     </div>
 
     <div class="card" style="overflow-x:auto;">
-      ${sorted.length ? `<table><thead><tr><th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Monto</th><th>Nota</th><th></th><th></th></tr></thead><tbody>
+      ${sorted.length ? `<table><thead><tr><th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Monto</th><th>N° comprobante</th><th>Foto</th><th>Nota</th><th></th><th></th></tr></thead><tbody>
         ${sorted.map(m=>{ const a = financeAccount(m.accountId); return `<tr>
           <td class="mono">${fmtDate(m.date)}</td>
           <td>${a ? a.name : '-'} ${a ? `<span class="badge ${a.type}" style="margin-left:4px;">${a.type==='banco'?'Banco':'Caja'}</span>` : ''}</td>
           <td><span class="badge ${m.type==='in'?'active':'inactive'}">${m.type==='in'?'Ingreso':'Egreso'}</span></td>
           <td class="mono">${fmtMoney(m.amount)}</td>
+          <td class="mono" style="font-size:12px;">${m.comprobanteNumero || '-'}</td>
+          <td>${m.receiptImage ? `<img src="${m.receiptImage}" data-view-receipt="${m.id}" style="width:38px; height:38px; object-fit:cover; border-radius:6px; cursor:pointer; border:1px solid var(--border);">` : '-'}</td>
           <td style="max-width:220px; white-space:pre-wrap; color:var(--muted); font-size:12.5px;">${m.note||'-'}</td>
           <td>${m.transferId ? '<span class="badge combo">Transferencia</span>' : ''}</td>
           <td class="row-actions">
@@ -1121,8 +1142,68 @@ function renderFinance(){
   document.getElementById('addMovementBtn').onclick = ()=>openFinanceMovementForm(rerender);
   document.getElementById('addTransferBtn').onclick = ()=>openFinanceTransferForm(rerender);
   document.getElementById('addReceiptBtn').onclick = ()=>openFinanceReceiptForm(rerender);
+  if(document.getElementById('loadSeedBtn')) document.getElementById('loadSeedBtn').onclick = ()=>loadFinanceSeed(rerender);
   document.querySelectorAll('[data-edit-fin]').forEach(b=>b.onclick=()=>openFinanceMovementForm(rerender, b.dataset.editFin));
   document.querySelectorAll('[data-del-fin]').forEach(b=>b.onclick=()=>delItem('financeMovements', b.dataset.delFin, rerender));
+  document.querySelectorAll('[data-view-receipt]').forEach(img=>img.onclick=()=>openReceiptPhoto(img.src));
+  renderFinanceCharts(sorted);
+}
+
+// Carga una sola vez el saldo inicial real (foto "BASE FINANCIERA" del sábado 10/10/26) como
+// un movimiento de ingreso por cuenta, sin tocar nada de lo que ya estaba registrado.
+async function loadFinanceSeed(rerender){
+  if(!confirm('Esto va a agregar un movimiento de "saldo inicial" en cada cuenta con los montos reales del 10/10. No borra nada de lo que ya tienes. ¿Confirmas?')) return;
+  const date = '2026-10-10';
+  FINANCE_SEED.forEach(s=>{
+    state.financeMovements.push({ id: uid(), accountId: s.accountId, type:'in', amount: s.amount, date, note: FINANCE_SEED_NOTE, comprobanteNumero:'', receiptImage:'', transferId:'' });
+  });
+  rerender();
+  await persist('financeMovements');
+}
+
+// Gráficos de Cuadre Financiero: barras de saldo actual por cuenta, y línea del total
+// acumulado día a día a partir del historial de movimientos.
+let _financeBarChart = null, _financeLineChart = null;
+function renderFinanceCharts(rows){
+  if(typeof Chart === 'undefined') return;
+  const barCanvas = document.getElementById('financeBarChart');
+  const lineCanvas = document.getElementById('financeLineChart');
+  if(!barCanvas || !lineCanvas) return;
+
+  if(_financeBarChart){ _financeBarChart.destroy(); _financeBarChart = null; }
+  if(_financeLineChart){ _financeLineChart.destroy(); _financeLineChart = null; }
+
+  _financeBarChart = new Chart(barCanvas, {
+    type: 'bar',
+    data: {
+      labels: FINANCE_ACCOUNTS.map(a=>a.name),
+      datasets: [{
+        label: 'Saldo actual',
+        data: FINANCE_ACCOUNTS.map(a=>financeBalance(a.id)),
+        backgroundColor: FINANCE_ACCOUNTS.map(a=>a.type==='banco' ? '#3B82F6' : '#D4A017')
+      }]
+    },
+    options: { plugins:{ legend:{ display:false } }, scales:{ y:{ ticks:{ color:'#9AA7BD' } }, x:{ ticks:{ color:'#9AA7BD', font:{size:10} } } } }
+  });
+
+  // Línea: total acumulado por fecha, usando TODOS los movimientos (no solo los filtrados) para que la tendencia sea real.
+  const byDate = {};
+  [...state.financeMovements].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(m=>{
+    const d = m.date || '-';
+    byDate[d] = (byDate[d]||0) + (m.type==='in' ? Number(m.amount) : -Number(m.amount));
+  });
+  const dates = Object.keys(byDate).sort((a,b)=>new Date(a)-new Date(b));
+  let running = 0;
+  const totals = dates.map(d=>{ running += byDate[d]; return running; });
+
+  _financeLineChart = new Chart(lineCanvas, {
+    type: 'line',
+    data: {
+      labels: dates.map(d=>fmtDate(d)),
+      datasets: [{ label:'Total general', data: totals, borderColor:'#22C55E', backgroundColor:'rgba(34,197,94,0.15)', fill:true, tension:0.25 }]
+    },
+    options: { plugins:{ legend:{ display:false } }, scales:{ y:{ ticks:{ color:'#9AA7BD' } }, x:{ ticks:{ color:'#9AA7BD', font:{size:10} } } } }
+  });
 }
 
 function openFinanceMovementForm(rerender, editId){
@@ -1142,6 +1223,7 @@ function openFinanceMovementForm(rerender, editId){
       </select>
     </div>
     <div class="field"><label>Monto ($)</label><input id="f-finAmount" type="number" step="0.01" placeholder="50" value="${existing?existing.amount||'':''}"></div>
+    <div class="field"><label>N° de comprobante (opcional)</label><input id="f-finNum" placeholder="Ej: 64817155" value="${existing?existing.comprobanteNumero||'':''}"></div>
     <div class="field"><label>Fecha</label><input id="f-finDate" type="date" value="${existing?existing.date||'':new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>Nota</label><textarea id="f-finNote" placeholder="Ej: depósito de Jhon, comisión, ajuste...">${existing?existing.note||'':''}</textarea></div>
     <div class="modal-actions">
@@ -1157,7 +1239,8 @@ function openFinanceMovementForm(rerender, editId){
       type: document.getElementById('f-finType').value,
       amount,
       date: document.getElementById('f-finDate').value || new Date().toISOString().slice(0,10),
-      note: document.getElementById('f-finNote').value.trim()
+      note: document.getElementById('f-finNote').value.trim(),
+      comprobanteNumero: document.getElementById('f-finNum').value.trim()
     };
     if(existing){
       Object.assign(existing, data);
@@ -1234,6 +1317,39 @@ function fileToCompressedImage(file){
   });
 }
 
+// Versión chiquita de la misma imagen, solo para guardarla en el historial (Google Sheets
+// tiene un límite de ~50.000 caracteres por celda, así que esta va bien liviana).
+function fileToThumbnail(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const maxW = 480;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.55));
+      };
+      img.onerror = ()=>reject(new Error('No se pudo leer la imagen.'));
+      img.src = reader.result;
+    };
+    reader.onerror = ()=>reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function openReceiptPhoto(dataUrl){
+  openModal(`
+    <h3>Foto del comprobante</h3>
+    <img src="${dataUrl}" style="max-width:100%; border-radius:8px; display:block;">
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>
+  `);
+}
+
 function openFinanceReceiptForm(rerender){
   openModal(`
     <h3>Leer comprobante con IA</h3>
@@ -1270,6 +1386,8 @@ async function handleReceiptFile(file, rerender){
   `);
   try{
     const { base64, mediaType, previewUrl } = await fileToCompressedImage(file);
+    let thumb = '';
+    try{ thumb = await fileToThumbnail(file); if(thumb.length > 45000) thumb = ''; }catch(e){ thumb = ''; }
     const res = await fetch('/api/leer-comprobante', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1280,7 +1398,7 @@ async function handleReceiptFile(file, rerender){
       showReceiptError(result.error || 'No se pudo leer el comprobante.', rerender);
       return;
     }
-    showReceiptConfirm(result, previewUrl, rerender);
+    showReceiptConfirm(result, previewUrl, thumb, rerender);
   }catch(e){
     console.error(e);
     showReceiptError('No se pudo leer el comprobante. Revisa tu conexión e intenta de nuevo.', rerender);
@@ -1301,10 +1419,11 @@ function showReceiptError(message, rerender){
   document.getElementById('manualFallbackBtn').onclick = ()=>openFinanceMovementForm(rerender);
 }
 
-function showReceiptConfirm(result, previewUrl, rerender){
+function showReceiptConfirm(result, previewUrl, thumb, rerender){
   const accountId = FINANCE_ACCOUNTS.find(a=>a.id===result.accountId) ? result.accountId : '';
   const type = result.type === 'out' ? 'out' : (result.type === 'in' ? 'in' : 'in');
   const amount = typeof result.amount === 'number' ? result.amount : '';
+  const comprobanteNumero = result.comprobanteNumero ? String(result.comprobanteNumero) : '';
   const lowConfidence = result.confidence === 'baja' || !accountId || !amount;
 
   openModal(`
@@ -1312,6 +1431,7 @@ function showReceiptConfirm(result, previewUrl, rerender){
     <img src="${previewUrl}" style="max-width:100%; max-height:160px; border-radius:8px; margin-bottom:12px; display:block;">
     ${lowConfidence ? `<div style="background:#4A3B14; color:var(--pending); border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">No estoy 100% seguro de algunos datos — revísalos antes de confirmar.${result.reason ? ' ' + result.reason : ''}</div>` : ''}
     ${result.detectedText ? `<div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Leído: "${String(result.detectedText).replace(/"/g,'&quot;')}"</div>` : ''}
+    <div id="dupWarning"></div>
     <div class="field"><label>Cuenta</label>
       <select id="f-rcAcc">
         <option value="">Selecciona una cuenta</option>
@@ -1325,6 +1445,7 @@ function showReceiptConfirm(result, previewUrl, rerender){
       </select>
     </div>
     <div class="field"><label>Monto ($)</label><input id="f-rcAmount" type="number" step="0.01" value="${amount}"></div>
+    <div class="field"><label>N° de comprobante</label><input id="f-rcNum" placeholder="Ej: 64817155" value="${comprobanteNumero.replace(/"/g,'&quot;')}"></div>
     <div class="field"><label>Fecha</label><input id="f-rcDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>Nota</label><input id="f-rcNote" value="${result.detectedText ? String(result.detectedText).replace(/"/g,'&quot;') : ''}"></div>
     <div class="modal-actions">
@@ -1333,11 +1454,31 @@ function showReceiptConfirm(result, previewUrl, rerender){
     </div>
   `);
 
+  // Aviso "inteligente" de posible duplicado: mismo número de comprobante ya registrado antes.
+  const checkDup = ()=>{
+    const num = document.getElementById('f-rcNum').value.trim();
+    const box = document.getElementById('dupWarning');
+    if(!num){ box.innerHTML = ''; return; }
+    const dup = state.financeMovements.find(m=>m.comprobanteNumero && m.comprobanteNumero===num);
+    if(dup){
+      const a = financeAccount(dup.accountId);
+      box.innerHTML = `<div style="background:var(--loss-dim); color:#FF8A8E; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">⚠️ Ya existe un movimiento con el N° de comprobante <b>${num}</b> (${a?a.name:dup.accountId}, ${fmtMoney(dup.amount)}, ${fmtDate(dup.date)}). Revisa que no sea el mismo comprobante repetido.</div>`;
+    } else {
+      box.innerHTML = '';
+    }
+  };
+  checkDup();
+  document.getElementById('f-rcNum').oninput = checkDup;
+
   document.getElementById('confirmReceiptBtn').onclick = async ()=>{
     const acc = document.getElementById('f-rcAcc').value;
     const amt = Number(document.getElementById('f-rcAmount').value);
+    const num = document.getElementById('f-rcNum').value.trim();
     if(!acc){ alert('Elige a qué cuenta pertenece.'); return; }
     if(!amt || amt<=0){ alert('Pon un monto válido.'); return; }
+    if(num && state.financeMovements.some(m=>m.comprobanteNumero && m.comprobanteNumero===num)){
+      if(!confirm('Ese N° de comprobante ya está registrado antes. ¿Seguro que quieres registrarlo de todos modos?')) return;
+    }
     state.financeMovements.push({
       id: uid(),
       accountId: acc,
@@ -1345,6 +1486,8 @@ function showReceiptConfirm(result, previewUrl, rerender){
       amount: amt,
       date: document.getElementById('f-rcDate').value || new Date().toISOString().slice(0,10),
       note: document.getElementById('f-rcNote').value.trim(),
+      comprobanteNumero: num,
+      receiptImage: thumb || '',
       transferId: ''
     });
     closeModal();
