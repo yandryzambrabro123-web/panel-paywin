@@ -18,7 +18,14 @@
     --mono:'IBM Plex Mono', 'Courier New', monospace;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
-  body{font-family:var(--body); background:var(--bg); color:var(--text); min-height:100vh;}
+  body{
+    font-family:var(--body); color:var(--text); min-height:100vh;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(212,175,106,.16), transparent 45%),
+      radial-gradient(circle at 85% 100%, rgba(212,175,106,.10), transparent 50%),
+      var(--bg);
+    background-attachment:fixed;
+  }
   #app{display:flex; min-height:100vh;}
   .brand-title{font-family:var(--display); font-weight:800; text-transform:uppercase; letter-spacing:.5px;}
 
@@ -128,6 +135,70 @@
   .list-item:last-child{border-bottom:none;}
   .list-item .desc{font-size:14px; margin-bottom:3px;}
   .list-item .meta{font-size:12px; color:var(--muted);}
+
+  /* ---------- Efectos "más modernos" (brillos / destellos) ---------- */
+  @keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(212,175,106,.0), 0 2px 10px rgba(0,0,0,.25);} 50%{box-shadow:0 0 22px 2px rgba(212,175,106,.45), 0 2px 10px rgba(0,0,0,.25);}}
+  @keyframes shine{0%{transform:translateX(-120%) skewX(-18deg);} 100%{transform:translateX(220%) skewX(-18deg);}}
+  @keyframes floatGlow{0%,100%{opacity:.55;} 50%{opacity:1;}}
+  @keyframes borderSheen{0%{background-position:0% 50%;} 100%{background-position:200% 50%;}}
+
+  .brand img{filter:drop-shadow(0 0 10px rgba(212,175,106,.55));}
+  .brand-text{position:relative;}
+
+  .nav-item{position:relative; transition:color .18s, background .18s, box-shadow .18s;}
+  .nav-item.active{box-shadow:inset 3px 0 0 var(--accent), 0 0 18px -4px rgba(212,175,106,.55); text-shadow:0 0 12px rgba(212,175,106,.5);}
+  .nav-item:hover{text-shadow:0 0 10px rgba(212,175,106,.35);}
+
+  .card{position:relative; overflow:hidden; transition:border-color .2s, box-shadow .2s, transform .2s; animation:glowPulse 6s ease-in-out infinite;}
+  .card:hover{border-color:rgba(212,175,106,.55); box-shadow:0 0 0 1px rgba(212,175,106,.25), 0 10px 30px -10px rgba(212,175,106,.35); transform:translateY(-1px);}
+
+  .btn{position:relative; overflow:hidden; isolation:isolate; box-shadow:0 0 16px -2px rgba(212,175,106,.6), 0 2px 8px rgba(0,0,0,.3); transition:box-shadow .2s, transform .15s;}
+  .btn:not(.secondary):not(.danger)::after{
+    content:''; position:absolute; top:0; left:0; width:40%; height:100%;
+    background:linear-gradient(120deg, transparent, rgba(255,255,255,.55), transparent);
+    animation:shine 3.2s ease-in-out infinite; animation-delay:1s; pointer-events:none;
+  }
+  .btn:hover{box-shadow:0 0 26px 0 rgba(212,175,106,.85), 0 2px 10px rgba(0,0,0,.35); transform:translateY(-1px);}
+  .btn:active{transform:translateY(0px) scale(.98);}
+  .btn.danger:hover{box-shadow:0 0 18px -2px rgba(229,72,77,.65);}
+
+  .score-value.win{text-shadow:0 0 14px rgba(212,175,106,.55);}
+  .score-value.loss{text-shadow:0 0 14px rgba(229,72,77,.5);}
+
+  .page-title{position:relative; display:inline-block;}
+  .page-title::after{content:''; position:absolute; left:0; bottom:-6px; width:46px; height:3px; border-radius:3px; background:linear-gradient(90deg, var(--accent), transparent); box-shadow:0 0 10px rgba(212,175,106,.7);}
+
+  .day-tab.active{box-shadow:0 0 14px -2px rgba(212,175,106,.6); border-color:var(--accent);}
+
+  .badge.won{box-shadow:0 0 10px -2px rgba(212,175,106,.5);}
+
+  ::-webkit-scrollbar{width:10px; height:10px;}
+  ::-webkit-scrollbar-track{background:var(--bg);}
+  ::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), var(--accent-dim)); border-radius:10px;}
+
+  /* ---------- Actividades Diarias ---------- */
+  .task-priority{
+    flex-shrink:0; width:26px; height:26px; border-radius:50%; background:var(--accent-dim); color:var(--accent);
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12.5px; font-family:var(--display);
+    box-shadow:0 0 10px -2px rgba(212,175,106,.5);
+  }
+  .task-row{
+    flex:1; display:flex; align-items:center; gap:14px; padding:13px 14px; border-radius:8px; margin-bottom:8px;
+    background:var(--surface-2); border:1px solid var(--border); cursor:pointer; transition:border-color .18s, background .18s, transform .12s;
+  }
+  .task-row:hover{border-color:rgba(212,175,106,.5); transform:translateX(2px);}
+  .task-row.done{background:var(--accent-dim); border-color:var(--accent);}
+  .task-check{
+    flex-shrink:0; width:24px; height:24px; border-radius:6px; border:2px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color:var(--accent); font-weight:800; font-size:14px;
+  }
+  .task-row.done .task-check{border-color:var(--accent); box-shadow:0 0 10px -1px rgba(212,175,106,.6);}
+  .task-info{flex:1;}
+  .task-label{font-size:14px; font-weight:600;}
+  .task-row.done .task-label{color:var(--accent-light); text-decoration:line-through; text-decoration-color:rgba(212,175,106,.5);}
+  .task-detail{font-size:12px; color:var(--muted); margin-top:2px;}
+  .task-time{flex-shrink:0; font-size:11.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.3px;}
+  .task-row.done .task-time{color:var(--accent);}
 </style>
 
 <div id="loginScreen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);">
@@ -161,6 +232,7 @@
     <div class="nav-item" data-view="gifts"><span class="nav-icon">&#127873;</span> Regalitos</div>
     <div class="nav-item" data-view="finance"><span class="nav-icon">&#127974;</span> Cuadre Financiero</div>
     <div class="nav-item" data-view="staffFinance"><span class="nav-icon">&#128101;</span> Finanzas de Personal</div>
+    <div class="nav-item" data-view="dailyTasks"><span class="nav-icon">&#9989;</span> Actividades Diarias</div>
     <div class="nav-item" id="logoutBtn" style="margin-top:auto; border-top:1px solid var(--border); padding-top:16px;"><span class="nav-icon">&#128274;</span> Cerrar sesión</div>
   </div>
   <div id="main"></div>
@@ -203,7 +275,52 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos', staffVipSales: 'PersonalVentasVIP', staffStakePayments: 'PersonalPagosStakes' };
+const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos', staffVipSales: 'PersonalVentasVIP', staffStakePayments: 'PersonalPagosStakes', dailyTasks: 'TareasDiarias' };
+// Checklist de actividades diarias fijas — en orden de PRIORIDAD para Ayrton, y en dos bloques
+// (protocolo inicial de 8am + actividades sin hora fija) para Erika. Se reinicia solo cada
+// día porque cada marca se guarda con la fecha (ver dailyTaskKey/toggleDailyTask).
+const AYRTON_TASKS = [
+  { key:'stake_pago', label:'Stake de pago', detail:'1 o 2 — depende del mercado' },
+  { key:'regalito', label:'Regalito del día', detail:'1 al día — evento entre 6pm y 8pm o más tarde' },
+  { key:'apuesta_gratis', label:'Apuesta gratis', detail:'' },
+  { key:'vip_3', label:'3 apuestas en el grupo VIP', detail:'' },
+  { key:'vip_masparley', label:'1 apuesta en el grupo VIP Más Parlay', detail:'' },
+  { key:'vip_1xbet', label:'1 apuesta en el grupo VIP 1xbet', detail:'' }
+];
+const ERIKA_TASKS_MORNING = [
+  { key:'abrir_grupos', label:'Aperturar los grupos', detail:'Mandar el "buenos días" en todos' },
+  { key:'publicidad', label:'Mandar publicidad', detail:'Recargas y retiros de VIP, y de los regalitos' },
+  { key:'apuestas_ayer', label:'Mandar apuestas ganadas del día anterior', detail:'' },
+  { key:'flyers', label:'Mandar los flyers de los partidos del día', detail:'Yandry los manda al grupo de trabajo' }
+];
+const ERIKA_TASKS_ONGOING = [
+  { key:'capturas_ganadas', label:'Capturas de apuestas ganadas', detail:'Mandar al grupo correspondiente y también al grupo gratis' },
+  { key:'registro_vip_ingreso', label:'Registrar ingresos al VIP', detail:'En la plataforma, inmediatamente' },
+  { key:'cuadre_inmediato', label:'Hacer el cuadre inmediato', detail:'En la plataforma, apenas hay ingresos o egresos' },
+  { key:'venta_vip', label:'Registrar venta VIP', detail:'Ingreso en Cuadre y en Finanzas de Personal' },
+  { key:'apuestas_ayrton', label:'Ingresar apuestas ganadas de Ayrton', detail:'Para que el sistema calcule su comisión' },
+  { key:'comision_vip', label:'Ingresar nuevos miembros VIP', detail:'En Finanzas de Personal, para la comisión' },
+  { key:'stakes_pago', label:'Publicar stakes de pago', detail:'' },
+  { key:'regalito_dia', label:'Publicar y mandar el regalito del día', detail:'' },
+  { key:'recargas', label:'Hacer las recargas', detail:'A lo largo de todo el día' },
+  { key:'regalito_20', label:'Dar regalito', detail:'Si el usuario recarga $20 o más' },
+  { key:'vip_masparley_200', label:'Dar acceso VIP Más Parlay', detail:'Si recarga $200 o más en Más Parlay' },
+  { key:'vip_1xbet_200', label:'Dar acceso VIP 1xbet', detail:'Si recarga $200 o más en 1xbet' }
+];
+function todayStr(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function getDailyTaskRow(role, taskKey, date){ return state.dailyTasks.find(t=>t.role===role && t.taskKey===taskKey && t.date===date); }
+async function toggleDailyTask(role, taskKey){
+  const date = todayStr();
+  const existing = getDailyTaskRow(role, taskKey, date);
+  if(existing){
+    existing.done = !existing.done;
+    existing.doneAt = existing.done ? new Date().toISOString() : '';
+  } else {
+    state.dailyTasks.push({ id: uid(), role, taskKey, date, done: true, doneAt: new Date().toISOString() });
+  }
+  renderDailyTasks();
+  await persist('dailyTasks');
+}
 const VIP_GROUPS = [
   { key:'vips', title:'Miembros VIP' },
   { key:'vips1x2', title:'Miembros VIP 1X2' },
@@ -235,7 +352,7 @@ const FINANCE_LATEST_BASE = {
 };
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], dailyTasksRole: 'ayrton', vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -299,6 +416,9 @@ function coerceRow(key, row){
   }
   if(key === 'staffStakePayments'){
     return { id:String(row.id||''), staffId:String(row.staffId||''), date:row.date||'' };
+  }
+  if(key === 'dailyTasks'){
+    return { id:String(row.id||''), role:row.role||'', taskKey:row.taskKey||'', date:row.date||'', done: row.done===true||row.done==='true', doneAt:row.doneAt||'' };
   }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
@@ -397,8 +517,8 @@ function exportCSV(key){
 
 // Qué vistas puede ver cada rol. null = todas (admin).
 function allowedViewsForRole(){
-  if(state.role === 'socio') return ['stakeSales','staffFinance'];
-  if(state.role === 'colaboradora') return ['vips','vips1x2','vips1xbet','stakeSales','finance','staffFinance'];
+  if(state.role === 'socio') return ['stakeSales','staffFinance','dailyTasks'];
+  if(state.role === 'colaboradora') return ['vips','vips1x2','vips1xbet','stakeSales','finance','staffFinance','dailyTasks'];
   return null;
 }
 function setView(v){
@@ -1890,6 +2010,84 @@ function renderStaffFinance(){
   }
 }
 
+/* ---------- ACTIVIDADES DIARIAS ---------- */
+function fmtTime(iso){
+  if(!iso) return '';
+  try{ return new Date(iso).toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; }
+}
+function renderTaskRow(role, task){
+  const date = todayStr();
+  const row = getDailyTaskRow(role, task.key, date);
+  const done = !!(row && row.done);
+  return `
+    <div class="task-row ${done?'done':''}" data-task="${task.key}" data-role="${role}">
+      <div class="task-check">${done ? '✔' : ''}</div>
+      <div class="task-info">
+        <div class="task-label">${task.label}</div>
+        ${task.detail ? `<div class="task-detail">${task.detail}</div>` : ''}
+      </div>
+      <div class="task-time">${done ? `Hecho · ${fmtTime(row.doneAt)}` : 'Pendiente'}</div>
+    </div>
+  `;
+}
+function renderDailyTasks(){
+  const isAdmin = state.role === 'admin';
+  const isAyrtonLogin = state.role === 'socio';
+  const isErikaLogin = state.role === 'colaboradora';
+  const canSwitch = isAdmin;
+  const activeRole = isAyrtonLogin ? 'ayrton' : isErikaLogin ? 'erika' : (state.dailyTasksRole || 'ayrton');
+
+  const dateLabel = fmtDate(todayStr());
+
+  let content = '';
+  if(activeRole === 'ayrton'){
+    const doneCount = AYRTON_TASKS.filter(t=>{ const r = getDailyTaskRow('ayrton', t.key, todayStr()); return r && r.done; }).length;
+    content = `
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-title">Pronósticos del día · en orden de prioridad</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${doneCount}/${AYRTON_TASKS.length} completadas hoy</div>
+        ${AYRTON_TASKS.map((t,i)=>`<div style="display:flex; align-items:center; gap:10px;"><div class="task-priority">${i+1}</div>${renderTaskRow('ayrton', t)}</div>`).join('')}
+      </div>
+    `;
+  } else {
+    const morningDone = ERIKA_TASKS_MORNING.filter(t=>{ const r = getDailyTaskRow('erika', t.key, todayStr()); return r && r.done; }).length;
+    const ongoingDone = ERIKA_TASKS_ONGOING.filter(t=>{ const r = getDailyTaskRow('erika', t.key, todayStr()); return r && r.done; }).length;
+    content = `
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-title">Protocolo inicial · 8:00 am</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${morningDone}/${ERIKA_TASKS_MORNING.length} completadas hoy</div>
+        ${ERIKA_TASKS_MORNING.map((t,i)=>`<div style="display:flex; align-items:center; gap:10px;"><div class="task-priority">${i+1}</div>${renderTaskRow('erika', t)}</div>`).join('')}
+      </div>
+      <div class="card">
+        <div class="card-title">Actividades sin hora fija · se hacen a lo largo del día</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${ongoingDone}/${ERIKA_TASKS_ONGOING.length} completadas hoy</div>
+        ${ERIKA_TASKS_ONGOING.map(t=>renderTaskRow('erika', t)).join('')}
+      </div>
+    `;
+  }
+
+  document.getElementById('main').innerHTML = `
+    <div class="toolbar">
+      <div>
+        <div class="page-title">Actividades Diarias</div>
+        <div class="page-sub">${dateLabel} · se reinicia solo cada día</div>
+      </div>
+      ${canSwitch ? `<div class="day-tabs">
+        <div class="day-tab ${activeRole==='ayrton'?'active':''}" data-tasks-role="ayrton">Ayrton</div>
+        <div class="day-tab ${activeRole==='erika'?'active':''}" data-tasks-role="erika">Erika</div>
+      </div>` : ''}
+    </div>
+    ${content}
+  `;
+
+  document.querySelectorAll('[data-tasks-role]').forEach(el=>{
+    el.onclick = ()=>{ state.dailyTasksRole = el.dataset.tasksRole; renderDailyTasks(); };
+  });
+  document.querySelectorAll('[data-task]').forEach(el=>{
+    el.onclick = ()=>toggleDailyTask(el.dataset.role, el.dataset.task);
+  });
+}
+
 function openStaffForm(editId){
   const existing = editId ? staffMember(editId) : null;
   const paymentType = existing ? (existing.paymentType||'comision') : 'comision';
@@ -2721,12 +2919,14 @@ function render(){
   else if(state.view==='gifts') renderGifts();
   else if(state.view==='finance') renderFinance();
   else if(state.view==='staffFinance') renderStaffFinance();
+  else if(state.view==='dailyTasks') renderDailyTasks();
 }
 
 /* ---------- AUTH ---------- */
 function enterApp(role){
   state.role = role;
-  const allowed = (role === 'socio') ? ['stakeSales','staffFinance'] : (role === 'colaboradora') ? ['vips','vips1x2','vips1xbet','stakeSales','finance','staffFinance'] : null;
+  state.dailyTasksRole = role === 'colaboradora' ? 'erika' : 'ayrton';
+  const allowed = (role === 'socio') ? ['stakeSales','staffFinance','dailyTasks'] : (role === 'colaboradora') ? ['vips','vips1x2','vips1xbet','stakeSales','finance','staffFinance','dailyTasks'] : null;
   state.view = allowed ? allowed[0] : 'dashboard';
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
