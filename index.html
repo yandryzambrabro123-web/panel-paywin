@@ -297,15 +297,15 @@ const ERIKA_TASKS_ONGOING = [
   { key:'capturas_ganadas', label:'Capturas de apuestas ganadas', detail:'Mandar al grupo correspondiente y también al grupo gratis' },
   { key:'registro_vip_ingreso', label:'Registrar ingresos al VIP', detail:'En la plataforma, inmediatamente' },
   { key:'cuadre_inmediato', label:'Hacer el cuadre inmediato', detail:'En la plataforma, apenas hay ingresos o egresos' },
-  { key:'venta_vip', label:'Registrar venta VIP', detail:'Ingreso en Cuadre y en Finanzas de Personal' },
   { key:'apuestas_ayrton', label:'Ingresar apuestas ganadas de Ayrton', detail:'Para que el sistema calcule su comisión' },
-  { key:'comision_vip', label:'Ingresar nuevos miembros VIP', detail:'En Finanzas de Personal, para la comisión' },
   { key:'stakes_pago', label:'Publicar stakes de pago', detail:'' },
   { key:'regalito_dia', label:'Publicar y mandar el regalito del día', detail:'' },
   { key:'recargas', label:'Hacer las recargas', detail:'A lo largo de todo el día' },
-  { key:'regalito_20', label:'Dar regalito', detail:'Si el usuario recarga $20 o más' },
   { key:'vip_masparley_200', label:'Dar acceso VIP Más Parlay', detail:'Si recarga $200 o más en Más Parlay' },
-  { key:'vip_1xbet_200', label:'Dar acceso VIP 1xbet', detail:'Si recarga $200 o más en 1xbet' }
+  { key:'vip_1xbet_200', label:'Dar acceso VIP 1xbet', detail:'Si recarga $200 o más en 1xbet' },
+  { key:'captura_recarga_grande', label:'Captura de recarga grande', detail:'Cuando el cliente confirma (dice "gracias") y se ve la captura de la recarga' },
+  { key:'captura_retiro', label:'Captura de retiro', detail:'Igual que la recarga, con la confirmación del cliente' },
+  { key:'captura_pago', label:'Captura del pago (stakes y VIP)', detail:'Con los datos censurados — stakes: máximo 9 por publicación, el décimo se sube cuando termine la venta del día aunque hayan sido 50' }
 ];
 function todayStr(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function getDailyTaskRow(role, taskKey, date){ return state.dailyTasks.find(t=>t.role===role && t.taskKey===taskKey && t.date===date); }
