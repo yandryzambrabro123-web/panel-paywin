@@ -199,6 +199,15 @@
   .task-detail{font-size:12px; color:var(--muted); margin-top:2px;}
   .task-time{flex-shrink:0; font-size:11.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.3px;}
   .task-row.done .task-time{color:var(--accent);}
+  .task-amount{flex-shrink:0; font-size:12.5px; font-weight:800; color:var(--accent); background:var(--accent-dim); padding:4px 10px; border-radius:20px; font-family:var(--mono);}
+  .task-row.readonly{cursor:default;}
+  .task-row.readonly:hover{transform:none; border-color:var(--border);}
+
+  .date-nav{display:flex; align-items:center; gap:8px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:4px 6px;}
+  .date-nav-label{font-size:12.5px; font-weight:700; color:var(--text); min-width:120px; text-align:center; text-transform:capitalize;}
+  .date-nav .btn{padding:5px 10px; font-size:13px;}
+  .btn:disabled{opacity:.35; cursor:not-allowed; box-shadow:none; filter:none;}
+  .btn:disabled::after{display:none;}
 </style>
 
 <div id="loginScreen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);">
@@ -280,12 +289,12 @@ const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET'
 // (protocolo inicial de 8am + actividades sin hora fija) para Erika. Se reinicia solo cada
 // día porque cada marca se guarda con la fecha (ver dailyTaskKey/toggleDailyTask).
 const AYRTON_TASKS = [
-  { key:'stake_pago', label:'Stake de pago', detail:'1 o 2 — depende del mercado' },
-  { key:'regalito', label:'Regalito del día', detail:'1 al día — evento entre 6pm y 8pm o más tarde' },
-  { key:'apuesta_gratis', label:'Apuesta gratis', detail:'' },
-  { key:'vip_3', label:'3 apuestas en el grupo VIP', detail:'' },
-  { key:'vip_masparley', label:'1 apuesta en el grupo VIP Más Parlay', detail:'' },
-  { key:'vip_1xbet', label:'1 apuesta en el grupo VIP 1xbet', detail:'' }
+  { key:'stake_pago', label:'Stake de pago', detail:'1 o 2 — depende del mercado', amount:50 },
+  { key:'regalito', label:'Regalito del día', detail:'1 al día — evento entre 6pm y 8pm o más tarde', amount:25 },
+  { key:'apuesta_gratis', label:'Apuesta gratis', detail:'', amount:50 },
+  { key:'vip_3', label:'3 apuestas en el grupo VIP', detail:'$25 cada una', amount:25 },
+  { key:'vip_masparley', label:'1 apuesta en el grupo VIP Más Parlay', detail:'', amount:25 },
+  { key:'vip_1xbet', label:'1 apuesta en el grupo VIP 1xbet', detail:'', amount:25 }
 ];
 const ERIKA_TASKS_MORNING = [
   { key:'abrir_grupos', label:'Aperturar los grupos', detail:'Mandar el "buenos días" en todos' },
@@ -294,6 +303,7 @@ const ERIKA_TASKS_MORNING = [
   { key:'flyers', label:'Mandar los flyers de los partidos del día', detail:'Yandry los manda al grupo de trabajo' }
 ];
 const ERIKA_TASKS_ONGOING = [
+  { key:'enviar_picks_proveedores', label:'Enviar las apuestas de los proveedores a Ayrton', detail:'' },
   { key:'capturas_ganadas', label:'Capturas de apuestas ganadas', detail:'Mandar al grupo correspondiente y también al grupo gratis' },
   { key:'registro_vip_ingreso', label:'Registrar ingresos al VIP', detail:'En la plataforma, inmediatamente' },
   { key:'cuadre_inmediato', label:'Hacer el cuadre inmediato', detail:'En la plataforma, apenas hay ingresos o egresos' },
@@ -352,7 +362,7 @@ const FINANCE_LATEST_BASE = {
 };
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], dailyTasksRole: 'ayrton', vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], dailyTasksRole: 'ayrton', dailyTasksDate: '', vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -1815,7 +1825,7 @@ function renderStaffFinance(){
             <td class="mono">${fmtMoney(b.returned)}</td>
             <td class="mono" style="${profit<0?'color:var(--loss);':''}">${fmtMoney(profit)}</td>
             <td class="mono">${fmtMoney(comm)}</td>
-            <td>${b.paid?`<span class="badge won">Pagado</span>`:(canTogglePaid?`<button class="btn secondary small" data-pay-staffbet="${b.id}">Marcar pagado</button>`:`<span class="badge pending">Pendiente</span>`)}</td>
+            <td>${canTogglePaid ? `<button class="btn ${b.paid?'secondary':''} small" data-pay-staffbet="${b.id}" title="${b.paid?'Clic para desmarcar':'Marcar pagado'}">${b.paid?'✓ Pagado':'Marcar pagado'}</button>` : (b.paid?`<span class="badge won">Pagado</span>`:`<span class="badge pending">Pendiente</span>`)}</td>
             ${canEditDeleteBet?`<td class="row-actions"><button class="btn secondary small" data-edit-staffbet="${b.id}">Editar</button> <button class="btn danger small" data-del-staffbet="${b.id}">Eliminar</button></td>`:''}
           </tr>`; }).join('')}
         </tbody></table>` : `<div class="empty">Sin apuestas registradas ${periodEmptyLabel}.</div>`}
@@ -1830,7 +1840,7 @@ function renderStaffFinance(){
             <td class="mono">${fmtDate(d.day)}</td>
             <td class="mono">${fmtMoney(d.total)}</td>
             <td class="mono">${fmtMoney(d.commission)}</td>
-            <td>${d.paid?`<span class="badge won">Pagado</span>`:(canTogglePaid?`<button class="btn secondary small" data-pay-stakeday="${d.day}">Marcar pagado</button>`:`<span class="badge pending">Pendiente</span>`)}</td>
+            <td>${canTogglePaid ? `<button class="btn ${d.paid?'secondary':''} small" data-pay-stakeday="${d.day}" title="${d.paid?'Clic para desmarcar':'Marcar pagado'}">${d.paid?'✓ Pagado':'Marcar pagado'}</button>` : (d.paid?`<span class="badge won">Pagado</span>`:`<span class="badge pending">Pendiente</span>`)}</td>
           </tr>`).join('')}
         </tbody></table>` : `<div class="empty">Todavía no hay ventas de stakes registradas ${(state.staffMonth||state.staffDay)?periodEmptyLabel:'en "Venta de Stakes"'}.</div>`}
       </div>
@@ -1849,7 +1859,7 @@ function renderStaffFinance(){
             <td class="mono">${fmtMoney(v.amount)}</td>
             <td class="mono">${fmtMoney(comm)}</td>
             <td>${v.receiptImage?`<span style="cursor:pointer;" data-view-vip-receipt="${v.id}">📎 Ver</span>`:'-'}</td>
-            <td>${v.paid?`<span class="badge won">Pagado</span>`:(canTogglePaid?`<button class="btn secondary small" data-pay-vipsale="${v.id}">Marcar pagado</button>`:`<span class="badge pending">Pendiente</span>`)}</td>
+            <td>${canTogglePaid ? `<button class="btn ${v.paid?'secondary':''} small" data-pay-vipsale="${v.id}" title="${v.paid?'Clic para desmarcar':'Marcar pagado'}">${v.paid?'✓ Pagado':'Marcar pagado'}</button>` : (v.paid?`<span class="badge won">Pagado</span>`:`<span class="badge pending">Pendiente</span>`)}</td>
             <td class="row-actions">${canDeleteVipSale?`<button class="btn danger small" data-del-vipsale="${v.id}">Eliminar</button>`:''}</td>
           </tr>`; }).join('')}
         </tbody></table>` : `<div class="empty">Sin ventas VIP registradas ${periodEmptyLabel}.</div>`}
@@ -1971,19 +1981,27 @@ function renderStaffFinance(){
       document.querySelectorAll('[data-pay-staffbet]').forEach(b=>{
         b.onclick = async ()=>{
           const bet = state.staffBets.find(x=>x.id===b.dataset.payStaffbet);
-          if(bet){ bet.paid = true; renderStaffFinance(); await persist('staffBets'); }
+          if(bet){ bet.paid = !bet.paid; renderStaffFinance(); await persist('staffBets'); }
         };
       });
       document.querySelectorAll('[data-pay-vipsale]').forEach(b=>{
         b.onclick = async ()=>{
           const v = state.staffVipSales.find(x=>x.id===b.dataset.payVipsale);
-          if(v){ v.paid = true; renderStaffFinance(); await persist('staffVipSales'); }
+          if(v){ v.paid = !v.paid; renderStaffFinance(); await persist('staffVipSales'); }
         };
       });
+      // Marcar/desmarcar "pagado" de un día de stakes: como no es un registro propio sino un
+      // agregado (ver staffStakePayments/isStakeDayPaid), marcar = crear la fila del pago de ese
+      // día, y desmarcar (por si se marcó por error) = borrarla.
       document.querySelectorAll('[data-pay-stakeday]').forEach(b=>{
         b.onclick = async ()=>{
           const date = b.dataset.payStakeday;
-          if(!isStakeDayPaid(cur.id, date)){
+          const existingPayment = state.staffStakePayments.find(p=>p.staffId===cur.id && p.date===date);
+          if(existingPayment){
+            state.staffStakePayments = state.staffStakePayments.filter(p=>p.id!==existingPayment.id);
+            renderStaffFinance();
+            await persist('staffStakePayments', { deletedIds: [existingPayment.id] });
+          } else {
             state.staffStakePayments.push({ id: uid(), staffId: cur.id, date });
             renderStaffFinance();
             await persist('staffStakePayments');
@@ -2015,17 +2033,25 @@ function fmtTime(iso){
   if(!iso) return '';
   try{ return new Date(iso).toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; }
 }
-function renderTaskRow(role, task){
-  const date = todayStr();
+// Suma/resta días a una fecha YYYY-MM-DD sin pasar por el parseo UTC de Date (mismo motivo
+// que fmtDate) — así "ver el día anterior/siguiente" siempre cae en el día correcto.
+function addDays(dateStr, n){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr));
+  const dt = m ? new Date(Number(m[1]), Number(m[2])-1, Number(m[3])) : new Date(dateStr);
+  dt.setDate(dt.getDate() + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+function renderTaskRow(role, task, date, editable){
   const row = getDailyTaskRow(role, task.key, date);
   const done = !!(row && row.done);
   return `
-    <div class="task-row ${done?'done':''}" data-task="${task.key}" data-role="${role}">
+    <div class="task-row ${done?'done':''} ${editable?'':'readonly'}" ${editable?`data-task="${task.key}" data-role="${role}"`:''}>
       <div class="task-check">${done ? '✔' : ''}</div>
       <div class="task-info">
         <div class="task-label">${task.label}</div>
         ${task.detail ? `<div class="task-detail">${task.detail}</div>` : ''}
       </div>
+      ${task.amount ? `<div class="task-amount">${fmtMoney(task.amount)}</div>` : ''}
       <div class="task-time">${done ? `Hecho · ${fmtTime(row.doneAt)}` : 'Pendiente'}</div>
     </div>
   `;
@@ -2037,31 +2063,35 @@ function renderDailyTasks(){
   const canSwitch = isAdmin;
   const activeRole = isAyrtonLogin ? 'ayrton' : isErikaLogin ? 'erika' : (state.dailyTasksRole || 'ayrton');
 
-  const dateLabel = fmtDate(todayStr());
+  if(!state.dailyTasksDate) state.dailyTasksDate = todayStr();
+  const date = state.dailyTasksDate;
+  const isToday = date === todayStr();
+  const editable = isToday; // el historial de días pasados queda solo de consulta, no se puede marcar/desmarcar
+  const dateLabel = fmtDate(date) + (isToday ? ' · hoy' : '');
 
   let content = '';
   if(activeRole === 'ayrton'){
-    const doneCount = AYRTON_TASKS.filter(t=>{ const r = getDailyTaskRow('ayrton', t.key, todayStr()); return r && r.done; }).length;
+    const doneCount = AYRTON_TASKS.filter(t=>{ const r = getDailyTaskRow('ayrton', t.key, date); return r && r.done; }).length;
     content = `
       <div class="card" style="margin-bottom:16px;">
         <div class="card-title">Pronósticos del día · en orden de prioridad</div>
-        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${doneCount}/${AYRTON_TASKS.length} completadas hoy</div>
-        ${AYRTON_TASKS.map((t,i)=>`<div style="display:flex; align-items:center; gap:10px;"><div class="task-priority">${i+1}</div>${renderTaskRow('ayrton', t)}</div>`).join('')}
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${doneCount}/${AYRTON_TASKS.length} completadas${isToday?' hoy':''}</div>
+        ${AYRTON_TASKS.map((t,i)=>`<div style="display:flex; align-items:center; gap:10px;"><div class="task-priority">${i+1}</div>${renderTaskRow('ayrton', t, date, editable)}</div>`).join('')}
       </div>
     `;
   } else {
-    const morningDone = ERIKA_TASKS_MORNING.filter(t=>{ const r = getDailyTaskRow('erika', t.key, todayStr()); return r && r.done; }).length;
-    const ongoingDone = ERIKA_TASKS_ONGOING.filter(t=>{ const r = getDailyTaskRow('erika', t.key, todayStr()); return r && r.done; }).length;
+    const morningDone = ERIKA_TASKS_MORNING.filter(t=>{ const r = getDailyTaskRow('erika', t.key, date); return r && r.done; }).length;
+    const ongoingDone = ERIKA_TASKS_ONGOING.filter(t=>{ const r = getDailyTaskRow('erika', t.key, date); return r && r.done; }).length;
     content = `
       <div class="card" style="margin-bottom:16px;">
         <div class="card-title">Protocolo inicial · 8:00 am</div>
-        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${morningDone}/${ERIKA_TASKS_MORNING.length} completadas hoy</div>
-        ${ERIKA_TASKS_MORNING.map((t,i)=>`<div style="display:flex; align-items:center; gap:10px;"><div class="task-priority">${i+1}</div>${renderTaskRow('erika', t)}</div>`).join('')}
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${morningDone}/${ERIKA_TASKS_MORNING.length} completadas${isToday?' hoy':''}</div>
+        ${ERIKA_TASKS_MORNING.map((t,i)=>`<div style="display:flex; align-items:center; gap:10px;"><div class="task-priority">${i+1}</div>${renderTaskRow('erika', t, date, editable)}</div>`).join('')}
       </div>
       <div class="card">
         <div class="card-title">Actividades sin hora fija · se hacen a lo largo del día</div>
-        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${ongoingDone}/${ERIKA_TASKS_ONGOING.length} completadas hoy</div>
-        ${ERIKA_TASKS_ONGOING.map(t=>renderTaskRow('erika', t)).join('')}
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${ongoingDone}/${ERIKA_TASKS_ONGOING.length} completadas${isToday?' hoy':''}</div>
+        ${ERIKA_TASKS_ONGOING.map(t=>renderTaskRow('erika', t, date, editable)).join('')}
       </div>
     `;
   }
@@ -2070,12 +2100,20 @@ function renderDailyTasks(){
     <div class="toolbar">
       <div>
         <div class="page-title">Actividades Diarias</div>
-        <div class="page-sub">${dateLabel} · se reinicia solo cada día</div>
+        <div class="page-sub">${isToday ? 'Se reinicia solo cada día' : 'Historial — solo consulta'}</div>
       </div>
-      ${canSwitch ? `<div class="day-tabs">
-        <div class="day-tab ${activeRole==='ayrton'?'active':''}" data-tasks-role="ayrton">Ayrton</div>
-        <div class="day-tab ${activeRole==='erika'?'active':''}" data-tasks-role="erika">Erika</div>
-      </div>` : ''}
+      <div style="display:flex; gap:10px; align-items:center;">
+        ${canSwitch ? `<div class="day-tabs">
+          <div class="day-tab ${activeRole==='ayrton'?'active':''}" data-tasks-role="ayrton">Ayrton</div>
+          <div class="day-tab ${activeRole==='erika'?'active':''}" data-tasks-role="erika">Erika</div>
+        </div>` : ''}
+        <div class="date-nav">
+          <button class="btn secondary small" id="prevTaskDay" title="Día anterior">‹</button>
+          <div class="date-nav-label">${dateLabel}</div>
+          <button class="btn secondary small" id="nextTaskDay" title="Día siguiente" ${isToday?'disabled':''}>›</button>
+          ${!isToday ? `<button class="btn small" id="todayTaskDay">Hoy</button>` : ''}
+        </div>
+      </div>
     </div>
     ${content}
   `;
@@ -2083,6 +2121,11 @@ function renderDailyTasks(){
   document.querySelectorAll('[data-tasks-role]').forEach(el=>{
     el.onclick = ()=>{ state.dailyTasksRole = el.dataset.tasksRole; renderDailyTasks(); };
   });
+  document.getElementById('prevTaskDay').onclick = ()=>{ state.dailyTasksDate = addDays(date, -1); renderDailyTasks(); };
+  const nextBtn = document.getElementById('nextTaskDay');
+  if(nextBtn) nextBtn.onclick = ()=>{ if(!isToday){ state.dailyTasksDate = addDays(date, 1); renderDailyTasks(); } };
+  const todayBtn = document.getElementById('todayTaskDay');
+  if(todayBtn) todayBtn.onclick = ()=>{ state.dailyTasksDate = todayStr(); renderDailyTasks(); };
   document.querySelectorAll('[data-task]').forEach(el=>{
     el.onclick = ()=>toggleDailyTask(el.dataset.role, el.dataset.task);
   });
@@ -2183,11 +2226,21 @@ function openStaffBetForm(staffId, editId){
     <div class="field"><label>Devuelto / cobrado ($)</label><input id="f-sbReturned" type="number" step="0.01" placeholder="80" value="${existing?existing.returned:''}"></div>
     <div class="field"><label>Fecha</label><input id="f-sbDate" type="date" value="${existing?existing.date:new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>Nota (opcional)</label><input id="f-sbNote" value="${existing?(existing.note||'').replace(/"/g,'&quot;'):''}"></div>
+    <div id="sbLossWarning" style="display:none; background:var(--loss-dim); color:#FF8A8E; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:10px;">⚠️ Con estos montos se va a ver como apuesta PERDIDA (devuelto ≤ invertido). Si esta apuesta se ganó, revisa el "Devuelto" antes de guardar.</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="saveStaffBet">Guardar</button>
     </div>
   `);
+  const sbCheckLoss = ()=>{
+    const inv = Number(document.getElementById('f-sbInvested').value)||0;
+    const retField = document.getElementById('f-sbReturned').value;
+    const ret = Number(retField)||0;
+    document.getElementById('sbLossWarning').style.display = (retField!=='' && ret<=inv) ? 'block' : 'none';
+  };
+  document.getElementById('f-sbInvested').oninput = sbCheckLoss;
+  document.getElementById('f-sbReturned').oninput = sbCheckLoss;
+  sbCheckLoss();
   document.getElementById('saveStaffBet').onclick = async ()=>{
     const invested = Number(document.getElementById('f-sbInvested').value)||0;
     const returned = Number(document.getElementById('f-sbReturned').value)||0;
@@ -2303,6 +2356,7 @@ function showStaffBetConfirm(result, previewUrl, thumb, staffId){
     <div class="field"><label>Invertido ($)</label><input id="f-sbaInvested" type="number" step="0.01" value="${invested}"></div>
     <div class="field"><label>Devuelto / cobrado ($)</label><input id="f-sbaReturned" type="number" step="0.01" value="${returned}"></div>
     <div class="field"><label>Fecha</label><input id="f-sbaDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div id="sbaLossWarning" style="display:none; background:var(--loss-dim); color:#FF8A8E; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:10px;">⚠️ Con estos montos la apuesta se vería como PERDIDA (devuelto ≤ invertido). Esto es una apuesta ya GANADA — revisa el "Devuelto" antes de confirmar, seguro la IA no lo leyó bien.</div>
     <div id="sbaCommissionPreview" style="font-size:13px; color:var(--muted); margin-bottom:10px;"></div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -2311,12 +2365,15 @@ function showStaffBetConfirm(result, previewUrl, thumb, staffId){
   `);
 
   const updatePreview = ()=>{
-    const inv = Number(document.getElementById('f-sbaInvested').value)||0;
-    const ret = Number(document.getElementById('f-sbaReturned').value)||0;
+    const invField = document.getElementById('f-sbaInvested').value;
+    const retField = document.getElementById('f-sbaReturned').value;
+    const inv = Number(invField)||0;
+    const ret = Number(retField)||0;
     const profit = Math.max(0, ret-inv);
     const pct = s ? Number(s.betCommissionPct)||0 : 0;
     const comm = profit * (pct/100);
     document.getElementById('sbaCommissionPreview').textContent = `Ganancia: ${fmtMoney(profit)} · Comisión (${pct}%): ${fmtMoney(comm)}`;
+    document.getElementById('sbaLossWarning').style.display = (invField!=='' && ret<=inv) ? 'block' : 'none';
   };
   updatePreview();
   document.getElementById('f-sbaInvested').oninput = updatePreview;
