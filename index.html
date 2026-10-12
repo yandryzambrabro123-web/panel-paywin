@@ -1726,7 +1726,7 @@ function renderStaffFinance(){
             <td class="mono" style="${profit<0?'color:var(--loss);':''}">${fmtMoney(profit)}</td>
             <td class="mono">${fmtMoney(comm)}</td>
             <td>${b.paid?`<span class="badge won">Pagado</span>`:`<button class="btn secondary small" data-pay-staffbet="${b.id}">Marcar pagado</button>`}</td>
-            <td class="row-actions"><button class="btn danger small" data-del-staffbet="${b.id}">Eliminar</button></td>
+            <td class="row-actions"><button class="btn secondary small" data-edit-staffbet="${b.id}">Editar</button> <button class="btn danger small" data-del-staffbet="${b.id}">Eliminar</button></td>
           </tr>`; }).join('')}
         </tbody></table>` : `<div class="empty">Sin apuestas registradas ${periodEmptyLabel}.</div>`}
       </div>
@@ -1861,6 +1861,7 @@ function renderStaffFinance(){
       const addAdvanceBtn = document.getElementById('addAdvanceBtn');
       if(addAdvanceBtn) addAdvanceBtn.onclick = ()=>openStaffAdvanceForm(cur.id);
       document.querySelectorAll('[data-del-staffbet]').forEach(b=>b.onclick=()=>delItem('staffBets', b.dataset.delStaffbet, renderStaffFinance));
+      document.querySelectorAll('[data-edit-staffbet]').forEach(b=>b.onclick=()=>openStaffBetForm(cur.id, b.dataset.editStaffbet));
       document.querySelectorAll('[data-del-advance]').forEach(b=>b.onclick=()=>delItem('staffAdvances', b.dataset.delAdvance, renderStaffFinance));
       document.querySelectorAll('[data-del-vipsale]').forEach(b=>b.onclick=()=>delItem('staffVipSales', b.dataset.delVipsale, renderStaffFinance));
       document.querySelectorAll('[data-pay-staffbet]').forEach(b=>{
@@ -1989,14 +1990,15 @@ function openStaffForm(editId){
   };
 }
 
-function openStaffBetForm(staffId){
+function openStaffBetForm(staffId, editId){
+  const existing = editId ? state.staffBets.find(b=>b.id===editId) : null;
   openModal(`
-    <h3>Registrar apuesta</h3>
-    <div class="field"><label>Pick / descripción (opcional)</label><input id="f-sbPick" placeholder="Ej: Real Madrid gana"></div>
-    <div class="field"><label>Invertido ($)</label><input id="f-sbInvested" type="number" step="0.01" placeholder="50"></div>
-    <div class="field"><label>Devuelto / cobrado ($)</label><input id="f-sbReturned" type="number" step="0.01" placeholder="80"></div>
-    <div class="field"><label>Fecha</label><input id="f-sbDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-    <div class="field"><label>Nota (opcional)</label><input id="f-sbNote"></div>
+    <h3>${existing ? 'Editar apuesta' : 'Registrar apuesta'}</h3>
+    <div class="field"><label>Pick / descripción (opcional)</label><input id="f-sbPick" placeholder="Ej: Real Madrid gana" value="${existing?(existing.pick||'').replace(/"/g,'&quot;'):''}"></div>
+    <div class="field"><label>Invertido ($)</label><input id="f-sbInvested" type="number" step="0.01" placeholder="50" value="${existing?existing.invested:''}"></div>
+    <div class="field"><label>Devuelto / cobrado ($)</label><input id="f-sbReturned" type="number" step="0.01" placeholder="80" value="${existing?existing.returned:''}"></div>
+    <div class="field"><label>Fecha</label><input id="f-sbDate" type="date" value="${existing?existing.date:new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota (opcional)</label><input id="f-sbNote" value="${existing?(existing.note||'').replace(/"/g,'&quot;'):''}"></div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="saveStaffBet">Guardar</button>
@@ -2005,14 +2007,17 @@ function openStaffBetForm(staffId){
   document.getElementById('saveStaffBet').onclick = async ()=>{
     const invested = Number(document.getElementById('f-sbInvested').value)||0;
     const returned = Number(document.getElementById('f-sbReturned').value)||0;
-    state.staffBets.push({
-      id: uid(), staffId,
+    const data = {
       pick: document.getElementById('f-sbPick').value.trim(),
       invested, returned,
       date: document.getElementById('f-sbDate').value || new Date().toISOString().slice(0,10),
-      note: document.getElementById('f-sbNote').value.trim(),
-      receiptImage: ''
-    });
+      note: document.getElementById('f-sbNote').value.trim()
+    };
+    if(existing){
+      Object.assign(existing, data);
+    } else {
+      state.staffBets.push({ id: uid(), staffId, ...data, receiptImage: '', paid: false });
+    }
     closeModal();
     renderStaffFinance();
     await persist('staffBets');
