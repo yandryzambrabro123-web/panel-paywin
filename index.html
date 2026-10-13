@@ -362,7 +362,7 @@ const FINANCE_LATEST_BASE = {
 };
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], dailyTasksRole: 'ayrton', dailyTasksDate: '', vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], dailyTasksRole: 'ayrton', dailyTasksDate: '', showArchivedStaff: false, vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -412,7 +412,8 @@ function coerceRow(key, row){
       stakeCommissionPct:Number(row.stakeCommissionPct)||0,
       appliesVipCommission: row.appliesVipCommission===true||row.appliesVipCommission==='true',
       vipCommissionPct:Number(row.vipCommissionPct)||0,
-      notes:row.notes||''
+      notes:row.notes||'',
+      archived: row.archived===true||row.archived==='true'
     };
   }
   if(key === 'staffBets'){
@@ -1749,7 +1750,11 @@ function renderStaffFinance(){
   const canDeleteAdvance = isAdmin;
   const canTogglePaid = isAdmin;                      // marcar una comisión como pagada: solo el admin
 
-  let members = [...state.staff].sort((a,b)=>a.name.localeCompare(b.name));
+  // Los archivados (gente que ya no trabaja con nosotros, pero cuyo historial se conserva) se
+  // esconden de la lista normal — solo el admin puede destaparlos con "Ver archivados", y nunca
+  // se le muestran a Erika.
+  const showArchived = isAdmin && state.showArchivedStaff;
+  let members = [...state.staff].filter(s=>showArchived || !s.archived).sort((a,b)=>a.name.localeCompare(b.name));
   if(isAyrtonLogin){
     const mine = myAyrtonRecord();
     members = mine ? [mine] : [];
@@ -1888,6 +1893,7 @@ function renderStaffFinance(){
         ${summaryCells}
         ${canManageStaff ? `<div style="margin-left:auto; display:flex; gap:8px;">
           <button class="btn secondary small" id="editStaffBtn">Editar persona</button>
+          <button class="btn secondary small" id="archiveStaffBtn">${cur.archived?'Desarchivar persona':'Archivar persona'}</button>
           <button class="btn danger small" id="delStaffBtn">Eliminar persona</button>
         </div>` : ''}
       </div>
@@ -1908,12 +1914,13 @@ function renderStaffFinance(){
       </div>
       <div style="display:flex; gap:10px; align-items:flex-end;">
         ${monthFilterHTML}
+        ${isAdmin ? `<label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); cursor:pointer; margin-bottom:9px;"><input type="checkbox" id="toggleArchivedStaff" ${state.showArchivedStaff?'checked':''}> Ver archivados</label>` : ''}
         <button class="btn secondary" id="refreshStaffBtn" title="Actualizar">🔄 Actualizar</button>
         ${canManageStaff ? `<button class="btn" id="addStaffBtn">+ Nueva persona</button>` : ''}
       </div>
     </div>
     ${canSwitchProfiles && members.length > 1 ? `<div class="day-tabs">
-      ${members.map(m=>`<div class="day-tab ${cur && m.id===cur.id?'active':''}" data-staff="${m.id}">${m.name}<span class="day-tab-sub">· ${m.role||'Equipo'}</span></div>`).join('')}
+      ${members.map(m=>`<div class="day-tab ${cur && m.id===cur.id?'active':''}" data-staff="${m.id}">${m.name}${m.archived?' 🗄':''}<span class="day-tab-sub">· ${m.role||'Equipo'}</span></div>`).join('')}
     </div>` : ''}
     ${body}
   `;
@@ -1931,6 +1938,8 @@ function renderStaffFinance(){
     const addStaffBtn = document.getElementById('addStaffBtn');
     if(addStaffBtn) addStaffBtn.onclick = ()=>openStaffForm();
   }
+  const toggleArchivedEl = document.getElementById('toggleArchivedStaff');
+  if(toggleArchivedEl) toggleArchivedEl.onchange = (e)=>{ state.showArchivedStaff = e.target.checked; renderStaffFinance(); };
   if(canSwitchProfiles){
     document.querySelectorAll('[data-staff]').forEach(el=>{
       el.onclick = ()=>{ state.staffId = el.dataset.staff; state.staffDay = ''; renderStaffFinance(); };
@@ -1940,6 +1949,12 @@ function renderStaffFinance(){
   if(cur){
     if(canManageStaff){
       document.getElementById('editStaffBtn').onclick = ()=>openStaffForm(cur.id);
+      document.getElementById('archiveStaffBtn').onclick = async ()=>{
+        cur.archived = !cur.archived;
+        if(cur.archived) state.staffId = ''; // ya no se queda viendo a alguien que acaba de archivar
+        renderStaffFinance();
+        await persist('staff');
+      };
       document.getElementById('delStaffBtn').onclick = async ()=>{
         if(!confirm(`¿Eliminar a "${cur.name}"? Esto también borra sus apuestas, ventas VIP y anticipos registrados.`)) return;
         const removedBetIds = state.staffBets.filter(b=>b.staffId===cur.id).map(b=>b.id);
@@ -2999,15 +3014,12 @@ async function attemptLogin(){
   const btn = document.getElementById('loginBtn');
   errEl.style.display = 'none';
 
-  // Acceso del socio y de la colaboradora: credenciales fijas definidas arriba, no pasan por el Sheet de login.
+  // Acceso de la colaboradora: credenciales fijas definidas arriba, no pasan por el Sheet de login.
   // El usuario no distingue mayúsculas/minúsculas (la contraseña sí, tal cual se definió arriba).
+  // OJO: el acceso de "socio" (Ayrton) quedó deshabilitado a propósito — ya no trabaja con
+  // nosotros, así que esas credenciales ya no dejan entrar a nadie (ver PARTNER_USER/PARTNER_PASS
+  // más arriba, que se quedan solo de referencia por si algún día vuelve a activarse).
   const userLower = user.toLowerCase();
-  if(userLower === PARTNER_USER.toLowerCase() && pass === PARTNER_PASS){
-    localStorage.setItem('panelVipAuth', 'true');
-    localStorage.setItem('panelRole', 'socio');
-    enterApp('socio');
-    return;
-  }
   if(userLower === COLLAB_USER.toLowerCase() && pass === COLLAB_PASS){
     localStorage.setItem('panelVipAuth', 'true');
     localStorage.setItem('panelRole', 'colaboradora');
@@ -3045,6 +3057,12 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 
 if(localStorage.getItem('panelVipAuth') === 'true'){
   const savedRole = localStorage.getItem('panelRole');
-  enterApp((savedRole === 'socio' || savedRole === 'colaboradora') ? savedRole : 'admin');
+  if(savedRole === 'socio'){
+    // Sesión vieja guardada en el dispositivo de Ayrton — ya no tiene acceso, se cierra sola.
+    localStorage.removeItem('panelVipAuth');
+    localStorage.removeItem('panelRole');
+  } else {
+    enterApp(savedRole === 'colaboradora' ? savedRole : 'admin');
+  }
 }
 </script>
