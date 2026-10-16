@@ -2542,6 +2542,19 @@ function openFinanceMovementForm(rerender, editId){
     <div class="field"><label>N° de comprobante (opcional)</label><input id="f-finNum" placeholder="Ej: 64817155" value="${existing?existing.comprobanteNumero||'':''}"></div>
     <div class="field"><label>Fecha</label><input id="f-finDate" type="date" value="${existing?existing.date||'':new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>Nota</label><textarea id="f-finNote" placeholder="Ej: depósito de Jhon, comisión, ajuste...">${existing?existing.note||'':''}</textarea></div>
+    ${existing && state.role==='admin' ? `
+    <div style="border-top:1px solid var(--border); margin:14px 0; padding-top:14px;">
+      <div style="font-size:11.5px; color:var(--muted); margin-bottom:10px;">Este movimiento es de antes de que el panel guardara esto automático — si te acuerdas quién lo registró y cuándo, lo puedes completar aquí a mano. Déjalo vacío si no lo sabes.</div>
+      <div class="field"><label>Registrado por (opcional)</label>
+        <select id="f-finCreatedBy">
+          <option value="" ${!existing.createdBy?'selected':''}>— Sin dato —</option>
+          <option value="Admin" ${existing.createdBy==='Admin'?'selected':''}>Admin</option>
+          <option value="Erika" ${existing.createdBy==='Erika'?'selected':''}>Erika</option>
+        </select>
+      </div>
+      <div class="field"><label>Hora de registro (opcional)</label><input id="f-finCreatedAt" type="datetime-local" value="${existing.createdAt ? existing.createdAt.slice(0,16) : ''}"></div>
+    </div>
+    ` : ''}
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="saveFinMovement">Guardar</button>
@@ -2560,6 +2573,12 @@ function openFinanceMovementForm(rerender, editId){
     };
     if(existing){
       Object.assign(existing, data);
+      if(state.role==='admin'){
+        const cbEl = document.getElementById('f-finCreatedBy');
+        const caEl = document.getElementById('f-finCreatedAt');
+        if(cbEl) existing.createdBy = cbEl.value;
+        if(caEl) existing.createdAt = caEl.value ? new Date(caEl.value).toISOString() : '';
+      }
     } else {
       state.financeMovements.push({ id: uid(), transferId:'', ...data, createdAt: new Date().toISOString(), createdBy: currentUserLabel() });
     }
