@@ -369,6 +369,17 @@ let state = {
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmtMoney(n){ return '$' + (Number(n)||0).toFixed(2); }
+// Quién está registrando el movimiento ahora mismo — se guarda junto con cada movimiento de
+// Cuadre Financiero para saber quién lo metió (tú o Erika) y a qué hora.
+function currentUserLabel(){
+  if(state.role === 'colaboradora') return 'Erika';
+  if(state.role === 'socio') return 'Ayrton';
+  return 'Admin';
+}
+function fmtDateTime(iso){
+  if(!iso) return '-';
+  try{ return new Date(iso).toLocaleString('es-EC',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return '-'; }
+}
 // OJO: "new Date('2026-10-11')" lo interpreta como medianoche UTC, y acá en Ecuador (UTC-5)
 // eso cae en el día ANTERIOR al mostrarlo — por eso las fechas salían un día atrás. Si viene
 // en formato YYYY-MM-DD, se arma la fecha con los números directos (como fecha local), sin
@@ -399,7 +410,7 @@ function coerceRow(key, row){
     return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending' };
   }
   if(key === 'financeMovements'){
-    return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'', comprobanteNumero:row.comprobanteNumero||'', receiptImage:row.receiptImage||'' };
+    return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'', comprobanteNumero:row.comprobanteNumero||'', receiptImage:row.receiptImage||'', createdAt:row.createdAt||'', createdBy:row.createdBy||'' };
   }
   if(key === 'staff'){
     return {
@@ -1359,6 +1370,8 @@ async function refreshFinanceData(){
 
 function renderFinance(){
   const addOnly = state.role === 'colaboradora'; // solo puede registrar ingresos/egresos, nada más
+  const isAdmin = state.role === 'admin';
+  const showRegisteredBy = isAdmin; // quién registró cada movimiento y a qué hora: solo tú lo ves
   const accFilter = state.financeAccountFilter;
   const allRows = accFilter ? state.financeMovements.filter(m=>m.accountId===accFilter) : state.financeMovements;
   const rows = filterByDate(allRows, 'date', 'financeMovements');
@@ -1413,7 +1426,7 @@ function renderFinance(){
     </div>
 
     <div class="card" style="overflow-x:auto;">
-      ${sorted.length ? `<table><thead><tr><th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Monto</th><th>N° comprobante</th><th>Foto</th><th>Nota</th><th></th><th></th></tr></thead><tbody>
+      ${sorted.length ? `<table><thead><tr><th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Monto</th><th>N° comprobante</th><th>Foto</th><th>Nota</th>${showRegisteredBy?'<th>Registrado</th>':''}<th></th><th></th></tr></thead><tbody>
         ${sorted.map(m=>{ const a = financeAccount(m.accountId); return `<tr>
           <td class="mono">${fmtDate(m.date)}</td>
           <td>${a ? a.name : '-'} ${a ? `<span class="badge ${a.type}" style="margin-left:4px;">${a.type==='banco'?'Banco':'Caja'}</span>` : ''}</td>
@@ -1422,6 +1435,7 @@ function renderFinance(){
           <td class="mono" style="font-size:12px;">${m.comprobanteNumero || '-'}</td>
           <td>${m.receiptImage ? `<img src="${m.receiptImage}" data-view-receipt="${m.id}" style="width:38px; height:38px; object-fit:cover; border-radius:6px; cursor:pointer; border:1px solid var(--border);">` : '-'}</td>
           <td style="max-width:220px; white-space:pre-wrap; color:var(--muted); font-size:12.5px;">${m.note||'-'}</td>
+          ${showRegisteredBy?`<td style="font-size:12px; color:var(--muted); white-space:nowrap;">${m.createdBy ? `<span class="badge simple">${m.createdBy}</span>` : '-'}${m.createdAt ? `<div style="margin-top:3px;">${fmtDateTime(m.createdAt)}</div>` : ''}</td>`:''}
           <td>${m.transferId ? '<span class="badge combo">Transferencia</span>' : ''}</td>
           ${addOnly ? '' : `<td class="row-actions">
             <button class="btn secondary small" data-edit-fin="${m.id}">Editar</button>
@@ -1476,7 +1490,7 @@ function openDailyBalanceForm(rerender){
       if(raw === '') return;
       const amount = Number(raw);
       if(isNaN(amount)) return;
-      state.financeMovements.push({ id: uid(), accountId: a.id, type:'in', amount, date, note, comprobanteNumero:'', receiptImage:'', transferId:'' });
+      state.financeMovements.push({ id: uid(), accountId: a.id, type:'in', amount, date, note, comprobanteNumero:'', receiptImage:'', transferId:'', createdAt: new Date().toISOString(), createdBy: currentUserLabel() });
       added++;
     });
     if(!added){ alert('Escribe al menos un monto.'); return; }
@@ -2547,7 +2561,7 @@ function openFinanceMovementForm(rerender, editId){
     if(existing){
       Object.assign(existing, data);
     } else {
-      state.financeMovements.push({ id: uid(), transferId:'', ...data });
+      state.financeMovements.push({ id: uid(), transferId:'', ...data, createdAt: new Date().toISOString(), createdBy: currentUserLabel() });
     }
     closeModal();
     rerender();
@@ -2585,8 +2599,10 @@ function openFinanceTransferForm(rerender){
     const date = document.getElementById('f-trDate').value || new Date().toISOString().slice(0,10);
     const note = document.getElementById('f-trNote').value.trim();
     const transferId = uid();
-    state.financeMovements.push({ id: uid(), accountId: from, type:'out', amount, date, note, transferId });
-    state.financeMovements.push({ id: uid(), accountId: to, type:'in', amount, date, note, transferId });
+    const createdAt = new Date().toISOString();
+    const createdBy = currentUserLabel();
+    state.financeMovements.push({ id: uid(), accountId: from, type:'out', amount, date, note, transferId, createdAt, createdBy });
+    state.financeMovements.push({ id: uid(), accountId: to, type:'in', amount, date, note, transferId, createdAt, createdBy });
     closeModal();
     rerender();
     await persist('financeMovements');
@@ -2882,7 +2898,9 @@ function showReceiptConfirm(result, previewUrl, thumb, rerender){
       note: document.getElementById('f-rcNote').value.trim(),
       comprobanteNumero: num,
       receiptImage: thumb || '',
-      transferId: ''
+      transferId: '',
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserLabel()
     });
     closeModal();
     rerender();
