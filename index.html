@@ -233,21 +233,29 @@
   }
   .win-type-toggle:hover{ opacity:1; }
 
-  .win-aura-wrap{ position:relative; width:260px; height:260px; display:flex; align-items:center; justify-content:center; }
+  .win-aura-wrap{ position:relative; width:320px; height:320px; display:flex; align-items:center; justify-content:center; }
+  .win-halo{
+    position:absolute; width:260px; height:260px; border-radius:50%;
+    background: conic-gradient(from 0deg, transparent 0%, rgba(212,175,106,.7) 12%, transparent 26%, transparent 50%, rgba(255,220,150,.55) 62%, transparent 76%, transparent 100%);
+    filter: blur(7px);
+    animation: winHaloSpin 7s linear infinite;
+    z-index:0; opacity:.75;
+  }
+  @keyframes winHaloSpin{ to{ transform:rotate(360deg); } }
   .win-ring{
-    position:absolute; width:100%; height:100%; border-radius:50%; border:1px solid rgba(212,175,106,.4); opacity:0;
+    position:absolute; width:230px; height:230px; border-radius:50%; border:1px solid rgba(212,175,106,.45); opacity:0;
     animation: winRingPulse 2.8s ease-out infinite;
   }
   .win-ring-2{ animation-delay: 1.4s; }
   @keyframes winRingPulse{
-    0%{ transform:scale(.5); opacity:.6; }
-    100%{ transform:scale(1.25); opacity:0; }
+    0%{ transform:scale(.55); opacity:.65; }
+    100%{ transform:scale(1.35); opacity:0; }
   }
 
   .win-orb{
-    width:190px; height:190px; border-radius:50%; margin:0 auto; cursor:pointer;
-    background: radial-gradient(circle at 35% 30%, rgba(255,235,195,.9), var(--accent) 45%, #8a6a2e 75%, #2b2010 100%);
-    box-shadow: 0 0 40px -4px rgba(212,175,106,.55), inset 0 0 25px rgba(0,0,0,.25);
+    width:208px; height:208px; border-radius:50%; margin:0 auto; cursor:pointer;
+    background: radial-gradient(circle at 35% 28%, #fff6e2, rgba(255,235,195,.95) 18%, var(--accent) 48%, #8a6a2e 78%, #1c1409 100%);
+    box-shadow: 0 0 55px -2px rgba(212,175,106,.6), inset 0 0 30px rgba(0,0,0,.3);
     transition: box-shadow .25s ease, filter .25s ease;
     transform: scale(0.82);
     filter: saturate(0.7) brightness(0.75);
@@ -255,7 +263,7 @@
   }
   .win-orb::after{
     content:''; position:absolute; inset:0; border-radius:50%;
-    background: radial-gradient(circle at 65% 70%, rgba(255,255,255,.14), transparent 55%);
+    background: radial-gradient(circle at 68% 72%, rgba(255,255,255,.16), transparent 55%);
   }
   .win-orb.win-orb-idle{ animation: winOrbBreathe 3.6s ease-in-out infinite; }
   @keyframes winOrbBreathe{
@@ -263,23 +271,27 @@
     50%{ transform:scale(0.86); filter:saturate(0.75) brightness(0.8); }
   }
   .win-orb.win-orb-listening{
-    filter:saturate(1.15) brightness(1.05);
-    box-shadow: 0 0 65px -2px rgba(212,175,106,.9), inset 0 0 28px rgba(255,255,255,.15);
+    animation: winOrbHue 3.2s ease-in-out infinite;
+    box-shadow: 0 0 85px 0px rgba(212,175,106,.95), inset 0 0 32px rgba(255,255,255,.18);
+  }
+  @keyframes winOrbHue{
+    0%,100%{ filter:saturate(1.15) brightness(1.05) hue-rotate(0deg); transform:scale(0.95); }
+    50%{ filter:saturate(1.35) brightness(1.18) hue-rotate(14deg); transform:scale(1.0); }
   }
   .win-orb.win-orb-thinking{
-    animation: winOrbSpin 1.1s linear infinite, winOrbPulseFast 0.7s ease-in-out infinite;
-    box-shadow: 0 0 70px -2px rgba(212,175,106,1), inset 0 0 28px rgba(255,255,255,.2);
+    animation: winOrbSpin 1s linear infinite, winOrbPulseFast 0.65s ease-in-out infinite;
+    box-shadow: 0 0 90px -2px rgba(212,175,106,1), inset 0 0 32px rgba(255,255,255,.22);
   }
   .win-orb.win-orb-speaking{
-    animation: winOrbPulseFast 0.5s ease-in-out infinite;
-    filter:saturate(1.25) brightness(1.2);
-    box-shadow: 0 0 75px 0px rgba(212,175,106,1), inset 0 0 28px rgba(255,255,255,.25);
+    animation: winOrbPulseFast 0.42s ease-in-out infinite;
+    filter:saturate(1.3) brightness(1.25);
+    box-shadow: 0 0 100px 0px rgba(255,210,130,1), inset 0 0 32px rgba(255,255,255,.3);
   }
   @keyframes winOrbSpin{ 0%{ background-position:0 0; } 100%{ background-position:40px 40px; } }
-  @keyframes winOrbPulseFast{ 0%,100%{ transform:scale(0.95); } 50%{ transform:scale(1.08); } }
+  @keyframes winOrbPulseFast{ 0%,100%{ transform:scale(0.96); } 50%{ transform:scale(1.1); } }
   .win-orb.win-orb-done{
     filter:saturate(1.3) brightness(1.2);
-    box-shadow: 0 0 80px 4px rgba(120,220,150,.85), inset 0 0 28px rgba(255,255,255,.2);
+    box-shadow: 0 0 95px 4px rgba(120,220,150,.9), inset 0 0 32px rgba(255,255,255,.2);
   }
 </style>
 
@@ -3122,6 +3134,7 @@ let winAnalyser = null;
 let winAnimFrameId = null;
 let winFinalBuffer = '';
 let winSilenceTimer = null;
+let winConversation = [];
 
 function renderWin(){
   const outboxRows = [...state.winOutbox].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
@@ -3136,6 +3149,7 @@ function renderWin(){
         <button class="win-icon-btn" id="winRemindersBtn" title="Recordatorios">&#9200;${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
       </div>
       <div class="win-aura-wrap">
+        <div class="win-halo"></div>
         <div class="win-ring win-ring-1"></div>
         <div class="win-ring win-ring-2"></div>
         <div id="winOrb" class="win-orb win-orb-idle"></div>
@@ -3283,7 +3297,9 @@ async function startWinListening(){
   winAnalyser.fftSize = 256;
   source.connect(winAnalyser);
   winVolumeLoop();
-  winSpeak('Hola jefe'); // saluda y, cuando termina de hablar, arranca sola a escuchar
+  winConversation = []; // conversación nueva cada vez que se activa el micrófono
+  applyWinOrbState('listening', 'Escuchando... dile "hola Win" para empezar');
+  startWinRecognitionEngine();
 }
 
 // ---- Voz de Win (texto a voz del navegador) ----
@@ -3369,6 +3385,7 @@ function stopWinListening(){
   if(winAudioCtx){ try{ winAudioCtx.close(); }catch(e){} winAudioCtx = null; }
   if('speechSynthesis' in window){ try{ window.speechSynthesis.cancel(); }catch(e){} }
   winFinalBuffer = '';
+  winConversation = [];
   const orb = document.getElementById('winOrb');
   if(orb){ orb.style.transform = ''; }
   applyWinOrbState('idle', 'Toca el círculo para activar a Win');
@@ -3389,28 +3406,33 @@ function winResumeAfterModal(){
   }
 }
 
-const WIN_GREETING_RE = /^(hola|hey|oye|buenas)[,.]?\s*(win)?[.!¡]*$/i;
+// Frase corta que Win dice al activar una herramienta, por si el modelo no mandó texto
+// propio junto con la acción (para que nunca se quede muda antes de abrir el formulario).
+const WIN_TOOL_ACK = {
+  abrir_formulario_apuesta: 'Dale, te abro el formulario.',
+  abrir_formulario_contenido: 'Va, sube la imagen.',
+  crear_recordatorio: 'Listo, te lo anoto.',
+  mandar_regalito: 'Dale, vamos con el regalito del día.'
+};
+
 async function processWinVoiceCommand(texto){
   const liveEl = document.getElementById('winLiveTranscript');
   if(liveEl) liveEl.textContent = '';
-  if(WIN_GREETING_RE.test(texto.trim())){
-    winSpeak('Hola jefe, dime');
-    return;
-  }
-  applyWinOrbState('thinking', 'Entendiendo: "' + texto + '"');
+  winConversation.push({ role: 'user', content: texto });
+  applyWinOrbState('thinking', 'Pensando...');
   try{
-    const res = await fetch('/api/win-comando', {
+    const res = await fetch('/api/win-chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texto })
+      body: JSON.stringify({ messages: winConversation })
     });
     const result = await res.json();
     if(!res.ok){
       applyWinOrbState('listening', result.error || 'No se pudo entender. Intenta de nuevo.');
       return;
     }
-    applyWinOrbState('done', 'Listo, abriendo...');
-    setTimeout(()=>{ if(winListeningActive) applyWinOrbState('listening', 'Escuchando... dime qué necesitas'); }, 900);
-    dispatchWinIntent(result, texto);
+    const spoken = (result.textReply && result.textReply.trim()) || (result.tool ? WIN_TOOL_ACK[result.tool.name] : null) || 'Ok.';
+    winConversation.push({ role: 'assistant', content: result.tool ? `${spoken} (${result.tool.name})` : spoken });
+    winSpeak(spoken, ()=>{ if(result.tool) dispatchWinTool(result.tool); });
   }catch(e){
     console.error(e);
     applyWinOrbState('listening', 'No se pudo conectar. Intenta de nuevo.');
@@ -3421,33 +3443,16 @@ async function sendWinCommand(){
   const input = document.getElementById('winCommandInput');
   const texto = input.value.trim();
   if(!texto) return;
-  const statusEl = document.getElementById('winStatus');
-  statusEl.textContent = 'Entendiendo...';
-  try{
-    const res = await fetch('/api/win-comando', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texto })
-    });
-    const result = await res.json();
-    if(!res.ok){ statusEl.textContent = result.error || 'No se pudo entender el comando.'; return; }
-    input.value = '';
-    statusEl.textContent = winListeningActive ? 'Escuchando... dime qué necesitas' : 'Toca el círculo para activar a Win';
-    dispatchWinIntent(result, texto);
-  }catch(e){
-    console.error(e);
-    statusEl.textContent = 'No se pudo conectar. Intenta de nuevo.';
-  }
+  input.value = '';
+  processWinVoiceCommand(texto);
 }
 
-function dispatchWinIntent(result, originalText){
-  const intent = result.intent || 'desconocido';
-  const destino = result.destino || '';
-  if(intent === 'nueva_apuesta') openWinBetForm('nueva_apuesta', destino);
-  else if(intent === 'ganada') openWinBetForm('ganada', destino);
-  else if(intent === 'contenido') openWinContentForm(result.nota || '', destino);
-  else if(intent === 'recordatorio') openWinReminderForm(result.nota || originalText, result.fecha || '', result.hora || '');
-  else if(intent === 'regalito') openWinGiftFlow();
-  else openWinContentForm(originalText, destino); // desconocido: no se pierde, cae en formulario genérico
+function dispatchWinTool(tool){
+  const input = tool.input || {};
+  if(tool.name === 'abrir_formulario_apuesta') openWinBetForm(input.kind === 'ganada' ? 'ganada' : 'nueva_apuesta', input.destino || '');
+  else if(tool.name === 'abrir_formulario_contenido') openWinContentForm(input.nota || '', input.destino || '');
+  else if(tool.name === 'crear_recordatorio') openWinReminderForm(input.texto || '', input.fecha || '', input.hora || '');
+  else if(tool.name === 'mandar_regalito') openWinGiftFlow();
 }
 
 const WIN_DESTINOS = ['Grupo VIP', 'Grupo 1X2', 'Grupo 1XBET', 'Comunidad gratis', 'Todas las comunidades'];
