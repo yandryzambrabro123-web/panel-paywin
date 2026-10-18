@@ -225,23 +225,58 @@
     position:absolute; top:-4px; right:-4px; background:var(--loss); color:#fff; font-size:10.5px; font-weight:800;
     border-radius:20px; min-width:18px; height:18px; display:flex; align-items:center; justify-content:center; padding:0 4px;
   }
-  .win-status{ margin-top:30px; font-size:15px; color:var(--muted); min-height:22px; max-width:560px; }
+  .win-brand{
+    display:flex; align-items:center; gap:9px; margin-bottom:8px;
+    font-family:var(--mono); font-size:13px; letter-spacing:3px; font-weight:600; color:var(--accent-light);
+  }
+  .win-brand-dot{
+    width:7px; height:7px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 rgba(212,175,106,0);
+    transition: background .3s ease, box-shadow .3s ease;
+  }
+  .win-brand-dot-idle{ background:var(--accent-dim); box-shadow:0 0 8px rgba(212,175,106,.4); }
+  .win-brand-dot-listening{ background:var(--accent); box-shadow:0 0 10px rgba(212,175,106,.9); animation:winDotPulse 1.6s ease-in-out infinite; }
+  .win-brand-dot-thinking{ background:#fff6e2; box-shadow:0 0 12px rgba(255,235,195,.95); animation:winDotPulse .5s ease-in-out infinite; }
+  .win-brand-dot-speaking{ background:#ffd27a; box-shadow:0 0 12px rgba(255,210,130,1); animation:winDotPulse .32s ease-in-out infinite; }
+  .win-brand-dot-done{ background:#7adc96; box-shadow:0 0 10px rgba(120,220,150,.9); }
+  @keyframes winDotPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+
+  .win-status{ margin-top:22px; font-size:15px; color:var(--muted); min-height:22px; max-width:560px; }
   .win-live-transcript{ font-size:13px; color:var(--accent); min-height:18px; margin-top:6px; max-width:560px; }
+  .win-bars{ display:flex; align-items:flex-end; justify-content:center; gap:5px; height:20px; margin-top:14px; }
+  .win-bar{ width:4px; min-height:3px; border-radius:2px; background:linear-gradient(180deg, var(--accent-light), var(--accent)); opacity:.3; transition:height .09s ease-out, opacity .2s ease; }
+  .win-bars.win-bars-animate .win-bar{ animation:winBarIdle 1.1s ease-in-out infinite; opacity:.85; }
+  .win-bars.win-bars-animate .win-bar:nth-child(1){ animation-delay:0s; }
+  .win-bars.win-bars-animate .win-bar:nth-child(2){ animation-delay:.08s; }
+  .win-bars.win-bars-animate .win-bar:nth-child(3){ animation-delay:.16s; }
+  .win-bars.win-bars-animate .win-bar:nth-child(4){ animation-delay:.24s; }
+  .win-bars.win-bars-animate .win-bar:nth-child(5){ animation-delay:.16s; }
+  .win-bars.win-bars-animate .win-bar:nth-child(6){ animation-delay:.08s; }
+  .win-bars.win-bars-animate .win-bar:nth-child(7){ animation-delay:0s; }
+  @keyframes winBarIdle{ 0%,100%{ height:3px; } 50%{ height:19px; } }
   .win-type-toggle{
-    margin-top:22px; background:transparent; border:none; color:var(--muted); font-size:12px;
+    margin-top:20px; background:transparent; border:none; color:var(--muted); font-size:12px;
     text-decoration:underline; cursor:pointer; opacity:.55;
   }
   .win-type-toggle:hover{ opacity:1; }
 
   .win-aura-wrap{ position:relative; width:320px; height:320px; display:flex; align-items:center; justify-content:center; }
-  .win-halo{
-    position:absolute; width:260px; height:260px; border-radius:50%;
-    background: conic-gradient(from 0deg, transparent 0%, rgba(212,175,106,.7) 12%, transparent 26%, transparent 50%, rgba(255,220,150,.55) 62%, transparent 76%, transparent 100%);
-    filter: blur(7px);
-    animation: winHaloSpin 7s linear infinite;
-    z-index:0; opacity:.75;
+  .win-dial{
+    position:absolute; width:300px; height:300px; border-radius:50%;
+    background: repeating-conic-gradient(from 0deg, rgba(212,175,106,.6) 0deg 1.6deg, transparent 1.6deg 9deg);
+    -webkit-mask: radial-gradient(circle, transparent 0 139px, #000 140px 148px, transparent 149px 100%);
+            mask: radial-gradient(circle, transparent 0 139px, #000 140px 148px, transparent 149px 100%);
+    animation: winDialSpin 50s linear infinite;
+    z-index:0; opacity:.5;
   }
-  @keyframes winHaloSpin{ to{ transform:rotate(360deg); } }
+  .win-dial-inner{
+    position:absolute; width:252px; height:252px; border-radius:50%;
+    background: repeating-conic-gradient(from 0deg, rgba(255,220,150,.7) 0deg 3deg, transparent 3deg 14deg);
+    -webkit-mask: radial-gradient(circle, transparent 0 114px, #000 115px 120px, transparent 121px 100%);
+            mask: radial-gradient(circle, transparent 0 114px, #000 115px 120px, transparent 121px 100%);
+    animation: winDialSpin 14s linear infinite reverse;
+    z-index:0; opacity:.6;
+  }
+  @keyframes winDialSpin{ to{ transform:rotate(360deg); } }
   .win-ring{
     position:absolute; width:230px; height:230px; border-radius:50%; border:1px solid rgba(212,175,106,.45); opacity:0;
     animation: winRingPulse 2.8s ease-out infinite;
@@ -260,10 +295,16 @@
     transform: scale(0.82);
     filter: saturate(0.7) brightness(0.75);
     position:relative; z-index:1;
+    display:flex; align-items:center; justify-content:center;
   }
   .win-orb::after{
     content:''; position:absolute; inset:0; border-radius:50%;
     background: radial-gradient(circle at 68% 72%, rgba(255,255,255,.16), transparent 55%);
+  }
+  .win-monogram{
+    position:relative; z-index:2; font-family:var(--mono); font-weight:700; font-size:54px; letter-spacing:-1px;
+    color:rgba(32,21,7,.5); text-shadow:0 1px 0 rgba(255,255,255,.3), 0 -1px 1px rgba(0,0,0,.25);
+    user-select:none; pointer-events:none;
   }
   .win-orb.win-orb-idle{ animation: winOrbBreathe 3.6s ease-in-out infinite; }
   @keyframes winOrbBreathe{
@@ -3139,7 +3180,29 @@ let winFinalBuffer = '';
 let winSilenceTimer = null;
 let winConversation = [];
 
+// Primera vez que se abre Win: le carga de una lo que el jefe ya le contó al panel sobre su
+// negocio, para que arranque conociéndolo en vez de empezar en blanco. Solo corre si todavía
+// no tiene nada guardado -- de ahí en adelante, Win sigue aprendiendo sola con guardar_recuerdo.
+const WIN_SEED_MEMORY = [
+  'Trabaja en Benderam, una red de agentes de apuestas deportivas en Ecuador, con horario de 10am a 7pm.',
+  'Tiene cuatro agencias de pronósticos propias y una comunidad que gestiona bajo la marca PayWin.',
+  'PayWin es su marca de recargas y retiros de casas de apuestas; maneja VIPs de las plataformas 1X2 y 1XBET con membresía de 7 días.',
+  'Vende stakes diarios y tiene un grupo VIP de apuestas además de comunidades gratis; consigue clientes con lives nocturnos y de TikTok.',
+  'Su colaborador Ayrton trabaja con él en PayWin y gana por comisión: 20% de la ganancia en apuestas y 25% de la venta de stakes del día.',
+  'Tiene un socio que ve las ventas de stakes, con acceso restringido en el panel solo a esa sección.',
+  'Está desarrollando su propia plataforma de pronósticos deportivos en Ecuador, con un modelo de comisiones para agentes y trabajando directo con Altenar como proveedor de cuotas.',
+  'Está armando un documento maestro de marketing y branding para Benderam; la publicidad física de las agencias la gestiona Dorian.',
+  'Consiguió personal nuevo en octubre 2026 y delegó la activación de la comunidad; él revisa comisiones, cuentas y el trabajo del día anterior.',
+  'Este panel se llama "Panel Administración Pay Win", vive en el repo panel-paywin de GitHub y se despliega en Vercel.'
+];
+function seedWinMemoryIfEmpty(){
+  if(state.winMemory.length) return;
+  state.winMemory = WIN_SEED_MEMORY.map(text => ({ id: uid(), text, createdAt: new Date().toISOString() }));
+  persist('winMemory'); // se guarda en segundo plano, no bloquea el primer render
+}
+
 function renderWin(){
+  seedWinMemoryIfEmpty();
   const outboxRows = [...state.winOutbox].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
   const pending = outboxRows.filter(o=>o.status==='pendiente');
   const sent = outboxRows.filter(o=>o.status==='enviado');
@@ -3152,13 +3215,16 @@ function renderWin(){
         <button class="win-icon-btn" id="winRemindersBtn" title="Recordatorios">&#9200;${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti">&#129504;${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
       </div>
+      <div class="win-brand"><span id="winBrandDot" class="win-brand-dot win-brand-dot-idle"></span>WIN</div>
       <div class="win-aura-wrap">
-        <div class="win-halo"></div>
+        <div class="win-dial"></div>
+        <div class="win-dial-inner"></div>
         <div class="win-ring win-ring-1"></div>
         <div class="win-ring win-ring-2"></div>
-        <div id="winOrb" class="win-orb win-orb-idle"></div>
+        <div id="winOrb" class="win-orb win-orb-idle"><span class="win-monogram">W</span></div>
       </div>
       <div id="winStatus" class="win-status">Activando a Win...</div>
+      <div id="winBars" class="win-bars">${'<span class="win-bar"></span>'.repeat(7)}</div>
       <div id="winLiveTranscript" class="win-live-transcript"></div>
       <button class="win-type-toggle" id="winTypeToggleBtn">Prefiero escribir</button>
       <div id="winTypeBox" style="display:none; margin-top:16px; width:100%; max-width:560px; text-align:left;">
@@ -3300,8 +3366,20 @@ async function completeReminder(id){
 function applyWinOrbState(mode, statusText){
   const orb = document.getElementById('winOrb');
   const statusEl = document.getElementById('winStatus');
+  const dot = document.getElementById('winBrandDot');
+  const bars = document.getElementById('winBars');
   if(orb) orb.className = 'win-orb win-orb-' + mode;
   if(statusEl && statusText !== undefined) statusEl.textContent = statusText;
+  if(dot) dot.className = 'win-brand-dot win-brand-dot-' + mode;
+  if(bars){
+    // mientras escucha, las barras las mueve winVolumeLoop con el volumen real del micrófono;
+    // en los demás estados (pensando, hablando) usan una animación propia tipo ecualizador.
+    if(mode === 'thinking' || mode === 'speaking') bars.classList.add('win-bars-animate');
+    else{
+      bars.classList.remove('win-bars-animate');
+      if(mode !== 'listening') bars.querySelectorAll('.win-bar').forEach(b=>{ b.style.height = '3px'; b.style.opacity = '.3'; });
+    }
+  }
 }
 
 // ---- Escucha continua: pide el micrófono UNA vez (toque inicial obligatorio del
@@ -3359,6 +3437,18 @@ function winVolumeLoop(){
   if(orb && !orb.classList.contains('win-orb-thinking')){
     const scale = 0.85 + Math.min(avg / 130, 1) * 0.3;
     orb.style.transform = `scale(${scale.toFixed(3)})`;
+  }
+  const bars = document.getElementById('winBars');
+  if(bars && !bars.classList.contains('win-bars-animate')){
+    const barEls = bars.querySelectorAll('.win-bar');
+    const bands = barEls.length;
+    const step = Math.floor(data.length / (bands + 1)) || 1;
+    barEls.forEach((bar, i)=>{
+      const v = data[(i + 1) * step] || 0; // 0..255, salta la primera banda (suele ser ruido/graves)
+      const h = 3 + Math.min(v / 255, 1) * 17;
+      bar.style.height = h.toFixed(1) + 'px';
+      bar.style.opacity = (0.35 + Math.min(v / 255, 1) * 0.6).toFixed(2);
+    });
   }
   winAnimFrameId = requestAnimationFrame(winVolumeLoop);
 }
