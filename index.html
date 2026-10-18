@@ -297,48 +297,36 @@
     position:relative; z-index:1;
     display:flex; align-items:center; justify-content:center;
   }
-  .win-face{ width:192px; height:192px; overflow:visible; }
-  .win-face .face-line{
-    fill:none; stroke:var(--accent); stroke-width:1.6; stroke-linejoin:round; stroke-linecap:round;
-    opacity:.8; filter:drop-shadow(0 0 3px rgba(212,175,106,.75));
+  /* ---- Núcleo reactor: el anillo segmentado gira solo, sin cara -- la "ruedita" ---- */
+  .win-reactor{ width:192px; height:192px; overflow:visible; }
+  .win-reactor .r-seg{ stroke:rgba(212,175,106,.38); stroke-width:7; }
+  .win-reactor .r-seg-on{ stroke:var(--accent-light); filter:drop-shadow(0 0 7px rgba(212,175,106,.9)); }
+  .win-reactor .r-ring{ fill:none; stroke:var(--accent); stroke-width:1.6; opacity:.75; filter:drop-shadow(0 0 3px rgba(212,175,106,.6)); }
+  .win-reactor .r-ring-in{ stroke-width:1.2; opacity:.55; }
+  .win-reactor .r-tri{
+    fill:rgba(212,175,106,.3); stroke:var(--accent-light); stroke-width:2.4; stroke-linejoin:round;
+    filter:drop-shadow(0 0 14px rgba(212,175,106,.75));
   }
-  .win-face .face-outline{ stroke-width:2; opacity:.95; }
-  .win-face .face-node{ fill:var(--accent-light); filter:drop-shadow(0 0 4px rgba(232,212,176,.9)); }
-  .win-face .face-line.pulse{ animation:winFaceShimmer 3.2s ease-in-out infinite; }
-  .win-face .face-line.pulse:nth-of-type(3n){ animation-delay:.6s; }
-  .win-face .face-line.pulse:nth-of-type(3n+1){ animation-delay:1.3s; }
-  @keyframes winFaceShimmer{ 0%,100%{ opacity:.45; } 50%{ opacity:.95; } }
-  .win-face .face-eye-ring{ fill:none; stroke:var(--accent-light); stroke-width:2; filter:drop-shadow(0 0 3px rgba(232,212,176,.8)); }
-  .win-face .face-eye-core{
-    fill:var(--accent-light); filter:drop-shadow(0 0 6px rgba(255,246,226,1));
-    transform-box:fill-box; transform-origin:center;
-    animation:winFaceBlink 4.6s ease-in-out infinite;
+  .win-reactor .r-tri-in{ fill:rgba(255,246,226,.55); stroke:none; }
+  .win-reactor .r-core{ fill:#fff6e2; filter:drop-shadow(0 0 8px rgba(255,246,226,1)); }
+  .win-reactor .r-segs-group{ transform-box:fill-box; transform-origin:center; animation:winReactorSpin 14s linear infinite; }
+  @keyframes winReactorSpin{ to{ transform:rotate(360deg); } }
+  .win-reactor .r-core{ transform-box:fill-box; transform-origin:center; animation:winReactorPulse 3.2s ease-in-out infinite; }
+  @keyframes winReactorPulse{ 0%,100%{ transform:scale(.85); opacity:.75; } 50%{ transform:scale(1.08); opacity:1; } }
+
+  .win-orb-listening .win-reactor .r-segs-group{ animation-duration:5s; }
+  .win-orb-listening .win-reactor .r-tri, .win-orb-listening .win-reactor .r-core{ filter:brightness(1.2); }
+
+  .win-orb-thinking .win-reactor .r-segs-group{ animation-duration:1.1s; }
+  .win-orb-thinking .win-reactor .r-core{ animation:winReactorPulse .5s ease-in-out infinite; }
+
+  .win-orb-speaking .win-reactor .r-core, .win-orb-speaking .win-reactor .r-tri-in{
+    animation:winReactorFlicker .22s ease-in-out infinite;
   }
-  @keyframes winFaceBlink{ 0%,92%,100%{ transform:scaleY(1); } 95%{ transform:scaleY(.1); } }
-  .win-face .face-brow{ opacity:0; transition:opacity .25s ease, transform .25s ease; }
-  .win-face .face-mouth-closed{ fill:none; stroke:var(--accent-light); stroke-width:2.2; stroke-linecap:round; opacity:.85; transition:opacity .15s ease; }
-  .win-face .face-mouth-open{
-    fill:rgba(7,5,2,.92); stroke:var(--accent-light); stroke-width:1.6;
-    transform-box:fill-box; transform-origin:center; transform:scaleY(.08); opacity:.25;
-    transition:transform .15s ease, opacity .15s ease;
-  }
-  .win-face .face-happy-mouth{
-    display:none; fill:none; stroke:var(--accent-light); stroke-width:2.4; stroke-linecap:round;
-    filter:drop-shadow(0 0 4px rgba(232,212,176,.8));
-  }
+  @keyframes winReactorFlicker{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
 
-  .win-orb-listening .face-eye-core, .win-orb-listening .face-eye-ring{ filter:drop-shadow(0 0 7px rgba(212,175,106,1)); }
-
-  .win-orb-thinking .face-brow{ opacity:1; transform:translateY(-2px); }
-  .win-orb-thinking .face-eye-core{ animation:winFaceGlance 1.6s ease-in-out infinite; }
-  @keyframes winFaceGlance{ 0%,100%{ transform:translateX(0); } 25%{ transform:translateX(-3px); } 75%{ transform:translateX(3px); } }
-
-  .win-orb-speaking .face-mouth-closed{ opacity:0; }
-  .win-orb-speaking .face-mouth-open{ animation:winFaceTalk .22s ease-in-out infinite; }
-  @keyframes winFaceTalk{ 0%,100%{ transform:scaleY(.12); opacity:.4; } 50%{ transform:scaleY(1); opacity:1; } }
-
-  .win-orb-done .face-mouth-closed, .win-orb-done .face-mouth-open{ display:none; }
-  .win-orb-done .face-happy-mouth{ display:block; }
+  .win-orb-done .win-reactor .r-tri{ fill:rgba(120,220,150,.35); }
+  .win-orb-done .win-reactor .r-core{ fill:#c8ffd8; filter:drop-shadow(0 0 10px rgba(120,220,150,1)); animation:none; }
 
   .win-orb.win-orb-idle{ animation: winOrbBreathe 3.6s ease-in-out infinite; }
   @keyframes winOrbBreathe{
@@ -377,9 +365,9 @@
     72%{ transform:scale(.74); }
     100%{ transform:scale(.95); filter:saturate(1.15) brightness(1.05); }
   }
-  .win-orb.win-boot-in .face-eye-core{ animation: winBootEyeOpen .9s ease-out both; }
-  @keyframes winBootEyeOpen{ 0%{ transform:scaleY(0); } 60%{ transform:scaleY(0); } 100%{ transform:scaleY(1); } }
-  .win-orb.win-boot-in .face-line, .win-orb.win-boot-in .face-node, .win-orb.win-boot-in .face-eye-ring{
+  .win-orb.win-boot-in .win-reactor .r-core{ animation: winBootCoreOn .9s ease-out both; }
+  @keyframes winBootCoreOn{ 0%{ transform:scale(0); opacity:0; } 60%{ transform:scale(0); opacity:0; } 100%{ transform:scale(.85); opacity:.75; } }
+  .win-orb.win-boot-in .win-reactor .r-ring, .win-orb.win-boot-in .win-reactor .r-tri, .win-orb.win-boot-in .win-reactor .r-seg{
     animation: winBootLineFade .9s ease-out both;
   }
   @keyframes winBootLineFade{ 0%{ opacity:0; } 65%{ opacity:0; } 100%{ opacity:1; } }
@@ -3361,38 +3349,20 @@ function renderWin(){
         <div class="win-ring win-ring-1"></div>
         <div class="win-ring win-ring-2"></div>
         <div id="winOrb" class="win-orb win-orb-idle">
-          <svg class="win-face" viewBox="0 0 220 220">
-            <path class="face-line face-outline" d="M72,38 L148,38 L174,78 L168,145 L138,188 L110,202 L82,188 L52,145 L46,78 Z"/>
-            <path class="face-line" d="M110,70 L110,120"/>
-            <path class="face-line pulse" d="M72,58 L98,58 L98,45"/>
-            <path class="face-line pulse" d="M148,58 L122,58 L122,45"/>
-            <circle class="face-node" cx="98" cy="45" r="2.6"/>
-            <circle class="face-node" cx="122" cy="45" r="2.6"/>
-            <path class="face-line pulse" d="M50,90 L66,100"/>
-            <path class="face-line pulse" d="M170,90 L154,100"/>
-            <path class="face-line pulse" d="M56,118 L56,142 L72,152"/>
-            <path class="face-line pulse" d="M164,118 L164,142 L148,152"/>
-            <circle class="face-node" cx="72" cy="152" r="2.6"/>
-            <circle class="face-node" cx="148" cy="152" r="2.6"/>
-            <path class="face-line" d="M92,182 L92,196"/>
-            <path class="face-line" d="M128,182 L128,196"/>
-            <circle class="face-node" cx="92" cy="196" r="2.2"/>
-            <circle class="face-node" cx="128" cy="196" r="2.2"/>
-            <circle class="face-node" cx="88" cy="128" r="1.8" opacity=".6"/>
-            <circle class="face-node" cx="132" cy="128" r="1.8" opacity=".6"/>
-            <path class="face-line face-brow" d="M70,80 L96,74"/>
-            <path class="face-line face-brow" d="M150,80 L124,74"/>
-            <g transform="translate(85,98)">
-              <circle class="face-eye-ring" r="11"/>
-              <circle class="face-eye-core" r="4.2"/>
+          <svg class="win-reactor" viewBox="-120 -120 240 240">
+            <g class="r-segs-group">
+              ${Array.from({ length: 16 }, (_, i) => {
+                const a = (i / 16) * Math.PI * 2 - Math.PI / 2;
+                const x1 = (Math.cos(a) * 70).toFixed(1), y1 = (Math.sin(a) * 70).toFixed(1);
+                const x2 = (Math.cos(a) * 100).toFixed(1), y2 = (Math.sin(a) * 100).toFixed(1);
+                return `<line class="r-seg r-seg-on" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+              }).join('')}
             </g>
-            <g transform="translate(135,98)">
-              <circle class="face-eye-ring" r="11"/>
-              <circle class="face-eye-core" r="4.2"/>
-            </g>
-            <path class="face-mouth-closed" d="M92,156 Q110,160 128,156"/>
-            <ellipse class="face-mouth-open" cx="110" cy="156" rx="16" ry="9"/>
-            <path class="face-happy-mouth" d="M92,158 Q110,172 128,158"/>
+            <circle class="r-ring" cx="0" cy="0" r="102"/>
+            <circle class="r-ring r-ring-in" cx="0" cy="0" r="66"/>
+            <path class="r-tri" d="M0,-52 L46,30 L-46,30 Z"/>
+            <path class="r-tri r-tri-in" d="M0,-30 L28,20 L-28,20 Z"/>
+            <circle class="r-core" cx="0" cy="0" r="10"/>
           </svg>
         </div>
       </div>
@@ -3580,6 +3550,7 @@ function playWinIntroSequence(){
   intro.style.display = 'block';
   intro.style.opacity = '1';
   intro.style.filter = 'none';
+  playWinSfx('boot');
   setTimeout(()=>{ bar.classList.add('win-intro-bar-dim'); ringsWrap.classList.add('win-intro-rings-in'); }, 1300);
   setTimeout(()=>{ intro.style.opacity = '0'; intro.style.filter = 'blur(10px)'; }, 2550);
   setTimeout(()=>{ intro.style.display = 'none'; }, 3250);
@@ -3610,6 +3581,7 @@ async function startWinListening(){
   setTimeout(()=>{
     if(orb) orb.classList.add('win-boot-in');
     if(auraWrap) auraWrap.classList.add('win-booting');
+    playWinSfx('wake');
     setTimeout(()=>{
       if(orb) orb.classList.remove('win-boot-in');
       if(auraWrap) auraWrap.classList.remove('win-booting');
@@ -3619,21 +3591,91 @@ async function startWinListening(){
 }
 
 // ---- Voz de Win (texto a voz del navegador) ----
-function winSpeak(text, onDone){
+let winVoiceAudio = null;
+let winSfxCtx = null;
+
+// Efectos de sonido de Win: generados con Web Audio (no son archivos, así que no hay nada que
+// cargar ni hostear). Son decorativos -- si el navegador los bloquea o falla algo, se ignora
+// en silencio y el resto de Win sigue funcionando igual.
+function getWinSfxCtx(){
+  if(!winSfxCtx) winSfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(winSfxCtx.state === 'suspended') winSfxCtx.resume();
+  return winSfxCtx;
+}
+function winSfxTone(ctx, { freq, freqEnd, start, dur, type='sine', gain=0.08 }){
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+  if(freqEnd) osc.frequency.linearRampToValueAtTime(freqEnd, ctx.currentTime + start + dur);
+  g.gain.setValueAtTime(0, ctx.currentTime + start);
+  g.gain.linearRampToValueAtTime(gain, ctx.currentTime + start + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+  osc.connect(g); g.connect(ctx.destination);
+  osc.start(ctx.currentTime + start);
+  osc.stop(ctx.currentTime + start + dur + 0.05);
+}
+function playWinSfx(type){
+  try{
+    const ctx = getWinSfxCtx();
+    if(type === 'boot'){
+      winSfxTone(ctx, { freq:90, freqEnd:420, start:0, dur:1.1, type:'sawtooth', gain:.045 });
+      winSfxTone(ctx, { freq:1200, start:.15, dur:.08, gain:.05 });
+      winSfxTone(ctx, { freq:1500, start:.55, dur:.08, gain:.05 });
+      winSfxTone(ctx, { freq:1800, start:.95, dur:.08, gain:.05 });
+    } else if(type === 'wake'){
+      winSfxTone(ctx, { freq:660, start:0, dur:.18, gain:.09 });
+      winSfxTone(ctx, { freq:880, start:.1, dur:.22, gain:.09 });
+    } else if(type === 'speakStart'){
+      winSfxTone(ctx, { freq:980, start:0, dur:.06, gain:.035 });
+    } else if(type === 'action'){
+      winSfxTone(ctx, { freq:520, start:0, dur:.09, type:'triangle', gain:.08 });
+      winSfxTone(ctx, { freq:780, start:.08, dur:.12, type:'triangle', gain:.08 });
+    }
+  }catch(e){ /* efecto decorativo -- si falla, no pasa nada */ }
+}
+
+// Voz de Win: intenta primero la voz real de ElevenLabs (api/win-voz.js); si esa llamada falla
+// por cualquier motivo (sin API key configurada todavía, sin internet, etc.) cae sola a la voz
+// gratis del navegador, así que Win nunca se queda muda mientras se termina de configurar.
+async function winSpeak(text, onDone){
   const goListen = ()=>{
     if(!winListeningActive) return;
     applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
     startWinRecognitionEngine();
     if(onDone) onDone();
   };
+  if(winRecognition){ try{ winRecognition.onend = null; winRecognition.stop(); }catch(e){} }
+
+  try{
+    const res = await fetch('/api/win-voz', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if(!res.ok) throw new Error('voz no disponible');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    if(winVoiceAudio){ try{ winVoiceAudio.pause(); }catch(e){} }
+    winVoiceAudio = new Audio(url);
+    applyWinOrbState('speaking', text);
+    playWinSfx('speakStart');
+    winVoiceAudio.onended = ()=>{ URL.revokeObjectURL(url); goListen(); };
+    winVoiceAudio.onerror = ()=>{ URL.revokeObjectURL(url); winSpeakBrowser(text, goListen); };
+    await winVoiceAudio.play();
+  }catch(e){
+    winSpeakBrowser(text, goListen);
+  }
+}
+
+function winSpeakBrowser(text, goListen){
   if(!('speechSynthesis' in window)){ goListen(); return; }
   try{
-    if(winRecognition){ try{ winRecognition.onend = null; winRecognition.stop(); }catch(e){} }
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'es-EC';
     utter.rate = 1.03;
     applyWinOrbState('speaking', text);
+    playWinSfx('speakStart');
     utter.onend = goListen;
     utter.onerror = goListen;
     window.speechSynthesis.speak(utter);
@@ -3712,6 +3754,7 @@ function stopWinListening(){
   if(winMicStream){ winMicStream.getTracks().forEach(t=>t.stop()); winMicStream = null; }
   if(winAudioCtx){ try{ winAudioCtx.close(); }catch(e){} winAudioCtx = null; }
   if('speechSynthesis' in window){ try{ window.speechSynthesis.cancel(); }catch(e){} }
+  if(winVoiceAudio){ try{ winVoiceAudio.pause(); }catch(e){} winVoiceAudio = null; }
   winFinalBuffer = '';
   winConversation = [];
   const orb = document.getElementById('winOrb');
@@ -3793,6 +3836,7 @@ async function sendWinCommand(){
 
 function dispatchWinTool(tool){
   const input = tool.input || {};
+  playWinSfx('action');
   if(tool.name === 'abrir_formulario_apuesta') openWinBetForm(input.kind === 'ganada' ? 'ganada' : 'nueva_apuesta', input.destino || '');
   else if(tool.name === 'abrir_formulario_contenido') openWinContentForm(input.nota || '', input.destino || '');
   else if(tool.name === 'crear_recordatorio') openWinReminderForm(input.texto || '', input.fecha || '', input.hora || '');
