@@ -289,7 +289,7 @@
 
   .win-orb{
     width:208px; height:208px; border-radius:50%; margin:0 auto; cursor:pointer;
-    background: radial-gradient(circle, rgba(212,175,106,.22), transparent 68%);
+    background: radial-gradient(circle, #070502 0%, #0a0703 55%, transparent 76%);
     box-shadow: 0 0 55px -2px rgba(212,175,106,.6);
     transition: box-shadow .25s ease, filter .25s ease;
     transform: scale(0.82);
@@ -297,34 +297,48 @@
     position:relative; z-index:1;
     display:flex; align-items:center; justify-content:center;
   }
-  .win-duck{ width:188px; height:188px; overflow:visible; }
-  .win-duck .duck-eyelid, .win-duck .duck-pupil, .win-duck .duck-bow, .win-duck .duck-brow, .win-duck .duck-beak-bottom{
+  .win-face{ width:192px; height:192px; overflow:visible; }
+  .win-face .face-line{
+    fill:none; stroke:var(--accent); stroke-width:1.6; stroke-linejoin:round; stroke-linecap:round;
+    opacity:.8; filter:drop-shadow(0 0 3px rgba(212,175,106,.75));
+  }
+  .win-face .face-outline{ stroke-width:2; opacity:.95; }
+  .win-face .face-node{ fill:var(--accent-light); filter:drop-shadow(0 0 4px rgba(232,212,176,.9)); }
+  .win-face .face-line.pulse{ animation:winFaceShimmer 3.2s ease-in-out infinite; }
+  .win-face .face-line.pulse:nth-of-type(3n){ animation-delay:.6s; }
+  .win-face .face-line.pulse:nth-of-type(3n+1){ animation-delay:1.3s; }
+  @keyframes winFaceShimmer{ 0%,100%{ opacity:.45; } 50%{ opacity:.95; } }
+  .win-face .face-eye-ring{ fill:none; stroke:var(--accent-light); stroke-width:2; filter:drop-shadow(0 0 3px rgba(232,212,176,.8)); }
+  .win-face .face-eye-core{
+    fill:var(--accent-light); filter:drop-shadow(0 0 6px rgba(255,246,226,1));
     transform-box:fill-box; transform-origin:center;
+    animation:winFaceBlink 4.6s ease-in-out infinite;
   }
-  .win-duck .duck-eyelid{ transform:scaleY(0); animation:winDuckBlink 4.6s ease-in-out infinite; }
-  @keyframes winDuckBlink{
-    0%, 92%, 100%{ transform:scaleY(0); }
-    95%{ transform:scaleY(1); }
+  @keyframes winFaceBlink{ 0%,92%,100%{ transform:scaleY(1); } 95%{ transform:scaleY(.1); } }
+  .win-face .face-brow{ opacity:0; transition:opacity .25s ease, transform .25s ease; }
+  .win-face .face-mouth-closed{ fill:none; stroke:var(--accent-light); stroke-width:2.2; stroke-linecap:round; opacity:.85; transition:opacity .15s ease; }
+  .win-face .face-mouth-open{
+    fill:rgba(7,5,2,.92); stroke:var(--accent-light); stroke-width:1.6;
+    transform-box:fill-box; transform-origin:center; transform:scaleY(.08); opacity:.25;
+    transition:transform .15s ease, opacity .15s ease;
   }
-  .win-duck .duck-brow{ opacity:0; transition:opacity .25s ease, transform .25s ease; }
-  .win-duck .duck-eyes-happy{ display:none; }
-  .win-duck .duck-beak-bottom{ transform:scaleY(0.55) translateY(-3px); transition:transform .15s ease; }
-  .win-duck .duck-mouth-gap{ opacity:.12; transition:opacity .15s ease; }
+  .win-face .face-happy-mouth{
+    display:none; fill:none; stroke:var(--accent-light); stroke-width:2.4; stroke-linecap:round;
+    filter:drop-shadow(0 0 4px rgba(232,212,176,.8));
+  }
 
-  .win-orb-listening .duck-bow{ animation:winDuckBowWiggle 2.4s ease-in-out infinite; }
-  @keyframes winDuckBowWiggle{ 0%,100%{ transform:rotate(-18deg); } 50%{ transform:rotate(-7deg); } }
+  .win-orb-listening .face-eye-core, .win-orb-listening .face-eye-ring{ filter:drop-shadow(0 0 7px rgba(212,175,106,1)); }
 
-  .win-orb-thinking .duck-brow{ opacity:1; transform:translateY(-3px); }
-  .win-orb-thinking .duck-pupil{ animation:winDuckGlance 1.6s ease-in-out infinite; }
-  @keyframes winDuckGlance{ 0%,100%{ transform:translateX(0); } 25%{ transform:translateX(-4px); } 75%{ transform:translateX(4px); } }
+  .win-orb-thinking .face-brow{ opacity:1; transform:translateY(-2px); }
+  .win-orb-thinking .face-eye-core{ animation:winFaceGlance 1.6s ease-in-out infinite; }
+  @keyframes winFaceGlance{ 0%,100%{ transform:translateX(0); } 25%{ transform:translateX(-3px); } 75%{ transform:translateX(3px); } }
 
-  .win-orb-speaking .duck-beak-bottom{ animation:winDuckTalk .26s ease-in-out infinite; }
-  .win-orb-speaking .duck-mouth-gap{ animation:winDuckTalkGap .26s ease-in-out infinite; }
-  @keyframes winDuckTalk{ 0%,100%{ transform:scaleY(0.55) translateY(-3px); } 50%{ transform:scaleY(1.2) translateY(4px); } }
-  @keyframes winDuckTalkGap{ 0%,100%{ opacity:.12; } 50%{ opacity:1; } }
+  .win-orb-speaking .face-mouth-closed{ opacity:0; }
+  .win-orb-speaking .face-mouth-open{ animation:winFaceTalk .22s ease-in-out infinite; }
+  @keyframes winFaceTalk{ 0%,100%{ transform:scaleY(.12); opacity:.4; } 50%{ transform:scaleY(1); opacity:1; } }
 
-  .win-orb-done .duck-eyes-normal{ display:none; }
-  .win-orb-done .duck-eyes-happy{ display:block; }
+  .win-orb-done .face-mouth-closed, .win-orb-done .face-mouth-open{ display:none; }
+  .win-orb-done .face-happy-mouth{ display:block; }
 
   .win-orb.win-orb-idle{ animation: winOrbBreathe 3.6s ease-in-out infinite; }
   @keyframes winOrbBreathe{
@@ -363,15 +377,12 @@
     72%{ transform:scale(.74); }
     100%{ transform:scale(.95); filter:saturate(1.15) brightness(1.05); }
   }
-  .win-orb.win-boot-in .duck-eyelid{ animation: winBootEyeOpen .9s ease-out both; }
-  @keyframes winBootEyeOpen{ 0%{ transform:scaleY(1); } 55%{ transform:scaleY(1); } 100%{ transform:scaleY(0); } }
-  .win-orb.win-boot-in .duck-bow{ animation: winBootBow .9s cubic-bezier(.34,1.56,.64,1) both; }
-  @keyframes winBootBow{
-    0%{ transform:scale(0) rotate(-18deg); opacity:0; }
-    65%{ transform:scale(0) rotate(-18deg); opacity:0; }
-    85%{ transform:scale(1.3) rotate(-18deg); opacity:1; }
-    100%{ transform:scale(1) rotate(-18deg); }
+  .win-orb.win-boot-in .face-eye-core{ animation: winBootEyeOpen .9s ease-out both; }
+  @keyframes winBootEyeOpen{ 0%{ transform:scaleY(0); } 60%{ transform:scaleY(0); } 100%{ transform:scaleY(1); } }
+  .win-orb.win-boot-in .face-line, .win-orb.win-boot-in .face-node, .win-orb.win-boot-in .face-eye-ring{
+    animation: winBootLineFade .9s ease-out both;
   }
+  @keyframes winBootLineFade{ 0%{ opacity:0; } 65%{ opacity:0; } 100%{ opacity:1; } }
   .win-aura-wrap.win-booting .win-ring{ animation: winBootRing .9s ease-out both; }
   @keyframes winBootRing{
     0%{ transform:scale(.3); opacity:0; }
@@ -3266,61 +3277,38 @@ function renderWin(){
         <div class="win-ring win-ring-1"></div>
         <div class="win-ring win-ring-2"></div>
         <div id="winOrb" class="win-orb win-orb-idle">
-          <svg class="win-duck" viewBox="0 0 220 220">
-            <defs>
-              <radialGradient id="duckFaceGrad" cx="38%" cy="32%" r="75%">
-                <stop offset="0%" stop-color="#fff6e2"/>
-                <stop offset="22%" stop-color="#F3E3C2"/>
-                <stop offset="55%" stop-color="#D4AF6A"/>
-                <stop offset="82%" stop-color="#9c7a3a"/>
-                <stop offset="100%" stop-color="#3a2a10"/>
-              </radialGradient>
-            </defs>
-            <radialGradient id="duckMaskGrad" cx="42%" cy="35%" r="70%">
-              <stop offset="0%" stop-color="#fffaf0"/>
-              <stop offset="60%" stop-color="#FBEFD9"/>
-              <stop offset="100%" stop-color="#E8D4B0"/>
-            </radialGradient>
-            <ellipse cx="110" cy="104" rx="86" ry="82" fill="url(#duckFaceGrad)"/>
-            <path class="duck-topknot" d="M66 36 Q110 10 154 36 Q146 56 110 52 Q74 56 66 36 Z" fill="#B88A3E"/>
-            <ellipse cx="110" cy="118" rx="68" ry="56" fill="url(#duckMaskGrad)"/>
-            <g class="duck-bow" transform="translate(146,44) rotate(-14)">
-              <path d="M0 2 L-17 -9 L-15 13 Z" fill="#E8D4B0" stroke="#8a6a2e" stroke-width="1.5"/>
-              <path d="M0 2 L17 -9 L15 13 Z" fill="#E8D4B0" stroke="#8a6a2e" stroke-width="1.5"/>
-              <circle cx="0" cy="2" r="5" fill="#D4AF6A" stroke="#8a6a2e" stroke-width="1.2"/>
+          <svg class="win-face" viewBox="0 0 220 220">
+            <path class="face-line face-outline" d="M72,38 L148,38 L174,78 L168,145 L138,188 L110,202 L82,188 L52,145 L46,78 Z"/>
+            <path class="face-line" d="M110,70 L110,120"/>
+            <path class="face-line pulse" d="M72,58 L98,58 L98,45"/>
+            <path class="face-line pulse" d="M148,58 L122,58 L122,45"/>
+            <circle class="face-node" cx="98" cy="45" r="2.6"/>
+            <circle class="face-node" cx="122" cy="45" r="2.6"/>
+            <path class="face-line pulse" d="M50,90 L66,100"/>
+            <path class="face-line pulse" d="M170,90 L154,100"/>
+            <path class="face-line pulse" d="M56,118 L56,142 L72,152"/>
+            <path class="face-line pulse" d="M164,118 L164,142 L148,152"/>
+            <circle class="face-node" cx="72" cy="152" r="2.6"/>
+            <circle class="face-node" cx="148" cy="152" r="2.6"/>
+            <path class="face-line" d="M92,182 L92,196"/>
+            <path class="face-line" d="M128,182 L128,196"/>
+            <circle class="face-node" cx="92" cy="196" r="2.2"/>
+            <circle class="face-node" cx="128" cy="196" r="2.2"/>
+            <circle class="face-node" cx="88" cy="128" r="1.8" opacity=".6"/>
+            <circle class="face-node" cx="132" cy="128" r="1.8" opacity=".6"/>
+            <path class="face-line face-brow" d="M70,80 L96,74"/>
+            <path class="face-line face-brow" d="M150,80 L124,74"/>
+            <g transform="translate(85,98)">
+              <circle class="face-eye-ring" r="11"/>
+              <circle class="face-eye-core" r="4.2"/>
             </g>
-            <ellipse cx="66" cy="140" rx="12" ry="7" fill="#E8935A" opacity=".22"/>
-            <ellipse cx="154" cy="140" rx="12" ry="7" fill="#E8935A" opacity=".22"/>
-            <path class="duck-brow" d="M68 82 Q80 74 94 82" stroke="#8a6a2e" stroke-width="4" fill="none" stroke-linecap="round"/>
-            <path class="duck-brow" d="M126 82 Q140 74 152 82" stroke="#8a6a2e" stroke-width="4" fill="none" stroke-linecap="round"/>
-            <g class="duck-eyes-normal">
-              <g class="duck-eye" transform="translate(81,106)">
-                <ellipse rx="16" ry="18" fill="#2a1a08"/>
-                <circle class="duck-pupil" cx="2" cy="1" r="7.5" fill="#0c0700"/>
-                <circle cx="5" cy="-4" r="2.8" fill="#fff" opacity=".9"/>
-                <path d="M-14 -15 Q-19 -21 -23 -17" stroke="#8a6a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
-                <path d="M-9 -18 Q-12 -25 -16 -23" stroke="#8a6a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
-                <ellipse class="duck-eyelid" rx="17" ry="19" fill="url(#duckMaskGrad)"/>
-              </g>
-              <g class="duck-eye" transform="translate(139,106)">
-                <ellipse rx="16" ry="18" fill="#2a1a08"/>
-                <circle class="duck-pupil" cx="2" cy="1" r="7.5" fill="#0c0700"/>
-                <circle cx="5" cy="-4" r="2.8" fill="#fff" opacity=".9"/>
-                <path d="M14 -15 Q19 -21 23 -17" stroke="#8a6a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
-                <path d="M9 -18 Q12 -25 16 -23" stroke="#8a6a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
-                <ellipse class="duck-eyelid" rx="17" ry="19" fill="url(#duckMaskGrad)"/>
-              </g>
+            <g transform="translate(135,98)">
+              <circle class="face-eye-ring" r="11"/>
+              <circle class="face-eye-core" r="4.2"/>
             </g>
-            <g class="duck-eyes-happy">
-              <path d="M65 108 Q81 92 97 108" stroke="#2a1a08" stroke-width="5.5" fill="none" stroke-linecap="round"/>
-              <path d="M123 108 Q139 92 155 108" stroke="#2a1a08" stroke-width="5.5" fill="none" stroke-linecap="round"/>
-            </g>
-            <g class="duck-beak" transform="translate(110,151)">
-              <path d="M-38 -6 Q0 -22 38 -6 Q36 4 0 7 Q-36 4 -38 -6 Z" fill="#F0A95C" stroke="#B5631F" stroke-width="1.5"/>
-              <circle cx="0" cy="-7" r="2" fill="#B5631F" opacity=".6"/>
-              <path class="duck-mouth-gap" d="M-30 6 Q0 13 30 6 L30 9 Q0 17 -30 9 Z" fill="#6b3414" opacity=".12"/>
-              <path class="duck-beak-bottom" d="M-32 6 Q0 24 32 6 Q30 16 0 20 Q-30 16 -32 6 Z" fill="#D9853F" stroke="#B5631F" stroke-width="1.5"/>
-            </g>
+            <path class="face-mouth-closed" d="M92,156 Q110,160 128,156"/>
+            <ellipse class="face-mouth-open" cx="110" cy="156" rx="16" ry="9"/>
+            <path class="face-happy-mouth" d="M92,158 Q110,172 128,158"/>
           </svg>
         </div>
       </div>
