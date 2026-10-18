@@ -1,3 +1,19 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Panel Administración Pay Win</title>
+<!-- Permite instalarlo en el celular (Agregar a pantalla de inicio) y que abra como app, sin barra de Safari -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0D1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Win">
+<link rel="apple-touch-icon" href="/logo-paywin.png">
+<link rel="icon" href="/logo-paywin.png">
+</head>
+<body>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap');
   :root{
@@ -4107,6 +4123,11 @@ function enterApp(role){
   state.dailyTasksRole = role === 'colaboradora' ? 'erika' : 'ayrton';
   const allowed = (role === 'socio') ? ['stakeSales','staffFinance','dailyTasks'] : (role === 'colaboradora') ? ['vips','vips1x2','vips1xbet','stakeSales','finance','staffFinance','dailyTasks'] : null;
   state.view = allowed ? allowed[0] : 'dashboard';
+  // Si se abre con ?win=1 (ej. desde el acceso directo del celular / gesto), entra directo a Win
+  // en vez del dashboard -- solo si el rol tiene acceso a esa pestaña.
+  try{
+    if(!allowed && new URLSearchParams(window.location.search).get('win') === '1') state.view = 'win';
+  }catch(e){}
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===state.view));
@@ -4173,3 +4194,5 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
   }
 }
 </script>
+</body>
+</html>
