@@ -289,23 +289,44 @@
 
   .win-orb{
     width:208px; height:208px; border-radius:50%; margin:0 auto; cursor:pointer;
-    background: radial-gradient(circle at 35% 28%, #fff6e2, rgba(255,235,195,.95) 18%, var(--accent) 48%, #8a6a2e 78%, #1c1409 100%);
-    box-shadow: 0 0 55px -2px rgba(212,175,106,.6), inset 0 0 30px rgba(0,0,0,.3);
+    background: radial-gradient(circle, rgba(212,175,106,.22), transparent 68%);
+    box-shadow: 0 0 55px -2px rgba(212,175,106,.6);
     transition: box-shadow .25s ease, filter .25s ease;
     transform: scale(0.82);
     filter: saturate(0.7) brightness(0.75);
     position:relative; z-index:1;
     display:flex; align-items:center; justify-content:center;
   }
-  .win-orb::after{
-    content:''; position:absolute; inset:0; border-radius:50%;
-    background: radial-gradient(circle at 68% 72%, rgba(255,255,255,.16), transparent 55%);
+  .win-duck{ width:188px; height:188px; overflow:visible; }
+  .win-duck .duck-eyelid, .win-duck .duck-pupil, .win-duck .duck-bow, .win-duck .duck-brow, .win-duck .duck-beak-bottom{
+    transform-box:fill-box; transform-origin:center;
   }
-  .win-monogram{
-    position:relative; z-index:2; font-family:var(--mono); font-weight:700; font-size:54px; letter-spacing:-1px;
-    color:rgba(32,21,7,.5); text-shadow:0 1px 0 rgba(255,255,255,.3), 0 -1px 1px rgba(0,0,0,.25);
-    user-select:none; pointer-events:none;
+  .win-duck .duck-eyelid{ transform:scaleY(0); animation:winDuckBlink 4.6s ease-in-out infinite; }
+  .win-duck .duck-eye:nth-child(2) .duck-eyelid{ animation-delay:.12s; }
+  @keyframes winDuckBlink{
+    0%, 92%, 100%{ transform:scaleY(0); }
+    95%{ transform:scaleY(1); }
   }
+  .win-duck .duck-brow{ opacity:0; transition:opacity .25s ease, transform .25s ease; }
+  .win-duck .duck-eyes-happy{ display:none; }
+  .win-duck .duck-beak-bottom{ transform:scaleY(0.55) translateY(-3px); transition:transform .15s ease; }
+  .win-duck .duck-mouth-gap{ opacity:.12; transition:opacity .15s ease; }
+
+  .win-orb-listening .duck-bow{ animation:winDuckBowWiggle 2.4s ease-in-out infinite; }
+  @keyframes winDuckBowWiggle{ 0%,100%{ transform:rotate(-18deg); } 50%{ transform:rotate(-7deg); } }
+
+  .win-orb-thinking .duck-brow{ opacity:1; transform:translateY(-3px); }
+  .win-orb-thinking .duck-pupil{ animation:winDuckGlance 1.6s ease-in-out infinite; }
+  @keyframes winDuckGlance{ 0%,100%{ transform:translateX(0); } 25%{ transform:translateX(-4px); } 75%{ transform:translateX(4px); } }
+
+  .win-orb-speaking .duck-beak-bottom{ animation:winDuckTalk .26s ease-in-out infinite; }
+  .win-orb-speaking .duck-mouth-gap{ animation:winDuckTalkGap .26s ease-in-out infinite; }
+  @keyframes winDuckTalk{ 0%,100%{ transform:scaleY(0.55) translateY(-3px); } 50%{ transform:scaleY(1.2) translateY(4px); } }
+  @keyframes winDuckTalkGap{ 0%,100%{ opacity:.12; } 50%{ opacity:1; } }
+
+  .win-orb-done .duck-eyes-normal{ display:none; }
+  .win-orb-done .duck-eyes-happy{ display:block; }
+
   .win-orb.win-orb-idle{ animation: winOrbBreathe 3.6s ease-in-out infinite; }
   @keyframes winOrbBreathe{
     0%,100%{ transform:scale(0.8); filter:saturate(0.65) brightness(0.72); }
@@ -3221,7 +3242,58 @@ function renderWin(){
         <div class="win-dial-inner"></div>
         <div class="win-ring win-ring-1"></div>
         <div class="win-ring win-ring-2"></div>
-        <div id="winOrb" class="win-orb win-orb-idle"><span class="win-monogram">W</span></div>
+        <div id="winOrb" class="win-orb win-orb-idle">
+          <svg class="win-duck" viewBox="0 0 220 220">
+            <defs>
+              <radialGradient id="duckFaceGrad" cx="38%" cy="32%" r="75%">
+                <stop offset="0%" stop-color="#fff6e2"/>
+                <stop offset="22%" stop-color="#F3E3C2"/>
+                <stop offset="55%" stop-color="#D4AF6A"/>
+                <stop offset="82%" stop-color="#9c7a3a"/>
+                <stop offset="100%" stop-color="#3a2a10"/>
+              </radialGradient>
+            </defs>
+            <ellipse cx="110" cy="206" rx="80" ry="36" fill="#8a6a2e" opacity=".5"/>
+            <ellipse cx="110" cy="108" rx="82" ry="78" fill="url(#duckFaceGrad)"/>
+            <g class="duck-bow" transform="translate(158,46) rotate(-18)">
+              <path d="M0 0 L-16 -10 L-16 10 Z" fill="#E8D4B0" stroke="#8a6a2e" stroke-width="1.5"/>
+              <path d="M0 0 L16 -10 L16 10 Z" fill="#E8D4B0" stroke="#8a6a2e" stroke-width="1.5"/>
+              <circle r="4.5" fill="#D4AF6A" stroke="#8a6a2e" stroke-width="1.2"/>
+            </g>
+            <ellipse cx="60" cy="128" rx="13" ry="8" fill="#E8935A" opacity=".3"/>
+            <ellipse cx="160" cy="128" rx="13" ry="8" fill="#E8935A" opacity=".3"/>
+            <path class="duck-brow" d="M68 70 Q80 62 94 70" stroke="#5c431c" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path class="duck-brow" d="M126 70 Q140 62 152 70" stroke="#5c431c" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <g class="duck-eyes-normal">
+              <g class="duck-eye" transform="translate(81,96)">
+                <ellipse rx="15" ry="17" fill="#2a1a08"/>
+                <circle class="duck-pupil" cx="2" cy="1" r="7" fill="#0c0700"/>
+                <circle cx="5" cy="-4" r="2.6" fill="#fff" opacity=".9"/>
+                <path d="M-13 -14 Q-18 -20 -22 -16" stroke="#3a2a10" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <path d="M-9 -17 Q-12 -24 -16 -22" stroke="#3a2a10" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <ellipse class="duck-eyelid" rx="16" ry="18" fill="url(#duckFaceGrad)"/>
+              </g>
+              <g class="duck-eye" transform="translate(139,96)">
+                <ellipse rx="15" ry="17" fill="#2a1a08"/>
+                <circle class="duck-pupil" cx="2" cy="1" r="7" fill="#0c0700"/>
+                <circle cx="5" cy="-4" r="2.6" fill="#fff" opacity=".9"/>
+                <path d="M13 -14 Q18 -20 22 -16" stroke="#3a2a10" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <path d="M9 -17 Q12 -24 16 -22" stroke="#3a2a10" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <ellipse class="duck-eyelid" rx="16" ry="18" fill="url(#duckFaceGrad)"/>
+              </g>
+            </g>
+            <g class="duck-eyes-happy">
+              <path d="M66 98 Q81 84 96 98" stroke="#2a1a08" stroke-width="5" fill="none" stroke-linecap="round"/>
+              <path d="M124 98 Q139 84 154 98" stroke="#2a1a08" stroke-width="5" fill="none" stroke-linecap="round"/>
+            </g>
+            <g class="duck-beak" transform="translate(110,146)">
+              <ellipse cx="0" cy="-2" rx="34" ry="15" fill="#E8935A"/>
+              <ellipse class="duck-mouth-gap" cx="0" cy="7" rx="26" ry="9" fill="#5c2e12"/>
+              <ellipse class="duck-beak-bottom" cx="0" cy="12" rx="30" ry="13" fill="#D97B3F"/>
+              <line x1="-26" y1="-2" x2="26" y2="-2" stroke="#b5631f" stroke-width="1.5" opacity=".5"/>
+            </g>
+          </svg>
+        </div>
       </div>
       <div id="winStatus" class="win-status">Activando a Win...</div>
       <div id="winBars" class="win-bars">${'<span class="win-bar"></span>'.repeat(7)}</div>
