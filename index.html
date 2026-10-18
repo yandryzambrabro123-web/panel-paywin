@@ -230,6 +230,7 @@
     </div>
     <div id="syncStatus" style="display:none; margin:0 24px 16px; font-size:11px; color:var(--loss); border:1px solid var(--loss-dim); border-radius:6px; padding:8px 10px;">⚠ Error de sincronización con Sheets</div>
     <div class="nav-item active" data-view="dashboard"><span class="nav-icon">&#9635;</span> Dashboard</div>
+    <div class="nav-item" data-view="win"><span class="nav-icon">&#129302;</span> Win <span class="nav-alert" id="navAlert-win" style="display:none;"></span></div>
     <div class="nav-item" data-view="vips"><span class="nav-icon">&#128100;</span> Miembros VIP <span class="nav-alert" id="navAlert-vips" style="display:none;"></span></div>
     <div class="nav-item" data-view="vips1x2"><span class="nav-icon">&#127183;</span> VIP 1X2 <span class="nav-alert" id="navAlert-vips1x2" style="display:none;"></span></div>
     <div class="nav-item" data-view="vips1xbet"><span class="nav-icon">&#127920;</span> VIP 1XBET <span class="nav-alert" id="navAlert-vips1xbet" style="display:none;"></span></div>
@@ -284,7 +285,7 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos', staffVipSales: 'PersonalVentasVIP', staffStakePayments: 'PersonalPagosStakes', dailyTasks: 'TareasDiarias' };
+const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos', staffVipSales: 'PersonalVentasVIP', staffStakePayments: 'PersonalPagosStakes', dailyTasks: 'TareasDiarias', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios' };
 // Checklist de actividades diarias fijas — en orden de PRIORIDAD para Ayrton, y en dos bloques
 // (protocolo inicial de 8am + actividades sin hora fija) para Erika. Se reinicia solo cada
 // día porque cada marca se guarda con la fecha (ver dailyTaskKey/toggleDailyTask).
@@ -362,7 +363,7 @@ const FINANCE_LATEST_BASE = {
 };
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], dailyTasksRole: 'ayrton', dailyTasksDate: '', showArchivedStaff: false, vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], winOutbox: [], winReminders: [], dailyTasksRole: 'ayrton', dailyTasksDate: '', showArchivedStaff: false, vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -395,7 +396,7 @@ function resultLabel(r){ return r==='won'?'Ganada':r==='lost'?'Perdida':'Pendien
 
 function coerceRow(key, row){
   if(key === 'vips' || key === 'vips1x2' || key === 'vips1xbet'){
-    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true' };
+    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true' };
   }
   if(key === 'freeBets' || key === 'vipBets' || key === 'liveBets'){
     return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]') };
@@ -441,6 +442,12 @@ function coerceRow(key, row){
   }
   if(key === 'dailyTasks'){
     return { id:String(row.id||''), role:row.role||'', taskKey:row.taskKey||'', date:row.date||'', done: row.done===true||row.done==='true', doneAt:row.doneAt||'' };
+  }
+  if(key === 'winOutbox'){
+    return { id:String(row.id||''), kind:row.kind||'otro', destino:row.destino||'', caption:row.caption||'', image:row.image||'', status:row.status||'pendiente', createdAt:row.createdAt||'' };
+  }
+  if(key === 'winReminders'){
+    return { id:String(row.id||''), text:row.text||'', dueDate:row.dueDate||'', dueTime:row.dueTime||'', done: row.done===true||row.done==='true', createdAt:row.createdAt||'' };
   }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
@@ -732,6 +739,12 @@ function updateNavBadges(){
     if(inactiveCount > 0){ el.textContent = inactiveCount; el.style.display = 'inline-block'; }
     else{ el.style.display = 'none'; }
   });
+  const winPending = (state.winOutbox||[]).filter(o=>o.status==='pendiente').length;
+  const winEl = document.getElementById('navAlert-win');
+  if(winEl){
+    if(winPending > 0){ winEl.textContent = winPending; winEl.style.display = 'inline-block'; }
+    else{ winEl.style.display = 'none'; }
+  }
 }
 
 
@@ -779,12 +792,14 @@ function renderVipGroup(key, title){
           <td>
             <span class="badge ${st}">${st==='inactive' ? '<span class="alert-dot" style="margin-right:5px; vertical-align:middle;"></span>' : ''}${st==='active'?'Activo':'Inactivo'}</span>
             ${v.noReconsumo ? '<div style="margin-top:4px;"><span class="badge flag">No pagó reconsumo</span></div>' : ''}
+            ${v.giftPending ? '<div style="margin-top:4px;"><span class="badge flag">🎁 Regalito pendiente</span></div>' : ''}
           </td>
           <td style="max-width:180px; white-space:pre-wrap; color:var(--muted); font-size:12.5px;">${v.notes ? v.notes : '-'}</td>
           <td class="row-actions">
             <button class="btn secondary small" data-edit-vip="${v.id}">Editar</button>
             <button class="btn secondary small" data-toggle-vip="${v.id}">${st==='active'?'Desactivar':'Activar'}</button>
             <button class="btn secondary small" data-reconsumo-vip="${v.id}" style="${v.noReconsumo ? 'border-color:#D9A6FF; color:#D9A6FF;' : ''}">${v.noReconsumo ? 'Quitar marca' : 'No pagó reconsumo'}</button>
+            <button class="btn secondary small" data-gift-vip="${v.id}" style="${v.giftPending ? 'border-color:#D4AF6A; color:#D4AF6A;' : ''}">${v.giftPending ? 'Quitar regalito' : '🎁 Marcar regalito'}</button>
             <button class="btn danger small" data-del-vip="${v.id}">Eliminar</button>
           </td>
         </tr>`;}).join('')}
@@ -805,8 +820,16 @@ function renderVipGroup(key, title){
   document.querySelectorAll('[data-edit-vip]').forEach(b=>b.onclick=()=>openVipForm(key, rerender, b.dataset.editVip));
   document.querySelectorAll('[data-toggle-vip]').forEach(b=>b.onclick=()=>toggleVip(key, b.dataset.toggleVip, rerender));
   document.querySelectorAll('[data-reconsumo-vip]').forEach(b=>b.onclick=()=>toggleReconsumo(key, b.dataset.reconsumoVip, rerender));
+  document.querySelectorAll('[data-gift-vip]').forEach(b=>b.onclick=()=>toggleGiftPending(key, b.dataset.giftVip, rerender));
   document.querySelectorAll('[data-del-vip]').forEach(b=>b.onclick=()=>delItem(key, b.dataset.delVip, rerender));
   updateNavBadges();
+}
+async function toggleGiftPending(key, id, rerender){
+  const v = state[key].find(x=>x.id===id);
+  if(!v) return;
+  v.giftPending = !v.giftPending;
+  rerender();
+  await persist(key);
 }
 
 function openVipForm(key, rerender, editId){
@@ -3011,12 +3034,399 @@ function openGiftForm(){
   };
 }
 
+/* ---------- WIN (asistente de comando) ---------- */
+
+let winBusyText = '';
+let winRecognition = null;
+
+function renderWin(){
+  const outboxRows = [...state.winOutbox].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const pending = outboxRows.filter(o=>o.status==='pendiente');
+  const sent = outboxRows.filter(o=>o.status==='enviado');
+  const reminderRows = [...state.winReminders].filter(r=>!r.done).sort((a,b)=>(a.dueDate||'9999').localeCompare(b.dueDate||'9999') || (a.dueTime||'99:99').localeCompare(b.dueTime||'99:99'));
+  const today = new Date().toISOString().slice(0,10);
+
+  document.getElementById('main').innerHTML = `
+    <div class="toolbar">
+      <div>
+        <div class="page-title">Win</div>
+        <div class="page-sub">Dile qué necesitas — ella abre el formulario que toca</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div style="display:flex; gap:10px; align-items:flex-start;">
+        <textarea id="winCommandInput" rows="2" placeholder="Ej: manda una apuesta al VIP / se ganó una apuesta, manda la ganada / recuérdame entregar los flyers el martes a las 3pm / sube este testimonio..." style="flex:1; resize:vertical;">${winBusyText ? '' : ''}</textarea>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button class="btn secondary" id="winMicBtn" title="Hablar">&#127908;</button>
+          <button class="btn" id="winSendBtn">Enviar</button>
+        </div>
+      </div>
+      <div id="winStatus" style="margin-top:10px; font-size:12.5px; color:var(--muted);"></div>
+    </div>
+
+    ${reminderRows.length ? `<div class="card" style="margin-bottom:18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <strong style="font-size:13.5px;">Recordatorios y pendientes</strong>
+        <button class="btn secondary small" id="winAddReminderBtn">+ Agregar</button>
+      </div>
+      ${reminderRows.map(r=>{
+        const overdue = r.dueDate && r.dueDate < today;
+        return `<div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
+          <input type="checkbox" data-done-reminder="${r.id}">
+          <div style="flex:1;">
+            <div style="font-size:13px;">${r.text}</div>
+            ${r.dueDate ? `<div style="font-size:11.5px; color:${overdue ? '#FF8A8E' : 'var(--muted)'};">${overdue ? '⚠️ Vencido · ' : ''}${fmtDate(r.dueDate)}${r.dueTime ? ' · ' + r.dueTime : ''}</div>` : ''}
+          </div>
+          <button class="btn danger small" data-del-reminder="${r.id}">Eliminar</button>
+        </div>`;
+      }).join('')}
+    </div>` : `<div class="card" style="margin-bottom:18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size:13px; color:var(--muted);">No tienes recordatorios pendientes.</div>
+        <button class="btn secondary small" id="winAddReminderBtn">+ Agregar</button>
+      </div>
+    </div>`}
+
+    <div class="card">
+      <strong style="font-size:13.5px;">Bandeja de envíos${pending.length ? ` · ${pending.length} pendiente${pending.length>1?'s':''}` : ''}</strong>
+      <div style="font-size:12px; color:var(--muted); margin:6px 0 14px;">Esto todavía no se manda solo a WhatsApp — Win lo deja listo (imagen + texto) para que tú lo copies y lo mandes con un toque, mientras conectamos el envío automático.</div>
+      ${pending.length ? pending.map(o=>winOutboxItemHTML(o)).join('') : '<div class="empty">No hay nada pendiente por mandar.</div>'}
+      ${sent.length ? `<div style="margin-top:18px; opacity:.6;"><strong style="font-size:12px;">Ya enviados (${sent.length})</strong>${sent.slice(0,5).map(o=>winOutboxItemHTML(o)).join('')}</div>` : ''}
+    </div>
+  `;
+
+  document.getElementById('winSendBtn').onclick = sendWinCommand;
+  document.getElementById('winCommandInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendWinCommand(); } });
+  const micBtn = document.getElementById('winMicBtn');
+  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
+    micBtn.disabled = true;
+    micBtn.title = 'Tu navegador no soporta dictado por voz';
+    micBtn.style.opacity = '.4';
+  } else {
+    micBtn.onclick = toggleWinVoice;
+  }
+  const addReminderBtn = document.getElementById('winAddReminderBtn');
+  if(addReminderBtn) addReminderBtn.onclick = ()=>openWinReminderForm('');
+  document.querySelectorAll('[data-done-reminder]').forEach(cb=>cb.onchange=()=>completeReminder(cb.dataset.doneReminder));
+  document.querySelectorAll('[data-del-reminder]').forEach(b=>b.onclick=()=>delItem('winReminders', b.dataset.delReminder, renderWin));
+  document.querySelectorAll('[data-copy-outbox]').forEach(b=>b.onclick=()=>copyOutboxCaption(b.dataset.copyOutbox));
+  document.querySelectorAll('[data-sent-outbox]').forEach(b=>b.onclick=()=>markOutboxSent(b.dataset.sentOutbox));
+  document.querySelectorAll('[data-del-outbox]').forEach(b=>b.onclick=()=>delItem('winOutbox', b.dataset.delOutbox, renderWin));
+}
+
+function winOutboxItemHTML(o){
+  return `<div style="display:flex; gap:12px; padding:12px 0; border-top:1px solid var(--border);">
+    ${o.image ? `<img src="${o.image}" style="width:70px; height:70px; object-fit:cover; border-radius:8px; flex-shrink:0;">` : ''}
+    <div style="flex:1; min-width:0;">
+      <div style="font-size:11.5px; color:var(--accent); margin-bottom:3px; text-transform:uppercase; letter-spacing:.3px;">${winKindLabel(o.kind)} → ${o.destino || 'sin destino'}</div>
+      <div style="font-size:13px; white-space:pre-wrap;">${(o.caption||'').slice(0,240)}${(o.caption||'').length>240?'…':''}</div>
+    </div>
+    ${o.status==='pendiente' ? `<div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
+      <button class="btn secondary small" data-copy-outbox="${o.id}">Copiar texto</button>
+      <button class="btn small" data-sent-outbox="${o.id}">Ya lo mandé</button>
+      <button class="btn danger small" data-del-outbox="${o.id}">Eliminar</button>
+    </div>` : '<div style="flex-shrink:0; align-self:center;"><span class="badge active">Enviado</span></div>'}
+  </div>`;
+}
+
+function winKindLabel(kind){
+  return { nueva_apuesta:'Apuesta', ganada:'Ganada', contenido:'Contenido', regalito:'Regalito', recordatorio:'Recordatorio', otro:'Mensaje' }[kind] || 'Mensaje';
+}
+
+async function copyOutboxCaption(id){
+  const o = state.winOutbox.find(x=>x.id===id);
+  if(!o) return;
+  try{ await navigator.clipboard.writeText(o.caption||''); }catch(e){}
+  alert('Texto copiado. Ahora pega la imagen y el texto en el grupo de WhatsApp correspondiente.');
+}
+async function markOutboxSent(id){
+  const o = state.winOutbox.find(x=>x.id===id);
+  if(!o) return;
+  o.status = 'enviado';
+  renderWin();
+  await persist('winOutbox');
+}
+async function completeReminder(id){
+  const r = state.winReminders.find(x=>x.id===id);
+  if(!r) return;
+  r.done = true;
+  renderWin();
+  await persist('winReminders');
+}
+
+function toggleWinVoice(){
+  const micBtn = document.getElementById('winMicBtn');
+  if(winRecognition){ winRecognition.stop(); return; }
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  winRecognition = new Recognition();
+  winRecognition.lang = 'es-EC';
+  winRecognition.interimResults = false;
+  winRecognition.onresult = (e)=>{
+    const text = e.results[0][0].transcript;
+    const input = document.getElementById('winCommandInput');
+    if(input) input.value = (input.value ? input.value + ' ' : '') + text;
+  };
+  winRecognition.onend = ()=>{ winRecognition = null; if(micBtn){ micBtn.style.background=''; } };
+  winRecognition.onerror = ()=>{ winRecognition = null; if(micBtn){ micBtn.style.background=''; } };
+  winRecognition.start();
+  if(micBtn) micBtn.style.background = 'var(--accent)';
+}
+
+async function sendWinCommand(){
+  const input = document.getElementById('winCommandInput');
+  const texto = input.value.trim();
+  if(!texto) return;
+  const statusEl = document.getElementById('winStatus');
+  statusEl.textContent = 'Entendiendo...';
+  try{
+    const res = await fetch('/api/win-comando', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texto })
+    });
+    const result = await res.json();
+    if(!res.ok){ statusEl.textContent = result.error || 'No se pudo entender el comando.'; return; }
+    input.value = '';
+    statusEl.textContent = '';
+    dispatchWinIntent(result, texto);
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = 'No se pudo conectar. Intenta de nuevo.';
+  }
+}
+
+function dispatchWinIntent(result, originalText){
+  const intent = result.intent || 'desconocido';
+  const destino = result.destino || '';
+  if(intent === 'nueva_apuesta') openWinBetForm('nueva_apuesta', destino);
+  else if(intent === 'ganada') openWinBetForm('ganada', destino);
+  else if(intent === 'contenido') openWinContentForm(result.nota || '', destino);
+  else if(intent === 'recordatorio') openWinReminderForm(result.nota || originalText, result.fecha || '', result.hora || '');
+  else if(intent === 'regalito') openWinGiftFlow();
+  else openWinContentForm(originalText, destino); // desconocido: no se pierde, cae en formulario genérico
+}
+
+const WIN_DESTINOS = ['Grupo VIP', 'Grupo 1X2', 'Grupo 1XBET', 'Comunidad gratis', 'Todas las comunidades'];
+function winDestinoSelectHTML(id, selected){
+  return `<select id="${id}">${WIN_DESTINOS.map(d=>`<option value="${d}" ${selected===d?'selected':''}>${d}</option>`).join('')}<option value="__custom__" ${!WIN_DESTINOS.includes(selected) && selected ? 'selected':''}>Otro...</option></select>`;
+}
+
+function openWinBetForm(kind, destinoGuess){
+  const isGanada = kind === 'ganada';
+  openModal(`
+    <h3>${isGanada ? 'Mandar apuesta ganada' : 'Mandar apuesta a la comunidad'}</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Sube la captura (arrástrala, haz clic, o pégala con Ctrl+V)${isGanada ? '' : ' y el código/texto de la apuesta'}.</div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin-bottom:14px;">
+      <div style="font-size:26px; margin-bottom:6px;">📎</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la captura</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    ${!isGanada ? `<div class="field"><label>Código / texto de la apuesta</label><textarea id="f-winCode" placeholder="Pick, cuota, stake..."></textarea></div>` : ''}
+    <div class="field"><label>A dónde va</label>${winDestinoSelectHTML('f-winDestino', destinoGuess)}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winGenerateBtn">Generar y mandar a la bandeja</button>
+    </div>
+  `);
+  wireWinDropzone();
+  document.getElementById('winGenerateBtn').onclick = ()=>submitWinBet(kind);
+}
+
+let winPendingFile = null;
+function wireWinDropzone(){
+  winPendingFile = null;
+  const dropzone = document.getElementById('winDropzone');
+  const fileInput = document.getElementById('winFileInput');
+  const setFile = (file)=>{
+    winPendingFile = file;
+    const reader = new FileReader();
+    reader.onload = ()=>{ document.getElementById('winDropPreview').innerHTML = `<img src="${reader.result}" style="max-width:100%; max-height:140px; border-radius:8px; margin-top:10px;">`; };
+    reader.readAsDataURL(file);
+  };
+  dropzone.onclick = ()=>fileInput.click();
+  dropzone.ondragover = (e)=>{ e.preventDefault(); dropzone.style.borderColor = 'var(--accent)'; };
+  dropzone.ondragleave = ()=>{ dropzone.style.borderColor = 'var(--border)'; };
+  dropzone.ondrop = (e)=>{ e.preventDefault(); dropzone.style.borderColor='var(--border)'; if(e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); };
+  fileInput.onchange = ()=>{ if(fileInput.files[0]) setFile(fileInput.files[0]); };
+  document.addEventListener('paste', function pasteHandler(e){
+    if(!document.getElementById('winDropzone')){ document.removeEventListener('paste', pasteHandler); return; }
+    const item = [...e.clipboardData.items].find(i=>i.type.startsWith('image/'));
+    if(item) setFile(item.getAsFile());
+  }, { once: true });
+}
+
+async function submitWinBet(kind){
+  const destinoSel = document.getElementById('f-winDestino');
+  const destino = destinoSel.value === '__custom__' ? (prompt('¿A qué grupo va?') || 'Sin especificar') : destinoSel.value;
+  const code = document.getElementById('f-winCode') ? document.getElementById('f-winCode').value.trim() : '';
+  if(!winPendingFile){ alert('Sube la captura primero.'); return; }
+  openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
+  try{
+    const { base64, mediaType, previewUrl } = await fileToCompressedImage(winPendingFile);
+    const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    const res = await fetch('/api/win-redactar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, destino, code, imageBase64: base64, mediaType })
+    });
+    const result = await res.json();
+    const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
+    await pushToOutbox(kind, destino, caption, thumb || previewUrl);
+    closeModal();
+    renderWin();
+  }catch(e){
+    console.error(e);
+    alert('No se pudo generar el texto. Intenta de nuevo.');
+    closeModal();
+    renderWin();
+  }
+}
+function isGanadaFallback(kind){ return kind === 'ganada'; }
+
+function openWinContentForm(nota, destinoGuess){
+  openModal(`
+    <h3>Subir algo a la comunidad</h3>
+    <div class="field"><label>¿Qué necesitas que suba?</label><input id="f-winContentNote" value="${(nota||'').replace(/"/g,'&quot;')}" placeholder="Ej: testimonio de este cliente"></div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
+      <div style="font-size:26px; margin-bottom:6px;">📎</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la imagen</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="field"><label>A dónde va</label>${winDestinoSelectHTML('f-winDestino', destinoGuess)}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winGenerateBtn">Generar y mandar a la bandeja</button>
+    </div>
+  `);
+  wireWinDropzone();
+  document.getElementById('winGenerateBtn').onclick = submitWinContent;
+}
+
+async function submitWinContent(){
+  const destinoSel = document.getElementById('f-winDestino');
+  const destino = destinoSel.value === '__custom__' ? (prompt('¿A qué grupo va?') || 'Sin especificar') : destinoSel.value;
+  const nota = document.getElementById('f-winContentNote').value.trim();
+  if(!winPendingFile){ alert('Sube una imagen primero.'); return; }
+  openModal(`<h3>Leyendo imagen y redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
+  try{
+    const { base64, mediaType, previewUrl } = await fileToCompressedImage(winPendingFile);
+    const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    const res = await fetch('/api/win-redactar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'contenido', destino, code: nota, imageBase64: base64, mediaType })
+    });
+    const result = await res.json();
+    const caption = (result && result.caption) || nota || 'Nuevo contenido.';
+    await pushToOutbox('contenido', destino, caption, thumb || previewUrl);
+    closeModal();
+    renderWin();
+  }catch(e){
+    console.error(e);
+    alert('No se pudo generar el texto. Intenta de nuevo.');
+    closeModal();
+    renderWin();
+  }
+}
+
+function openWinReminderForm(prefillText, prefillDate, prefillTime){
+  openModal(`
+    <h3>Nuevo recordatorio</h3>
+    <div class="field"><label>¿Qué toca recordar?</label><textarea id="f-winRemText" placeholder="Ej: entregar los flyers">${prefillText||''}</textarea></div>
+    <div class="field"><label>Fecha</label><input id="f-winRemDate" type="date" value="${prefillDate || ''}"></div>
+    <div class="field"><label>Hora (opcional)</label><input id="f-winRemTime" type="time" value="${prefillTime || ''}"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveWinReminder">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveWinReminder').onclick = async ()=>{
+    const text = document.getElementById('f-winRemText').value.trim();
+    if(!text){ alert('Escribe qué hay que recordar.'); return; }
+    state.winReminders.push({
+      id: uid(), text,
+      dueDate: document.getElementById('f-winRemDate').value || '',
+      dueTime: document.getElementById('f-winRemTime').value || '',
+      done: false, createdAt: new Date().toISOString()
+    });
+    closeModal();
+    renderWin();
+    await persist('winReminders');
+  };
+}
+
+function openWinGiftFlow(){
+  const tagged = [];
+  VIP_GROUPS.forEach(({key})=>{
+    (state[key]||[]).filter(v=>v.giftPending).forEach(v=>tagged.push({ key, id:v.id, name:v.name, contact:v.contact }));
+  });
+  if(!tagged.length){
+    openModal(`<h3>Regalito del día</h3><div style="font-size:13px; color:var(--muted);">No hay nadie etiquetado con "Regalito pendiente" todavía. Márcalo desde la ficha del cliente en Miembros VIP cuando haga la recarga.</div><div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>`);
+    return;
+  }
+  openModal(`
+    <h3>Regalito del día</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Se va a mandar a estos ${tagged.length} cliente(s), y se les quita la etiqueta:</div>
+    <div style="max-height:120px; overflow-y:auto; margin-bottom:14px; font-size:13px;">${tagged.map(t=>`<div>• ${t.name}${t.contact ? ' ('+t.contact+')' : ''}</div>`).join('')}</div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin-bottom:14px;">
+      <div style="font-size:26px; margin-bottom:6px;">📎</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la imagen del regalito</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="field"><label>Pick / descripción (opcional)</label><input id="f-winGiftNote" placeholder="Ej: Real Madrid gana, cuota 1.60"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winGenerateBtn">Generar y mandar a la bandeja</button>
+    </div>
+  `);
+  wireWinDropzone();
+  document.getElementById('winGenerateBtn').onclick = ()=>submitWinGift(tagged);
+}
+
+async function submitWinGift(tagged){
+  const nota = document.getElementById('f-winGiftNote').value.trim();
+  if(!winPendingFile){ alert('Sube la imagen del regalito primero.'); return; }
+  openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
+  try{
+    const { base64, mediaType, previewUrl } = await fileToCompressedImage(winPendingFile);
+    const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    const res = await fetch('/api/win-redactar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'regalito', destino: 'Regalito del día', code: nota, imageBase64: base64, mediaType })
+    });
+    const result = await res.json();
+    const caption = (result && result.caption) || nota || '🎁 ¡Tu regalito del día!';
+    for(const t of tagged){
+      await pushToOutbox('regalito', `${t.name}${t.contact ? ' ('+t.contact+')' : ''}`, caption, thumb || previewUrl, /*skipPersist*/ true);
+      const v = state[t.key].find(x=>x.id===t.id);
+      if(v) v.giftPending = false;
+    }
+    await persist('winOutbox');
+    const touchedKeys = [...new Set(tagged.map(t=>t.key))];
+    for(const k of touchedKeys) await persist(k);
+    closeModal();
+    renderWin();
+  }catch(e){
+    console.error(e);
+    alert('No se pudo generar el texto. Intenta de nuevo.');
+    closeModal();
+    renderWin();
+  }
+}
+
+async function pushToOutbox(kind, destino, caption, image, skipPersist){
+  state.winOutbox.push({ id: uid(), kind, destino, caption, image: image || '', status: 'pendiente', createdAt: new Date().toISOString() });
+  if(!skipPersist) await persist('winOutbox');
+}
+
 /* ---------- ROUTER ---------- */
 function render(){
   if(!state.loaded) return;
   document.getElementById('syncStatus').style.display = state.syncError ? 'block' : 'none';
   updateNavBadges();
   if(state.view==='dashboard') renderDashboard();
+  else if(state.view==='win') renderWin();
   else if(state.view==='vips') renderVipGroup('vips', 'Miembros VIP');
   else if(state.view==='vips1x2') renderVipGroup('vips1x2', 'Miembros VIP 1X2');
   else if(state.view==='vips1xbet') renderVipGroup('vips1xbet', 'Miembros VIP 1XBET');
