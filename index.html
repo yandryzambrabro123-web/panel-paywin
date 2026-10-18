@@ -389,6 +389,71 @@
     60%{ transform:scale(1); opacity:.8; }
     100%{ transform:scale(1.35); opacity:0; }
   }
+
+  /* ---- Pantalla de arranque "tipo Jarvis": barra de carga + anillos que arman el nombre.
+     Se reproduce cada vez que se activa el micrófono, encima de todo, y se disuelve sola. ---- */
+  .win-intro{
+    position:absolute; inset:0; z-index:40; display:none; overflow:hidden;
+    background:#050402; border-radius:inherit;
+    transition:opacity .7s ease, filter .7s ease;
+  }
+  .win-intro-bar{
+    position:absolute; top:16%; left:0; right:0; padding:0 min(8vw,90px);
+    transition:opacity .5s ease, filter .5s ease;
+  }
+  .win-intro-bar-dim{ opacity:.25; filter:blur(.6px); }
+  .win-intro-frame{
+    position:relative; border-top:1.5px solid var(--accent); border-bottom:1.5px solid var(--accent);
+    padding:13px 20px 11px; clip-path:polygon(3% 0, 97% 0, 100% 42%, 97% 100%, 3% 100%, 0 42%);
+    box-shadow: inset 0 0 40px rgba(212,175,106,.12), 0 0 30px rgba(212,175,106,.18);
+  }
+  .win-intro-title{
+    display:inline-flex; align-items:center; font-family:var(--mono); font-size:clamp(13px,2.8vw,20px);
+    font-weight:500; letter-spacing:.1em; color:var(--accent-light); text-shadow:0 0 20px rgba(212,175,106,.6);
+  }
+  .win-intro-dots{ opacity:.6; margin:0 .2em; }
+  .win-intro-cursor{
+    display:inline-block; width:.5em; height:.9em; margin-left:.15em; background:var(--accent);
+    animation:winIntroBlink .7s steps(1) infinite;
+  }
+  @keyframes winIntroBlink{ 50%{ opacity:0; } }
+  .win-intro-seg{ display:flex; gap:3px; margin-top:11px; }
+  .win-intro-seg-cell{
+    flex:1; height:9px; border:1px solid rgba(212,175,106,.45);
+    animation: winIntroSegOn .12s ease forwards;
+  }
+  @keyframes winIntroSegOn{ to{ background:var(--accent); box-shadow:0 0 10px var(--accent); } }
+  .win-intro-log{
+    margin-top:11px; font-family:var(--mono); font-size:10px; line-height:1.85; letter-spacing:.04em;
+    color:var(--accent-light); opacity:.65;
+  }
+  .win-intro-log-line{ opacity:0; animation: winIntroLogIn .3s ease forwards; }
+  .win-intro-log-line::before{ content:'\203a  '; opacity:.5; }
+  @keyframes winIntroLogIn{ from{ opacity:0; transform:translateX(-8px); } to{ opacity:1; transform:translateX(0); } }
+
+  .win-intro-rings-wrap{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    opacity:0; transition:opacity .4s ease;
+  }
+  .win-intro-rings-wrap.win-intro-rings-in{ opacity:1; }
+  .win-intro-rings{ width:min(52vmin,380px); height:min(52vmin,380px); overflow:visible; }
+  .win-intro-ring{
+    fill:none; stroke:var(--accent); opacity:0; transform-box:fill-box; transform-origin:center;
+    filter:drop-shadow(0 0 4px rgba(212,175,106,.5));
+    animation:winIntroRingIn .7s ease-out forwards;
+  }
+  .win-intro-ring:nth-child(1){ animation-delay:0s; }
+  .win-intro-ring:nth-child(2){ animation-delay:.08s; }
+  .win-intro-ring:nth-child(3){ animation-delay:.16s; }
+  .win-intro-ring:nth-child(4){ animation-delay:.24s; }
+  .win-intro-ring:nth-child(5){ animation-delay:.34s; }
+  @keyframes winIntroRingIn{ from{ opacity:0; transform:rotate(-40deg) scale(1.15); } to{ opacity:.8; transform:rotate(0) scale(1); } }
+  .win-intro-name{
+    fill:var(--accent-light); font-family:var(--mono); font-size:19px; text-anchor:middle; dominant-baseline:middle;
+    opacity:0; letter-spacing:1.3em; animation:winIntroNameIn .7s ease-out forwards; animation-delay:.5s;
+    text-shadow:0 0 14px rgba(212,175,106,.6);
+  }
+  @keyframes winIntroNameIn{ to{ opacity:1; letter-spacing:.5em; } }
 </style>
 
 <div id="loginScreen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);">
@@ -3265,6 +3330,25 @@ function renderWin(){
 
   document.getElementById('main').innerHTML = `
     <div class="win-fullscreen">
+      <div class="win-intro" id="winIntro">
+        <div class="win-intro-bar" id="winIntroBar">
+          <div class="win-intro-frame">
+            <span class="win-intro-title">INICIANDO SISTEMA WIN<span class="win-intro-dots">&hellip;</span><span class="win-intro-cursor"></span></span>
+            <div class="win-intro-seg" id="winIntroSeg"></div>
+          </div>
+          <div class="win-intro-log" id="winIntroLog"></div>
+        </div>
+        <div class="win-intro-rings-wrap" id="winIntroRingsWrap">
+          <svg class="win-intro-rings" viewBox="-160 -160 320 320">
+            <circle class="win-intro-ring" cx="0" cy="0" r="150" stroke-dasharray="3 6"/>
+            <circle class="win-intro-ring" cx="0" cy="0" r="128" stroke-dasharray="40 8 12 8" stroke-width="1.4"/>
+            <circle class="win-intro-ring" cx="0" cy="0" r="104" stroke-dasharray="2 4"/>
+            <circle class="win-intro-ring" cx="0" cy="0" r="84" stroke-dasharray="30 6 6 6" stroke-width="1.6"/>
+            <circle class="win-intro-ring" cx="0" cy="0" r="60" stroke-dasharray="1 3"/>
+            <text class="win-intro-name" x="0" y="6">W . I . N</text>
+          </svg>
+        </div>
+      </div>
       <div class="win-corner-icons">
         <button class="win-icon-btn" id="winOutboxBtn" title="Bandeja de envíos">&#128229;${pending.length ? `<span class="win-icon-badge">${pending.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winRemindersBtn" title="Recordatorios">&#9200;${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
@@ -3474,9 +3558,37 @@ function applyWinOrbState(mode, statusText){
 // ---- Escucha continua: pide el micrófono UNA vez (toque inicial obligatorio del
 // navegador), y desde ahí queda escuchando sola, sin que haya que volver a tocar nada
 // cada vez que se le quiera hablar. Reacciona en vivo al volumen de la voz.
+// ---- Secuencia de arranque "tipo Jarvis": barra de carga + anillos que arman el nombre.
+// Puro SVG/CSS, se reproduce encima de todo cada vez que se activa el micrófono y se disuelve sola.
+const WIN_INTRO_LOG = [
+  'MONTANDO MEMORIA DE WIN ... OK',
+  'VERIFICANDO CONEXIÓN CON EL PANEL ... OK',
+  'CARGANDO VOZ Y RECONOCIMIENTO ... OK',
+  'SINCRONIZANDO CON PAYWIN ... OK'
+];
+function playWinIntroSequence(){
+  const intro = document.getElementById('winIntro');
+  if(!intro) return;
+  const seg = document.getElementById('winIntroSeg');
+  const log = document.getElementById('winIntroLog');
+  const bar = document.getElementById('winIntroBar');
+  const ringsWrap = document.getElementById('winIntroRingsWrap');
+  seg.innerHTML = Array.from({ length: 22 }, (_, i)=>`<span class="win-intro-seg-cell" style="animation-delay:${i*42}ms"></span>`).join('');
+  log.innerHTML = WIN_INTRO_LOG.map((l,i)=>`<div class="win-intro-log-line" style="animation-delay:${300+i*210}ms">${l}</div>`).join('');
+  bar.classList.remove('win-intro-bar-dim');
+  ringsWrap.classList.remove('win-intro-rings-in');
+  intro.style.display = 'block';
+  intro.style.opacity = '1';
+  intro.style.filter = 'none';
+  setTimeout(()=>{ bar.classList.add('win-intro-bar-dim'); ringsWrap.classList.add('win-intro-rings-in'); }, 1300);
+  setTimeout(()=>{ intro.style.opacity = '0'; intro.style.filter = 'blur(10px)'; }, 2550);
+  setTimeout(()=>{ intro.style.display = 'none'; }, 3250);
+}
+
 async function startWinListening(){
   if(winListeningActive) return;
   applyWinOrbState('idle', 'Activando a Win...');
+  playWinIntroSequence();
   try{
     winMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   }catch(e){
@@ -3492,15 +3604,17 @@ async function startWinListening(){
   winVolumeLoop();
   winConversation = []; // conversación nueva cada vez que se activa el micrófono
   applyWinOrbState('listening', 'Escuchando... dile "hola Win" para empezar');
-  // Pequeño "encendido": la aparece abriendo los ojos y el moño entra con rebote, en vez de aparecer ya lista de golpe.
+  // La cara despierta justo cuando la secuencia de arranque se disuelve, no de entrada.
   const orb = document.getElementById('winOrb');
   const auraWrap = document.getElementById('winAuraWrap');
-  if(orb) orb.classList.add('win-boot-in');
-  if(auraWrap) auraWrap.classList.add('win-booting');
   setTimeout(()=>{
-    if(orb) orb.classList.remove('win-boot-in');
-    if(auraWrap) auraWrap.classList.remove('win-booting');
-  }, 950);
+    if(orb) orb.classList.add('win-boot-in');
+    if(auraWrap) auraWrap.classList.add('win-booting');
+    setTimeout(()=>{
+      if(orb) orb.classList.remove('win-boot-in');
+      if(auraWrap) auraWrap.classList.remove('win-booting');
+    }, 950);
+  }, 2500);
   startWinRecognitionEngine();
 }
 
