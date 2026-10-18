@@ -45,6 +45,16 @@
   #app{display:flex; min-height:100vh;}
   .brand-title{font-family:var(--display); font-weight:800; text-transform:uppercase; letter-spacing:.5px;}
 
+  /* Botón de menú (hamburguesa): solo aparece en pantallas chicas -- abre/cierra la barra lateral como cajón */
+  .menu-toggle{
+    display:none; position:fixed; top:14px; left:14px; z-index:60; width:42px; height:42px;
+    border-radius:11px; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    font-size:19px; align-items:center; justify-content:center; cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.35);
+  }
+  .menu-backdrop{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:49; }
+  .menu-backdrop.show{ display:block; }
+
   /* Sidebar */
   #sidebar{width:230px; background:var(--surface); border-right:1px solid var(--border); padding:24px 0; flex-shrink:0; display:flex; flex-direction:column;}
   .brand{display:flex; align-items:center; gap:10px; padding:0 24px 20px; border-bottom:1px solid var(--border); margin-bottom:16px;}
@@ -68,6 +78,18 @@
   #main{flex:1; padding:28px 36px; max-width:1300px;}
   .page-title{font-family:var(--display); font-size:26px; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; font-weight:800;}
   .page-sub{color:var(--muted); font-size:13px; margin-bottom:24px;}
+
+  /* Pantallas de celular: la barra lateral se vuelve un cajón que se abre con el botón de menú,
+     en vez de estar siempre fija ocupando espacio -- así el contenido (ej. Win) usa toda la pantalla. */
+  @media (max-width: 860px){
+    .menu-toggle{ display:flex; }
+    #sidebar{
+      position:fixed; top:0; left:0; bottom:0; z-index:50; width:78vw; max-width:280px;
+      transform:translateX(-100%); transition:transform .25s ease; box-shadow:0 0 30px rgba(0,0,0,.5);
+    }
+    #sidebar.sidebar-open{ transform:translateX(0); }
+    #main{ padding:72px 16px 32px; max-width:100%; }
+  }
 
   /* Scoreboard strip */
   .scoreboard{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:28px;}
@@ -276,6 +298,7 @@
   .win-type-toggle:hover{ opacity:1; }
 
   .win-aura-wrap{ position:relative; width:420px; height:420px; display:flex; align-items:center; justify-content:center; }
+  @media (max-width: 480px){ .win-aura-wrap{ transform:scale(0.72); } }
   .win-dial{
     position:absolute; width:396px; height:396px; border-radius:50%;
     background: repeating-conic-gradient(from 0deg, rgba(212,175,106,.6) 0deg 1.6deg, transparent 1.6deg 9deg);
@@ -486,6 +509,8 @@
 </div>
 
 <div id="app" style="display:none;">
+  <button class="menu-toggle" id="menuToggleBtn" aria-label="Abrir menú">&#9776;</button>
+  <div class="menu-backdrop" id="menuBackdrop"></div>
   <div id="sidebar">
     <div class="brand">
       <img src="logo-paywin.png" alt="Pay Win">
@@ -835,7 +860,24 @@ function applyRoleToNav(){
     : state.role === 'colaboradora' ? 'Panel<br>Pay Win · Erika'
     : 'Panel<br>Administración<br>Pay Win';
 }
-document.querySelectorAll('.nav-item[data-view]').forEach(el=>{ el.addEventListener('click', ()=>setView(el.dataset.view)); });
+document.querySelectorAll('.nav-item[data-view]').forEach(el=>{ el.addEventListener('click', ()=>{ setView(el.dataset.view); closeMobileMenu(); }); });
+
+// Menú de celular: el botón ☰ abre/cierra la barra lateral como cajón; tocar el fondo oscuro o
+// elegir una sección también la cierra.
+function openMobileMenu(){
+  document.getElementById('sidebar').classList.add('sidebar-open');
+  document.getElementById('menuBackdrop').classList.add('show');
+}
+function closeMobileMenu(){
+  document.getElementById('sidebar').classList.remove('sidebar-open');
+  document.getElementById('menuBackdrop').classList.remove('show');
+}
+function toggleMobileMenu(){
+  document.getElementById('sidebar').classList.contains('sidebar-open') ? closeMobileMenu() : openMobileMenu();
+}
+document.getElementById('menuToggleBtn').addEventListener('click', toggleMobileMenu);
+document.getElementById('menuBackdrop').addEventListener('click', closeMobileMenu);
+document.getElementById('logoutBtn').addEventListener('click', closeMobileMenu);
 
 function closeModal(){
   document.getElementById('modalOverlay').classList.remove('open');
