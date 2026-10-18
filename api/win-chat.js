@@ -7,9 +7,12 @@
 // La API key vive SOLO aquí, como variable de entorno en Vercel (ANTHROPIC_API_KEY) --
 // nunca se expone en el index.html ni llega al navegador.
 
-function buildSystemPrompt(memoryLines){
+function buildSystemPrompt(memoryLines, templateNames){
   const memoryBlock = (memoryLines && memoryLines.length)
     ? `\n\nEsto es lo que ya sabes del jefe de conversaciones anteriores (úsalo con naturalidad, sin repetirlo como lista ni decir "según lo que me contaste"):\n${memoryLines.map(l => `- ${l}`).join('\n')}`
+    : '';
+  const templatesBlock = (templateNames && templateNames.length)
+    ? `\n\nTiene estas publicidades/imágenes YA GUARDADAS con nombre fijo: ${templateNames.map(n => `"${n}"`).join(', ')}. Si pide mandar una de estas (por su nombre o algo muy parecido), usa mandar_publicidad_guardada -- NO abrir_formulario_contenido, porque esa ya tiene imagen y texto listos, no hay que redactar nada nuevo.`
     : '';
 
   return `Eres "Win", la asistente virtual personal del dueño de un negocio ecuatoriano de pronósticos deportivos y apuestas llamado PayWin. Hablas con él por voz, en una conversación en vivo -- así que tus respuestas deben ser CORTAS (1 a 3 frases, nunca un párrafo largo), directas y claras.
@@ -30,7 +33,7 @@ Cuando te pida algo ESPECÍFICO Y CLARO de estas acciones, usa la herramienta co
 
 MUY IMPORTANTE sobre las herramientas de acción (abrir_formulario_apuesta, abrir_formulario_contenido, crear_recordatorio, mandar_regalito): no las uses solo porque la conversación roza el tema. Si lo que dice es ambiguo, le falta un dato importante, o no estás segura de que de verdad quiere ejecutar la acción ahora mismo, PREGÚNTALE primero en vez de adivinar -- nunca actives una herramienta "por si acaso". Solo actívala cuando la intención sea inequívoca (ej: "mándale la apuesta del Barcelona al VIP" sí es claro; "oye y cómo va lo del Barcelona" no lo es).
 
-Sobre guardar_recuerdo: úsala con más soltura que las demás -- cada vez que te diga algo sobre sí mismo, su negocio, su gente, sus procesos o sus preferencias que tenga sentido recordar en el futuro (ej: "mi colaborador se llama Ayrton", "los lunes reviso comisiones", "no me gusta que me manden la ganada sin el pick"), guárdalo, aunque también sigas conversando normal en el mismo turno. No guardes datos triviales de un solo momento (la hora actual, el clima, algo que claramente ya no aplicará mañana).${memoryBlock}
+Sobre guardar_recuerdo: úsala con más soltura que las demás -- cada vez que te diga algo sobre sí mismo, su negocio, su gente, sus procesos o sus preferencias que tenga sentido recordar en el futuro (ej: "mi colaborador se llama Ayrton", "los lunes reviso comisiones", "no me gusta que me manden la ganada sin el pick"), guárdalo, aunque también sigas conversando normal en el mismo turno. No guardes datos triviales de un solo momento (la hora actual, el clima, algo que claramente ya no aplicará mañana).${memoryBlock}${templatesBlock}
 
 Hoy es ${new Date().toISOString().slice(0,10)} (zona horaria de Ecuador).`;
 }
@@ -79,6 +82,18 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {} }
   },
   {
+    name: 'mandar_publicidad_guardada',
+    description: 'Manda una publicidad/imagen que el dueño YA TIENE GUARDADA con nombre fijo (ver la lista de publicidades guardadas abajo) a un grupo/comunidad. Úsala cuando pida mandar algo que ya existe guardado por su nombre -- no algo nuevo para redactar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string', description: 'Nombre (o algo muy parecido) de la publicidad guardada que pidió, tal como la mencionó.' },
+        destino: { type: 'string', description: 'Grupo o comunidad al que debe ir, si lo dijo.' }
+      },
+      required: ['nombre']
+    }
+  },
+  {
     name: 'guardar_recuerdo',
     description: 'Guarda permanentemente algo duradero que el jefe contó (sobre él, su negocio, su gente o sus procesos) para poder usarlo en conversaciones futuras.',
     input_schema: {
@@ -104,7 +119,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { messages, memory } = req.body || {};
+    const { messages, memory, publicidades } = req.body || {};
     if (!Array.isArray(messages) || !messages.length) {
       res.status(400).json({ error: 'No llegó ninguna conversación.' });
       return;
@@ -117,6 +132,7 @@ module.exports = async function handler(req, res) {
       .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
 
     const memoryLines = Array.isArray(memory) ? memory.filter(x => typeof x === 'string').slice(-80) : [];
+    const templateNames = Array.isArray(publicidades) ? publicidades.filter(x => typeof x === 'string').slice(-60) : [];
 
     const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -128,7 +144,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-5',
         max_tokens: 500,
-        system: buildSystemPrompt(memoryLines),
+        system: buildSystemPrompt(memoryLines, templateNames),
         tools: TOOLS,
         messages: cleanMessages
       })

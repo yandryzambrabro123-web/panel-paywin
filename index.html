@@ -585,7 +585,10 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos', staffVipSales: 'PersonalVentasVIP', staffStakePayments: 'PersonalPagosStakes', dailyTasks: 'TareasDiarias', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria' };
+const SHEET_NAMES = { vips: 'VIPs', vips1x2: 'VIPs_1X2', vips1xbet: 'VIPs_1XBET', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', staff: 'Personal', staffBets: 'PersonalApuestas', staffAdvances: 'PersonalAnticipos', staffVipSales: 'PersonalVentasVIP', staffStakePayments: 'PersonalPagosStakes', dailyTasks: 'TareasDiarias', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas' };
+// "Publicidades" guardadas de Win: imagen + texto FIJOS, identificados por nombre (ej: "publicidad
+// de recargas"). Cuando el jefe pide una por nombre, Win la reconoce y la manda directo a la
+// bandeja con ese mismo texto de siempre -- sin redactar nada nuevo con IA.
 // Checklist de actividades diarias fijas — en orden de PRIORIDAD para Ayrton, y en dos bloques
 // (protocolo inicial de 8am + actividades sin hora fija) para Erika. Se reinicia solo cada
 // día porque cada marca se guarda con la fecha (ver dailyTaskKey/toggleDailyTask).
@@ -663,7 +666,7 @@ const FINANCE_LATEST_BASE = {
 };
 
 let state = {
-  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], winOutbox: [], winReminders: [], winMemory: [], dailyTasksRole: 'ayrton', dailyTasksDate: '', showArchivedStaff: false, vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
+  vips: [], vips1x2: [], vips1xbet: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], staff: [], staffBets: [], staffAdvances: [], staffVipSales: [], staffStakePayments: [], dailyTasks: [], winOutbox: [], winReminders: [], winMemory: [], winTemplates: [], dailyTasksRole: 'ayrton', dailyTasksDate: '', showArchivedStaff: false, vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '', staffId: '', staffMonth: '', staffDay: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, vips1x2:{from:'',to:''}, vips1xbet:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -752,6 +755,13 @@ function coerceRow(key, row){
   if(key === 'winMemory'){
     return { id:String(row.id||''), text:row.text||'', createdAt:row.createdAt||'' };
   }
+  if(key === 'winTemplates'){
+    return {
+      id:String(row.id||''), nombre:row.nombre||'', texto:row.texto||'',
+      base64:row.base64||'', mediaType:row.mediaType||'image/jpeg', thumb:row.thumb||'',
+      createdAt:row.createdAt||''
+    };
+  }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
 
@@ -770,7 +780,7 @@ async function fetchSheetKey(key){
 // mientras el resto del panel se sigue cargando atrás sin que tengas que esperarlo.
 async function loadAll(){
   const main = document.getElementById('main');
-  const winKeys = ['winMemory', 'winOutbox', 'winReminders'];
+  const winKeys = ['winMemory', 'winOutbox', 'winReminders', 'winTemplates'];
   const otherKeys = Object.keys(SHEET_NAMES).filter(k => !winKeys.includes(k));
 
   if(state.view === 'win'){
@@ -3470,6 +3480,7 @@ function renderWin(){
         <button class="win-icon-btn" id="winOutboxBtn" title="Bandeja de envíos">&#128229;${pending.length ? `<span class="win-icon-badge">${pending.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winRemindersBtn" title="Recordatorios">&#9200;${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti">&#129504;${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winTemplatesBtn" title="Imágenes guardadas">&#128444;${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
       </div>
       <div class="win-brand"><span id="winBrandDot" class="win-brand-dot win-brand-dot-idle"></span>WIN</div>
       <div class="win-aura-wrap" id="winAuraWrap">
@@ -3528,6 +3539,7 @@ function renderWin(){
   document.getElementById('winOutboxBtn').onclick = openWinOutboxModal;
   document.getElementById('winRemindersBtn').onclick = openWinRemindersModal;
   document.getElementById('winMemoryBtn').onclick = openWinMemoryModal;
+  document.getElementById('winTemplatesBtn').onclick = openWinTemplatesModal;
 
   const orb = document.getElementById('winOrb');
   if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
@@ -3624,6 +3636,115 @@ function openWinMemoryModal(){
     if(texto && texto.trim()){ saveWinMemory(texto.trim()).then(()=>{ closeModal(); openWinMemoryModal(); }); }
   };
   document.querySelectorAll('[data-del-memory]').forEach(b=>b.onclick=async ()=>{ await delItem('winMemory', b.dataset.delMemory, ()=>{}); closeModal(); openWinMemoryModal(); });
+}
+
+function openWinTemplatesModal(){
+  const rows = [...state.winTemplates].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  openModal(`
+    <h3>Publicidades guardadas</h3>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Imagen y texto fijos que Win reconoce por nombre -- dile "Win, manda la publicidad de recargas al VIP" y la manda directo a la bandeja, sin redactar nada nuevo.</div>
+    ${rows.length ? rows.map(t=>`<div style="display:flex; gap:12px; align-items:center; padding:10px 0; border-top:1px solid var(--border);">
+      ${t.thumb ? `<img src="${t.thumb}" style="width:52px; height:52px; object-fit:cover; border-radius:8px; flex-shrink:0;">` : '<div style="width:52px; height:52px; border-radius:8px; background:var(--surface-2); flex-shrink:0;"></div>'}
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:13.5px; font-weight:700;">${t.nombre}</div>
+        <div style="font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.texto || '(sin texto)'}</div>
+      </div>
+      <button class="btn danger small" data-del-template="${t.id}">Eliminar</button>
+    </div>`).join('') : '<div class="empty">Todavía no tienes publicidades guardadas.</div>'}
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn" id="winAddTemplateBtn">+ Agregar publicidad</button>
+    </div>
+  `);
+  document.getElementById('winAddTemplateBtn').onclick = openWinTemplateForm;
+  document.querySelectorAll('[data-del-template]').forEach(b=>b.onclick=async ()=>{ await delItem('winTemplates', b.dataset.delTemplate, ()=>{}); closeModal(); openWinTemplatesModal(); });
+}
+
+function openWinTemplateForm(){
+  openModal(`
+    <h3>Nueva publicidad guardada</h3>
+    <div class="field"><label>Nombre (así la vas a pedir después)</label><input id="f-winTplNombre" placeholder="Ej: publicidad de recargas"></div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
+      <div style="font-size:26px; margin-bottom:6px;">📎</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la imagen</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="field"><label>Texto fijo que va a acompañarla</label><textarea id="f-winTplTexto" placeholder="El mensaje tal cual se va a mandar siempre"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winSaveTemplateBtn">Guardar publicidad</button>
+    </div>
+  `);
+  wireWinDropzone();
+  document.getElementById('winSaveTemplateBtn').onclick = submitWinTemplate;
+}
+
+async function submitWinTemplate(){
+  const nombre = document.getElementById('f-winTplNombre').value.trim();
+  const texto = document.getElementById('f-winTplTexto').value.trim();
+  if(!nombre){ alert('Ponle un nombre.'); return; }
+  if(!winPendingFile){ alert('Sube una imagen.'); return; }
+  const btn = document.getElementById('winSaveTemplateBtn');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try{
+    const { base64, mediaType } = await fileToCompressedImage(winPendingFile);
+    const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    state.winTemplates.push({ id: uid(), nombre, texto, base64, mediaType, thumb, createdAt: new Date().toISOString() });
+    await persist('winTemplates');
+    closeModal();
+    openWinTemplatesModal();
+  }catch(e){
+    console.error(e);
+    alert('No se pudo guardar. Intenta de nuevo.');
+    btn.disabled = false; btn.textContent = 'Guardar publicidad';
+  }
+}
+
+// Busca una publicidad guardada por nombre -- coincidencia flexible (no hace falta que sea exacta).
+function findWinTemplateByName(nombre){
+  if(!nombre) return null;
+  const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  const q = norm(nombre);
+  if(!q) return null;
+  let match = state.winTemplates.find(t => norm(t.nombre) === q);
+  if(match) return match;
+  match = state.winTemplates.find(t => norm(t.nombre).includes(q) || q.includes(norm(t.nombre)));
+  return match || null;
+}
+
+async function handleMandarPublicidadGuardada(input){
+  const nombre = (input.nombre || '').trim();
+  const tpl = findWinTemplateByName(nombre);
+  if(!tpl){
+    const nombres = state.winTemplates.map(t=>t.nombre).join(', ') || '(no tienes ninguna guardada todavía)';
+    alert(`No encontré ninguna publicidad guardada como "${nombre}".\n\nLas que tienes guardadas: ${nombres}`);
+    return;
+  }
+  const destino = (input.destino || '').trim();
+  if(destino && WIN_DESTINOS.some(d => d.toLowerCase() === destino.toLowerCase())){
+    const destinoFinal = WIN_DESTINOS.find(d => d.toLowerCase() === destino.toLowerCase());
+    await pushToOutbox('contenido', destinoFinal, tpl.texto || tpl.nombre, tpl.thumb || '');
+    renderWin();
+    return;
+  }
+  // No vino un destino claro de la conversación -- se pregunta rapidito en vez de adivinar.
+  openModal(`
+    <h3>Mandar "${tpl.nombre}"</h3>
+    ${tpl.thumb ? `<img src="${tpl.thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
+    <div class="field"><label>A dónde va</label>${winDestinoSelectHTML('f-winTplDestino', destino)}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winConfirmTplBtn">Mandar a la bandeja</button>
+    </div>
+  `);
+  document.getElementById('winConfirmTplBtn').onclick = async ()=>{
+    const destinoSel = document.getElementById('f-winTplDestino');
+    const destinoFinal = destinoSel.value === '__custom__' ? (prompt('¿A qué grupo va?') || 'Sin especificar') : destinoSel.value;
+    await pushToOutbox('contenido', destinoFinal, tpl.texto || tpl.nombre, tpl.thumb || '');
+    closeModal();
+    renderWin();
+  };
 }
 
 function winOutboxItemHTML(o){
@@ -3944,7 +4065,8 @@ const WIN_TOOL_ACK = {
   abrir_formulario_apuesta: 'Dale, te abro el formulario.',
   abrir_formulario_contenido: 'Va, sube la imagen.',
   crear_recordatorio: 'Listo, te lo anoto.',
-  mandar_regalito: 'Dale, vamos con el regalito del día.'
+  mandar_regalito: 'Dale, vamos con el regalito del día.',
+  mandar_publicidad_guardada: 'Va, la mando a la bandeja.'
 };
 
 async function processWinVoiceCommand(texto){
@@ -3955,7 +4077,7 @@ async function processWinVoiceCommand(texto){
   try{
     const res = await fetch('/api/win-chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: winConversation, memory: state.winMemory.map(m=>m.text) })
+      body: JSON.stringify({ messages: winConversation, memory: state.winMemory.map(m=>m.text), publicidades: state.winTemplates.map(t=>t.nombre) })
     });
     const result = await res.json();
     if(!res.ok){
@@ -4002,6 +4124,7 @@ function dispatchWinTool(tool){
   else if(tool.name === 'abrir_formulario_contenido') openWinContentForm(input.nota || '', input.destino || '');
   else if(tool.name === 'crear_recordatorio') openWinReminderForm(input.texto || '', input.fecha || '', input.hora || '');
   else if(tool.name === 'mandar_regalito') openWinGiftFlow();
+  else if(tool.name === 'mandar_publicidad_guardada') handleMandarPublicidadGuardada(input);
 }
 
 const WIN_DESTINOS = ['Grupo VIP', 'Grupo 1X2', 'Grupo 1XBET', 'Comunidad gratis', 'Todas las comunidades'];
