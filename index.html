@@ -302,7 +302,6 @@
     transform-box:fill-box; transform-origin:center;
   }
   .win-duck .duck-eyelid{ transform:scaleY(0); animation:winDuckBlink 4.6s ease-in-out infinite; }
-  .win-duck .duck-eye:nth-child(2) .duck-eyelid{ animation-delay:.12s; }
   @keyframes winDuckBlink{
     0%, 92%, 100%{ transform:scaleY(0); }
     95%{ transform:scaleY(1); }
@@ -354,6 +353,30 @@
   .win-orb.win-orb-done{
     filter:saturate(1.3) brightness(1.2);
     box-shadow: 0 0 95px 4px rgba(120,220,150,.9), inset 0 0 32px rgba(255,255,255,.2);
+  }
+
+  /* ---- Secuencia de encendido: solo la primera vez que se activa el micrófono ---- */
+  .win-orb.win-boot-in{ animation: winBootOrb .9s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes winBootOrb{
+    0%{ transform:scale(.12); filter:saturate(0) brightness(2); opacity:0; }
+    50%{ transform:scale(.92); opacity:1; filter:saturate(1.2) brightness(1.3); }
+    72%{ transform:scale(.74); }
+    100%{ transform:scale(.95); filter:saturate(1.15) brightness(1.05); }
+  }
+  .win-orb.win-boot-in .duck-eyelid{ animation: winBootEyeOpen .9s ease-out both; }
+  @keyframes winBootEyeOpen{ 0%{ transform:scaleY(1); } 55%{ transform:scaleY(1); } 100%{ transform:scaleY(0); } }
+  .win-orb.win-boot-in .duck-bow{ animation: winBootBow .9s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes winBootBow{
+    0%{ transform:scale(0) rotate(-18deg); opacity:0; }
+    65%{ transform:scale(0) rotate(-18deg); opacity:0; }
+    85%{ transform:scale(1.3) rotate(-18deg); opacity:1; }
+    100%{ transform:scale(1) rotate(-18deg); }
+  }
+  .win-aura-wrap.win-booting .win-ring{ animation: winBootRing .9s ease-out both; }
+  @keyframes winBootRing{
+    0%{ transform:scale(.3); opacity:0; }
+    60%{ transform:scale(1); opacity:.8; }
+    100%{ transform:scale(1.35); opacity:0; }
   }
 </style>
 
@@ -3237,7 +3260,7 @@ function renderWin(){
         <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti">&#129504;${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
       </div>
       <div class="win-brand"><span id="winBrandDot" class="win-brand-dot win-brand-dot-idle"></span>WIN</div>
-      <div class="win-aura-wrap">
+      <div class="win-aura-wrap" id="winAuraWrap">
         <div class="win-dial"></div>
         <div class="win-dial-inner"></div>
         <div class="win-ring win-ring-1"></div>
@@ -3253,44 +3276,50 @@ function renderWin(){
                 <stop offset="100%" stop-color="#3a2a10"/>
               </radialGradient>
             </defs>
-            <ellipse cx="110" cy="206" rx="80" ry="36" fill="#8a6a2e" opacity=".5"/>
-            <ellipse cx="110" cy="108" rx="82" ry="78" fill="url(#duckFaceGrad)"/>
-            <g class="duck-bow" transform="translate(158,46) rotate(-18)">
-              <path d="M0 0 L-16 -10 L-16 10 Z" fill="#E8D4B0" stroke="#8a6a2e" stroke-width="1.5"/>
-              <path d="M0 0 L16 -10 L16 10 Z" fill="#E8D4B0" stroke="#8a6a2e" stroke-width="1.5"/>
-              <circle r="4.5" fill="#D4AF6A" stroke="#8a6a2e" stroke-width="1.2"/>
+            <radialGradient id="duckMaskGrad" cx="42%" cy="35%" r="70%">
+              <stop offset="0%" stop-color="#fffaf0"/>
+              <stop offset="60%" stop-color="#FBEFD9"/>
+              <stop offset="100%" stop-color="#E8D4B0"/>
+            </radialGradient>
+            <ellipse cx="110" cy="104" rx="86" ry="82" fill="url(#duckFaceGrad)"/>
+            <path class="duck-topknot" d="M66 36 Q110 10 154 36 Q146 56 110 52 Q74 56 66 36 Z" fill="#B88A3E"/>
+            <ellipse cx="110" cy="118" rx="68" ry="56" fill="url(#duckMaskGrad)"/>
+            <g class="duck-bow" transform="translate(146,44) rotate(-14)">
+              <path d="M0 2 L-17 -9 L-15 13 Z" fill="#E8D4B0" stroke="#8a6a2e" stroke-width="1.5"/>
+              <path d="M0 2 L17 -9 L15 13 Z" fill="#E8D4B0" stroke="#8a6a2e" stroke-width="1.5"/>
+              <circle cx="0" cy="2" r="5" fill="#D4AF6A" stroke="#8a6a2e" stroke-width="1.2"/>
             </g>
-            <ellipse cx="60" cy="128" rx="13" ry="8" fill="#E8935A" opacity=".3"/>
-            <ellipse cx="160" cy="128" rx="13" ry="8" fill="#E8935A" opacity=".3"/>
-            <path class="duck-brow" d="M68 70 Q80 62 94 70" stroke="#5c431c" stroke-width="4" fill="none" stroke-linecap="round"/>
-            <path class="duck-brow" d="M126 70 Q140 62 152 70" stroke="#5c431c" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <ellipse cx="66" cy="140" rx="12" ry="7" fill="#E8935A" opacity=".22"/>
+            <ellipse cx="154" cy="140" rx="12" ry="7" fill="#E8935A" opacity=".22"/>
+            <path class="duck-brow" d="M68 82 Q80 74 94 82" stroke="#8a6a2e" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path class="duck-brow" d="M126 82 Q140 74 152 82" stroke="#8a6a2e" stroke-width="4" fill="none" stroke-linecap="round"/>
             <g class="duck-eyes-normal">
-              <g class="duck-eye" transform="translate(81,96)">
-                <ellipse rx="15" ry="17" fill="#2a1a08"/>
-                <circle class="duck-pupil" cx="2" cy="1" r="7" fill="#0c0700"/>
-                <circle cx="5" cy="-4" r="2.6" fill="#fff" opacity=".9"/>
-                <path d="M-13 -14 Q-18 -20 -22 -16" stroke="#3a2a10" stroke-width="2" fill="none" stroke-linecap="round"/>
-                <path d="M-9 -17 Q-12 -24 -16 -22" stroke="#3a2a10" stroke-width="2" fill="none" stroke-linecap="round"/>
-                <ellipse class="duck-eyelid" rx="16" ry="18" fill="url(#duckFaceGrad)"/>
+              <g class="duck-eye" transform="translate(81,106)">
+                <ellipse rx="16" ry="18" fill="#2a1a08"/>
+                <circle class="duck-pupil" cx="2" cy="1" r="7.5" fill="#0c0700"/>
+                <circle cx="5" cy="-4" r="2.8" fill="#fff" opacity=".9"/>
+                <path d="M-14 -15 Q-19 -21 -23 -17" stroke="#8a6a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <path d="M-9 -18 Q-12 -25 -16 -23" stroke="#8a6a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <ellipse class="duck-eyelid" rx="17" ry="19" fill="url(#duckMaskGrad)"/>
               </g>
-              <g class="duck-eye" transform="translate(139,96)">
-                <ellipse rx="15" ry="17" fill="#2a1a08"/>
-                <circle class="duck-pupil" cx="2" cy="1" r="7" fill="#0c0700"/>
-                <circle cx="5" cy="-4" r="2.6" fill="#fff" opacity=".9"/>
-                <path d="M13 -14 Q18 -20 22 -16" stroke="#3a2a10" stroke-width="2" fill="none" stroke-linecap="round"/>
-                <path d="M9 -17 Q12 -24 16 -22" stroke="#3a2a10" stroke-width="2" fill="none" stroke-linecap="round"/>
-                <ellipse class="duck-eyelid" rx="16" ry="18" fill="url(#duckFaceGrad)"/>
+              <g class="duck-eye" transform="translate(139,106)">
+                <ellipse rx="16" ry="18" fill="#2a1a08"/>
+                <circle class="duck-pupil" cx="2" cy="1" r="7.5" fill="#0c0700"/>
+                <circle cx="5" cy="-4" r="2.8" fill="#fff" opacity=".9"/>
+                <path d="M14 -15 Q19 -21 23 -17" stroke="#8a6a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <path d="M9 -18 Q12 -25 16 -23" stroke="#8a6a2e" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <ellipse class="duck-eyelid" rx="17" ry="19" fill="url(#duckMaskGrad)"/>
               </g>
             </g>
             <g class="duck-eyes-happy">
-              <path d="M66 98 Q81 84 96 98" stroke="#2a1a08" stroke-width="5" fill="none" stroke-linecap="round"/>
-              <path d="M124 98 Q139 84 154 98" stroke="#2a1a08" stroke-width="5" fill="none" stroke-linecap="round"/>
+              <path d="M65 108 Q81 92 97 108" stroke="#2a1a08" stroke-width="5.5" fill="none" stroke-linecap="round"/>
+              <path d="M123 108 Q139 92 155 108" stroke="#2a1a08" stroke-width="5.5" fill="none" stroke-linecap="round"/>
             </g>
-            <g class="duck-beak" transform="translate(110,146)">
-              <ellipse cx="0" cy="-2" rx="34" ry="15" fill="#E8935A"/>
-              <ellipse class="duck-mouth-gap" cx="0" cy="7" rx="26" ry="9" fill="#5c2e12"/>
-              <ellipse class="duck-beak-bottom" cx="0" cy="12" rx="30" ry="13" fill="#D97B3F"/>
-              <line x1="-26" y1="-2" x2="26" y2="-2" stroke="#b5631f" stroke-width="1.5" opacity=".5"/>
+            <g class="duck-beak" transform="translate(110,151)">
+              <path d="M-38 -6 Q0 -22 38 -6 Q36 4 0 7 Q-36 4 -38 -6 Z" fill="#F0A95C" stroke="#B5631F" stroke-width="1.5"/>
+              <circle cx="0" cy="-7" r="2" fill="#B5631F" opacity=".6"/>
+              <path class="duck-mouth-gap" d="M-30 6 Q0 13 30 6 L30 9 Q0 17 -30 9 Z" fill="#6b3414" opacity=".12"/>
+              <path class="duck-beak-bottom" d="M-32 6 Q0 24 32 6 Q30 16 0 20 Q-30 16 -32 6 Z" fill="#D9853F" stroke="#B5631F" stroke-width="1.5"/>
             </g>
           </svg>
         </div>
@@ -3475,6 +3504,15 @@ async function startWinListening(){
   winVolumeLoop();
   winConversation = []; // conversación nueva cada vez que se activa el micrófono
   applyWinOrbState('listening', 'Escuchando... dile "hola Win" para empezar');
+  // Pequeño "encendido": la aparece abriendo los ojos y el moño entra con rebote, en vez de aparecer ya lista de golpe.
+  const orb = document.getElementById('winOrb');
+  const auraWrap = document.getElementById('winAuraWrap');
+  if(orb) orb.classList.add('win-boot-in');
+  if(auraWrap) auraWrap.classList.add('win-booting');
+  setTimeout(()=>{
+    if(orb) orb.classList.remove('win-boot-in');
+    if(auraWrap) auraWrap.classList.remove('win-booting');
+  }, 950);
   startWinRecognitionEngine();
 }
 
