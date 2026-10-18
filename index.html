@@ -3581,7 +3581,7 @@ function openWinOutboxModal(){
   const sent = outboxRows.filter(o=>o.status==='enviado');
   openModal(`
     <h3>Bandeja de envíos</h3>
-    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Esto todavía no se manda solo a WhatsApp — Win lo deja listo (imagen + texto). Copia el texto, dale a "Abrir grupo" para ir directo al chat correcto, pega y manda.</div>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Historial de lo que Win ha dejado listo. Lo normal es mandarlo directo desde la pantalla de confirmación (copiar y abrir el grupo en un toque); aquí puedes revisarlo después o reenviarlo si algo quedó pendiente.</div>
     ${pending.length ? pending.map(o=>winOutboxItemHTML(o)).join('') : '<div class="empty">No hay nada pendiente por mandar.</div>'}
     ${sent.length ? `<div style="margin-top:18px; opacity:.6;"><strong style="font-size:12px;">Ya enviados (${sent.length})</strong>${sent.slice(0,5).map(o=>winOutboxItemHTML(o)).join('')}</div>` : ''}
     <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>
@@ -3723,13 +3723,10 @@ async function handleMandarPublicidadGuardada(input){
     return;
   }
   const destinoDicho = (input.destino || '').trim();
-  // Puede haber mencionado más de un grupo a la vez (ej. "los tres gratis") -- se manda una
-  // entrada a la bandeja POR CADA grupo que calce, cada una con su propio botón de abrir grupo.
+  // Puede haber mencionado más de un grupo a la vez (ej. "los tres gratis").
   const matched = WIN_GROUPS.filter(g => destinoDicho && destinoDicho.toLowerCase().includes(g.nombre.toLowerCase()));
   if(matched.length){
-    for(const g of matched){ await pushToOutbox('contenido', g.nombre, tpl.texto || tpl.nombre, tpl.thumb || '', /*skipPersist*/ true); }
-    await persist('winOutbox');
-    renderWin();
+    openWinCaptionConfirm('contenido', matched.map(g=>g.nombre), tpl.texto || tpl.nombre, tpl.thumb || '');
     return;
   }
   // No vino un destino claro (o no calzó con ningún grupo conocido) -- se pregunta con checkboxes
@@ -3740,16 +3737,13 @@ async function handleMandarPublicidadGuardada(input){
     <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winTplGroups', destinoDicho)}</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" id="winConfirmTplBtn">Mandar a la bandeja</button>
+      <button class="btn" id="winConfirmTplBtn">Continuar</button>
     </div>
   `);
-  document.getElementById('winConfirmTplBtn').onclick = async ()=>{
+  document.getElementById('winConfirmTplBtn').onclick = ()=>{
     const grupos = getCheckedWinGroups('f-winTplGroups');
     if(!grupos.length){ alert('Marca al menos un grupo.'); return; }
-    for(const g of grupos){ await pushToOutbox('contenido', g, tpl.texto || tpl.nombre, tpl.thumb || '', true); }
-    await persist('winOutbox');
-    closeModal();
-    renderWin();
+    openWinCaptionConfirm('contenido', grupos, tpl.texto || tpl.nombre, tpl.thumb || '');
   };
 }
 
@@ -4250,27 +4244,42 @@ function escapeForTextarea(text){
   return (text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// Paso final antes de la bandeja: Win ya redactó el texto solo (sin que el jefe tenga que
-// escribir nada), y aquí se lo muestra para que lo apruebe, lo edite si quiere, o lo cancele --
-// recién al confirmar se crea la entrada en la bandeja de salida.
+// Paso final: Win ya redactó el texto solo (sin que el jefe tenga que escribir nada), y aquí se
+// lo muestra listo para revisar/editar. Cada grupo tiene su propio botón que copia el texto al
+// portapapeles Y abre ese chat de WhatsApp directo en el mismo toque -- ya no hay que pasar por
+// la bandeja de entrada primero; solo falta pegar y darle enviar allá. Igual se deja un registro
+// en la bandeja (como "enviado") para tener historial.
 function openWinCaptionConfirm(kind, grupos, caption, thumb){
+  const groupButtonsHTML = grupos.map((g, i) => {
+    const link = winGroupLink(g);
+    return `<button class="btn ${i===0 ? '' : 'secondary'}" data-win-send-group="${encodeURIComponent(g)}" style="width:100%; margin-bottom:8px;">${link ? `Copiar y abrir "${g}"` : `Copiar texto (falta link de "${g}")`}</button>`;
+  }).join('');
   openModal(`
     <h3>Así quedó el texto</h3>
     ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
     <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:130px;">${escapeForTextarea(caption)}</textarea></div>
-    <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Va a: ${grupos.join(', ')}</div>
+    <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Cada botón copia el texto y abre ese grupo directo en WhatsApp -- ya solo pegas y le das enviar allá.</div>
+    ${groupButtonsHTML}
     <div class="modal-actions">
-      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" id="winConfirmCaptionBtn">Confirmar y mandar a la bandeja</button>
+      <button class="btn secondary" id="winCaptionDoneBtn">Listo, cerrar</button>
     </div>
   `);
-  document.getElementById('winConfirmCaptionBtn').onclick = async ()=>{
-    const finalCaption = document.getElementById('f-winCaptionConfirm').value.trim() || caption;
-    for(const g of grupos){ await pushToOutbox(kind, g, finalCaption, thumb, /*skipPersist*/ true); }
-    await persist('winOutbox');
-    closeModal();
-    renderWin();
-  };
+  document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
+  document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
+    const grupo = decodeURIComponent(btn.dataset.winSendGroup);
+    btn.onclick = ()=>{
+      const box = document.getElementById('f-winCaptionConfirm');
+      const finalCaption = (box && box.value.trim()) || caption;
+      const link = winGroupLink(grupo);
+      try{ navigator.clipboard.writeText(finalCaption); }catch(e){}
+      if(link) window.open(link, '_blank');
+      else alert(`Todavía no tengo el link de "${grupo}". El texto ya quedó copiado -- mándalo a mano por esta vez.`);
+      pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado').then(()=>persist('winOutbox'));
+      btn.textContent = link ? 'Copiado y grupo abierto ✓' : 'Texto copiado ✓';
+      btn.disabled = true;
+      btn.classList.add('secondary');
+    };
+  });
 }
 
 function openWinContentForm(nota, destinoGuess){
@@ -4409,8 +4418,8 @@ async function submitWinGift(tagged){
   }
 }
 
-async function pushToOutbox(kind, destino, caption, image, skipPersist){
-  state.winOutbox.push({ id: uid(), kind, destino, caption, image: image || '', status: 'pendiente', createdAt: new Date().toISOString() });
+async function pushToOutbox(kind, destino, caption, image, skipPersist, status){
+  state.winOutbox.push({ id: uid(), kind, destino, caption, image: image || '', status: status || 'pendiente', createdAt: new Date().toISOString() });
   if(!skipPersist) await persist('winOutbox');
 }
 
