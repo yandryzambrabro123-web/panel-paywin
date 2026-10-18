@@ -3581,12 +3581,13 @@ function openWinOutboxModal(){
   const sent = outboxRows.filter(o=>o.status==='enviado');
   openModal(`
     <h3>Bandeja de envíos</h3>
-    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Esto todavía no se manda solo a WhatsApp — Win lo deja listo (imagen + texto) para que tú lo copies y lo mandes con un toque.</div>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Esto todavía no se manda solo a WhatsApp — Win lo deja listo (imagen + texto). Copia el texto, dale a "Abrir grupo" para ir directo al chat correcto, pega y manda.</div>
     ${pending.length ? pending.map(o=>winOutboxItemHTML(o)).join('') : '<div class="empty">No hay nada pendiente por mandar.</div>'}
     ${sent.length ? `<div style="margin-top:18px; opacity:.6;"><strong style="font-size:12px;">Ya enviados (${sent.length})</strong>${sent.slice(0,5).map(o=>winOutboxItemHTML(o)).join('')}</div>` : ''}
     <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>
   `);
   document.querySelectorAll('[data-copy-outbox]').forEach(b=>b.onclick=()=>copyOutboxCaption(b.dataset.copyOutbox));
+  document.querySelectorAll('[data-open-group]').forEach(b=>b.onclick=()=>window.open(decodeURIComponent(b.dataset.openGroup), '_blank'));
   document.querySelectorAll('[data-sent-outbox]').forEach(b=>b.onclick=async ()=>{ await markOutboxSent(b.dataset.sentOutbox); closeModal(); openWinOutboxModal(); updateNavBadges(); });
   document.querySelectorAll('[data-del-outbox]').forEach(b=>b.onclick=async ()=>{ await delItem('winOutbox', b.dataset.delOutbox, ()=>{}); closeModal(); openWinOutboxModal(); updateNavBadges(); });
 }
@@ -3721,27 +3722,32 @@ async function handleMandarPublicidadGuardada(input){
     alert(`No encontré ninguna publicidad guardada como "${nombre}".\n\nLas que tienes guardadas: ${nombres}`);
     return;
   }
-  const destino = (input.destino || '').trim();
-  if(destino && WIN_DESTINOS.some(d => d.toLowerCase() === destino.toLowerCase())){
-    const destinoFinal = WIN_DESTINOS.find(d => d.toLowerCase() === destino.toLowerCase());
-    await pushToOutbox('contenido', destinoFinal, tpl.texto || tpl.nombre, tpl.thumb || '');
+  const destinoDicho = (input.destino || '').trim();
+  // Puede haber mencionado más de un grupo a la vez (ej. "los tres gratis") -- se manda una
+  // entrada a la bandeja POR CADA grupo que calce, cada una con su propio botón de abrir grupo.
+  const matched = WIN_GROUPS.filter(g => destinoDicho && destinoDicho.toLowerCase().includes(g.nombre.toLowerCase()));
+  if(matched.length){
+    for(const g of matched){ await pushToOutbox('contenido', g.nombre, tpl.texto || tpl.nombre, tpl.thumb || '', /*skipPersist*/ true); }
+    await persist('winOutbox');
     renderWin();
     return;
   }
-  // No vino un destino claro de la conversación -- se pregunta rapidito en vez de adivinar.
+  // No vino un destino claro (o no calzó con ningún grupo conocido) -- se pregunta con checkboxes
+  // en vez de adivinar.
   openModal(`
     <h3>Mandar "${tpl.nombre}"</h3>
     ${tpl.thumb ? `<img src="${tpl.thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
-    <div class="field"><label>A dónde va</label>${winDestinoSelectHTML('f-winTplDestino', destino)}</div>
+    <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winTplGroups', destinoDicho)}</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="winConfirmTplBtn">Mandar a la bandeja</button>
     </div>
   `);
   document.getElementById('winConfirmTplBtn').onclick = async ()=>{
-    const destinoSel = document.getElementById('f-winTplDestino');
-    const destinoFinal = destinoSel.value === '__custom__' ? (prompt('¿A qué grupo va?') || 'Sin especificar') : destinoSel.value;
-    await pushToOutbox('contenido', destinoFinal, tpl.texto || tpl.nombre, tpl.thumb || '');
+    const grupos = getCheckedWinGroups('f-winTplGroups');
+    if(!grupos.length){ alert('Marca al menos un grupo.'); return; }
+    for(const g of grupos){ await pushToOutbox('contenido', g, tpl.texto || tpl.nombre, tpl.thumb || '', true); }
+    await persist('winOutbox');
     closeModal();
     renderWin();
   };
@@ -3756,6 +3762,7 @@ function winOutboxItemHTML(o){
     </div>
     ${o.status==='pendiente' ? `<div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
       <button class="btn secondary small" data-copy-outbox="${o.id}">Copiar texto</button>
+      ${winGroupLink(o.destino) ? `<button class="btn small" data-open-group="${encodeURIComponent(winGroupLink(o.destino))}">Abrir grupo</button>` : ''}
       <button class="btn small" data-sent-outbox="${o.id}">Ya lo mandé</button>
       <button class="btn danger small" data-del-outbox="${o.id}">Eliminar</button>
     </div>` : '<div style="flex-shrink:0; align-self:center;"><span class="badge active">Enviado</span></div>'}
@@ -4127,9 +4134,46 @@ function dispatchWinTool(tool){
   else if(tool.name === 'mandar_publicidad_guardada') handleMandarPublicidadGuardada(input);
 }
 
-const WIN_DESTINOS = ['Grupo VIP', 'Grupo 1X2', 'Grupo 1XBET', 'Comunidad gratis', 'Todas las comunidades'];
-function winDestinoSelectHTML(id, selected){
-  return `<select id="${id}">${WIN_DESTINOS.map(d=>`<option value="${d}" ${selected===d?'selected':''}>${d}</option>`).join('')}<option value="__custom__" ${!WIN_DESTINOS.includes(selected) && selected ? 'selected':''}>Otro...</option></select>`;
+// Grupos reales de WhatsApp conectados -- cada uno con su link de invitación, para que la
+// bandeja de envíos pueda abrir DIRECTO el grupo correcto en vez de que el jefe tenga que
+// buscarlo a mano. El link vacío (1X2) queda pendiente hasta que lo pase.
+const WIN_GROUPS = [
+  { nombre: 'Gratis 1', link: 'https://chat.whatsapp.com/LUr5xcMMas5LrupdiGO24p' },
+  { nombre: 'Gratis 2', link: 'https://chat.whatsapp.com/GvqDG0ejTRv2eWJ18aJ3De' },
+  { nombre: 'Gratis 3', link: 'https://chat.whatsapp.com/HIb82bDAZHI4wAGXTadBve' },
+  { nombre: 'VIP', link: 'https://chat.whatsapp.com/GQ0QxxU85LTH222xshkrrA' },
+  { nombre: 'VIP 1XBET', link: 'https://chat.whatsapp.com/LW7Jv2oLTMPC0EY6fuQG5B' },
+  { nombre: 'VIP Más Parley', link: 'https://chat.whatsapp.com/CKflDIZfyFh9cHPgTYiobt' },
+  { nombre: '1X2', link: '' }
+];
+const WIN_DESTINOS = WIN_GROUPS.map(g => g.nombre);
+function winGroupLink(nombre){
+  const g = WIN_GROUPS.find(x => x.nombre.toLowerCase() === (nombre||'').toLowerCase());
+  return g ? g.link : '';
+}
+// Checkboxes en vez de un select -- así se puede marcar varios grupos a la vez (ej. los 3
+// gratis juntos) y Win manda una entrada en la bandeja por cada uno, cada una con su propio
+// botón de "Abrir grupo". preselected puede ser un string o un array de nombres.
+function winGroupPickerHTML(idPrefix, preselected){
+  const pre = Array.isArray(preselected) ? preselected : (preselected ? [preselected] : []);
+  const preLower = pre.map(p=>p.toLowerCase());
+  return `<div class="win-group-picker" id="${idPrefix}">
+    ${WIN_GROUPS.map(g => `<label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; cursor:pointer;">
+      <input type="checkbox" value="${g.nombre}" ${preLower.includes(g.nombre.toLowerCase()) ? 'checked' : ''}>
+      ${g.nombre}${!g.link ? ' <span style="color:var(--muted); font-size:11px;">(sin link todavía)</span>' : ''}
+    </label>`).join('')}
+    <label style="display:flex; align-items:center; gap:8px; padding:6px 0 2px; font-size:13px;">
+      <input type="text" id="${idPrefix}-custom" placeholder="Otro grupo (opcional)" style="flex:1;">
+    </label>
+  </div>`;
+}
+function getCheckedWinGroups(idPrefix){
+  const wrap = document.getElementById(idPrefix);
+  if(!wrap) return [];
+  const checked = [...wrap.querySelectorAll('input[type="checkbox"]:checked')].map(c=>c.value);
+  const custom = (document.getElementById(`${idPrefix}-custom`)?.value || '').trim();
+  if(custom) checked.push(custom);
+  return checked;
 }
 
 function openWinBetForm(kind, destinoGuess){
@@ -4144,7 +4188,7 @@ function openWinBetForm(kind, destinoGuess){
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
     ${!isGanada ? `<div class="field"><label>Código / texto de la apuesta</label><textarea id="f-winCode" placeholder="Pick, cuota, stake..."></textarea></div>` : ''}
-    <div class="field"><label>A dónde va</label>${winDestinoSelectHTML('f-winDestino', destinoGuess)}</div>
+    <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winGroups', destinoGuess)}</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="winGenerateBtn">Generar y mandar a la bandeja</button>
@@ -4178,9 +4222,9 @@ function wireWinDropzone(){
 }
 
 async function submitWinBet(kind){
-  const destinoSel = document.getElementById('f-winDestino');
-  const destino = destinoSel.value === '__custom__' ? (prompt('¿A qué grupo va?') || 'Sin especificar') : destinoSel.value;
+  const grupos = getCheckedWinGroups('f-winGroups');
   const code = document.getElementById('f-winCode') ? document.getElementById('f-winCode').value.trim() : '';
+  if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   if(!winPendingFile){ alert('Sube la captura primero.'); return; }
   openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
   try{
@@ -4188,11 +4232,13 @@ async function submitWinBet(kind){
     const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, destino, code, imageBase64: base64, mediaType })
+      body: JSON.stringify({ kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType })
     });
     const result = await res.json();
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
-    await pushToOutbox(kind, destino, caption, thumb || previewUrl);
+    // Una entrada en la bandeja POR CADA grupo marcado, cada una con su propio botón de abrir grupo.
+    for(const g of grupos){ await pushToOutbox(kind, g, caption, thumb || previewUrl, /*skipPersist*/ true); }
+    await persist('winOutbox');
     closeModal();
     renderWin();
   }catch(e){
@@ -4214,7 +4260,7 @@ function openWinContentForm(nota, destinoGuess){
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
-    <div class="field"><label>A dónde va</label>${winDestinoSelectHTML('f-winDestino', destinoGuess)}</div>
+    <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winGroups', destinoGuess)}</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="winGenerateBtn">Generar y mandar a la bandeja</button>
@@ -4225,9 +4271,9 @@ function openWinContentForm(nota, destinoGuess){
 }
 
 async function submitWinContent(){
-  const destinoSel = document.getElementById('f-winDestino');
-  const destino = destinoSel.value === '__custom__' ? (prompt('¿A qué grupo va?') || 'Sin especificar') : destinoSel.value;
+  const grupos = getCheckedWinGroups('f-winGroups');
   const nota = document.getElementById('f-winContentNote').value.trim();
+  if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   // La imagen es opcional -- si no hay, se redacta solo con el texto (ver api/win-redactar.js,
   // ya soporta mandar sin imageBase64).
   if(!winPendingFile && !nota){ alert('Escribe qué necesitas mandar, o sube una imagen.'); return; }
@@ -4240,11 +4286,12 @@ async function submitWinContent(){
     }
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'contenido', destino, code: nota, imageBase64: base64, mediaType })
+      body: JSON.stringify({ kind: 'contenido', destino: grupos.join(', '), code: nota, imageBase64: base64, mediaType })
     });
     const result = await res.json();
     const caption = (result && result.caption) || nota || 'Nuevo contenido.';
-    await pushToOutbox('contenido', destino, caption, thumb || previewUrl);
+    for(const g of grupos){ await pushToOutbox('contenido', g, caption, thumb || previewUrl, /*skipPersist*/ true); }
+    await persist('winOutbox');
     closeModal();
     renderWin();
   }catch(e){
