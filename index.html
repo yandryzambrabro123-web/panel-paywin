@@ -4236,11 +4236,7 @@ async function submitWinBet(kind){
     });
     const result = await res.json();
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
-    // Una entrada en la bandeja POR CADA grupo marcado, cada una con su propio botón de abrir grupo.
-    for(const g of grupos){ await pushToOutbox(kind, g, caption, thumb || previewUrl, /*skipPersist*/ true); }
-    await persist('winOutbox');
-    closeModal();
-    renderWin();
+    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl);
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
@@ -4249,6 +4245,33 @@ async function submitWinBet(kind){
   }
 }
 function isGanadaFallback(kind){ return kind === 'ganada'; }
+
+function escapeForTextarea(text){
+  return (text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Paso final antes de la bandeja: Win ya redactó el texto solo (sin que el jefe tenga que
+// escribir nada), y aquí se lo muestra para que lo apruebe, lo edite si quiere, o lo cancele --
+// recién al confirmar se crea la entrada en la bandeja de salida.
+function openWinCaptionConfirm(kind, grupos, caption, thumb){
+  openModal(`
+    <h3>Así quedó el texto</h3>
+    ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
+    <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:130px;">${escapeForTextarea(caption)}</textarea></div>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Va a: ${grupos.join(', ')}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winConfirmCaptionBtn">Confirmar y mandar a la bandeja</button>
+    </div>
+  `);
+  document.getElementById('winConfirmCaptionBtn').onclick = async ()=>{
+    const finalCaption = document.getElementById('f-winCaptionConfirm').value.trim() || caption;
+    for(const g of grupos){ await pushToOutbox(kind, g, finalCaption, thumb, /*skipPersist*/ true); }
+    await persist('winOutbox');
+    closeModal();
+    renderWin();
+  };
+}
 
 function openWinContentForm(nota, destinoGuess){
   openModal(`
@@ -4290,10 +4313,8 @@ async function submitWinContent(){
     });
     const result = await res.json();
     const caption = (result && result.caption) || nota || 'Nuevo contenido.';
-    for(const g of grupos){ await pushToOutbox('contenido', g, caption, thumb || previewUrl, /*skipPersist*/ true); }
-    await persist('winOutbox');
-    closeModal();
-    renderWin();
+    openWinCaptionConfirm('contenido', grupos, caption, thumb || previewUrl);
+    return;
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
