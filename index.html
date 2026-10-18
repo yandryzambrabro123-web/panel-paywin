@@ -208,6 +208,44 @@
   .date-nav .btn{padding:5px 10px; font-size:13px;}
   .btn:disabled{opacity:.35; cursor:not-allowed; box-shadow:none; filter:none;}
   .btn:disabled::after{display:none;}
+
+  /* ---- Win: orbe de voz ---- */
+  .win-orb{
+    width:150px; height:150px; border-radius:50%; margin:0 auto; cursor:pointer;
+    background: radial-gradient(circle at 35% 30%, rgba(255,235,195,.9), var(--accent) 45%, #8a6a2e 75%, #2b2010 100%);
+    box-shadow: 0 0 30px -4px rgba(212,175,106,.5), inset 0 0 20px rgba(0,0,0,.25);
+    transition: transform .08s ease-out, box-shadow .25s ease, filter .25s ease;
+    transform: scale(0.82);
+    filter: saturate(0.7) brightness(0.75);
+    position:relative;
+  }
+  .win-orb::after{
+    content:''; position:absolute; inset:0; border-radius:50%;
+    background: radial-gradient(circle at 65% 70%, rgba(255,255,255,.12), transparent 55%);
+  }
+  .win-orb.win-orb-idle{ animation: winOrbBreathe 3.6s ease-in-out infinite; }
+  @keyframes winOrbBreathe{
+    0%,100%{ transform:scale(0.8); filter:saturate(0.65) brightness(0.72); }
+    50%{ transform:scale(0.86); filter:saturate(0.75) brightness(0.8); }
+  }
+  .win-orb.win-orb-listening{
+    filter:saturate(1.15) brightness(1.05);
+    box-shadow: 0 0 55px -2px rgba(212,175,106,.85), inset 0 0 25px rgba(255,255,255,.15);
+  }
+  .win-orb.win-orb-thinking{
+    animation: winOrbSpin 1.1s linear infinite, winOrbPulseFast 0.7s ease-in-out infinite;
+    box-shadow: 0 0 60px -2px rgba(212,175,106,1), inset 0 0 25px rgba(255,255,255,.2);
+  }
+  @keyframes winOrbSpin{ 0%{ background-position:0 0; } 100%{ background-position:40px 40px; } }
+  @keyframes winOrbPulseFast{ 0%,100%{ transform:scale(0.95); } 50%{ transform:scale(1.05); } }
+  .win-orb.win-orb-done{
+    filter:saturate(1.3) brightness(1.2);
+    box-shadow: 0 0 70px 4px rgba(120,220,150,.8), inset 0 0 25px rgba(255,255,255,.2);
+  }
+  .win-mic-badge{
+    position:absolute; bottom:-4px; right:calc(50% - 68px); width:30px; height:30px; border-radius:50%;
+    background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:14px;
+  }
 </style>
 
 <div id="loginScreen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);">
@@ -553,6 +591,7 @@ function allowedViewsForRole(){
 function setView(v){
   const allowed = allowedViewsForRole();
   if(allowed && !allowed.includes(v)) return;
+  if(state.view === 'win' && v !== 'win' && typeof stopWinListening === 'function') stopWinListening();
   state.view = v;
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===v));
   render();
@@ -570,8 +609,12 @@ function applyRoleToNav(){
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(el=>{ el.addEventListener('click', ()=>setView(el.dataset.view)); });
 
-function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); }
+function closeModal(){
+  document.getElementById('modalOverlay').classList.remove('open');
+  if(typeof winResumeAfterModal === 'function') winResumeAfterModal();
+}
 function openModal(html){
+  if(typeof winPauseForModal === 'function') winPauseForModal();
   document.getElementById('modalBody').innerHTML = html;
   document.getElementById('modalOverlay').classList.add('open');
 }
@@ -3036,8 +3079,14 @@ function openGiftForm(){
 
 /* ---------- WIN (asistente de comando) ---------- */
 
-let winBusyText = '';
 let winRecognition = null;
+let winListeningActive = false;
+let winMicStream = null;
+let winAudioCtx = null;
+let winAnalyser = null;
+let winAnimFrameId = null;
+let winFinalBuffer = '';
+let winSilenceTimer = null;
 
 function renderWin(){
   const outboxRows = [...state.winOutbox].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
@@ -3054,15 +3103,22 @@ function renderWin(){
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:18px;">
-      <div style="display:flex; gap:10px; align-items:flex-start;">
-        <textarea id="winCommandInput" rows="2" placeholder="Ej: manda una apuesta al VIP / se ganó una apuesta, manda la ganada / recuérdame entregar los flyers el martes a las 3pm / sube este testimonio..." style="flex:1; resize:vertical;">${winBusyText ? '' : ''}</textarea>
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          <button class="btn secondary" id="winMicBtn" title="Hablar">&#127908;</button>
+    <div class="card" style="margin-bottom:18px; text-align:center; padding:36px 20px 28px;">
+      <div style="position:relative; width:150px; height:150px; margin:0 auto;">
+        <div id="winOrb" class="win-orb win-orb-idle"></div>
+        <div class="win-mic-badge">&#127908;</div>
+      </div>
+      <div id="winStatus" style="margin-top:18px; font-size:13.5px; color:var(--muted); min-height:20px;">Toca el círculo para activar a Win</div>
+      <div id="winLiveTranscript" style="font-size:12.5px; color:var(--accent); min-height:18px; margin-top:4px; max-width:480px; margin-left:auto; margin-right:auto;"></div>
+      <div style="margin-top:16px;">
+        <button class="btn secondary small" id="winTypeToggleBtn">Prefiero escribir</button>
+      </div>
+      <div id="winTypeBox" style="display:none; margin-top:16px; text-align:left;">
+        <div style="display:flex; gap:10px; align-items:flex-start;">
+          <textarea id="winCommandInput" rows="2" placeholder="Ej: manda una apuesta al VIP / se ganó una apuesta, manda la ganada / recuérdame entregar los flyers el martes a las 3pm..." style="flex:1; resize:vertical;"></textarea>
           <button class="btn" id="winSendBtn">Enviar</button>
         </div>
       </div>
-      <div id="winStatus" style="margin-top:10px; font-size:12.5px; color:var(--muted);"></div>
     </div>
 
     ${reminderRows.length ? `<div class="card" style="margin-bottom:18px;">
@@ -3098,13 +3154,19 @@ function renderWin(){
 
   document.getElementById('winSendBtn').onclick = sendWinCommand;
   document.getElementById('winCommandInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendWinCommand(); } });
-  const micBtn = document.getElementById('winMicBtn');
+  document.getElementById('winTypeToggleBtn').onclick = ()=>{
+    const box = document.getElementById('winTypeBox');
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    if(box.style.display === 'block') document.getElementById('winCommandInput').focus();
+  };
+  const orb = document.getElementById('winOrb');
   if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
-    micBtn.disabled = true;
-    micBtn.title = 'Tu navegador no soporta dictado por voz';
-    micBtn.style.opacity = '.4';
+    document.getElementById('winStatus').textContent = 'Tu navegador no soporta dictado por voz — escribe el comando abajo.';
+    orb.style.opacity = '.35'; orb.style.cursor = 'default';
+    document.getElementById('winTypeBox').style.display = 'block';
   } else {
-    micBtn.onclick = toggleWinVoice;
+    orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
+    if(winListeningActive) applyWinOrbState('listening', 'Escuchando...');
   }
   const addReminderBtn = document.getElementById('winAddReminderBtn');
   if(addReminderBtn) addReminderBtn.onclick = ()=>openWinReminderForm('');
@@ -3155,22 +3217,137 @@ async function completeReminder(id){
   await persist('winReminders');
 }
 
-function toggleWinVoice(){
-  const micBtn = document.getElementById('winMicBtn');
-  if(winRecognition){ winRecognition.stop(); return; }
+// ---- Orbe: estado visual ----
+function applyWinOrbState(mode, statusText){
+  const orb = document.getElementById('winOrb');
+  const statusEl = document.getElementById('winStatus');
+  if(orb) orb.className = 'win-orb win-orb-' + mode;
+  if(statusEl && statusText !== undefined) statusEl.textContent = statusText;
+}
+
+// ---- Escucha continua: pide el micrófono UNA vez (toque inicial obligatorio del
+// navegador), y desde ahí queda escuchando sola, sin que haya que volver a tocar nada
+// cada vez que se le quiera hablar. Reacciona en vivo al volumen de la voz.
+async function startWinListening(){
+  if(winListeningActive) return;
+  try{
+    winMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  }catch(e){
+    applyWinOrbState('idle', 'No se pudo activar el micrófono. Revisa los permisos del navegador.');
+    return;
+  }
+  winListeningActive = true;
+  winAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = winAudioCtx.createMediaStreamSource(winMicStream);
+  winAnalyser = winAudioCtx.createAnalyser();
+  winAnalyser.fftSize = 256;
+  source.connect(winAnalyser);
+  winVolumeLoop();
+  applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
+  startWinRecognitionEngine();
+}
+
+function winVolumeLoop(){
+  if(!winListeningActive || !winAnalyser) return;
+  const data = new Uint8Array(winAnalyser.frequencyBinCount);
+  winAnalyser.getByteFrequencyData(data);
+  const avg = data.reduce((a,b)=>a+b,0) / data.length; // 0..255
+  const orb = document.getElementById('winOrb');
+  if(orb && !orb.classList.contains('win-orb-thinking')){
+    const scale = 0.85 + Math.min(avg / 130, 1) * 0.3;
+    orb.style.transform = `scale(${scale.toFixed(3)})`;
+  }
+  winAnimFrameId = requestAnimationFrame(winVolumeLoop);
+}
+
+function startWinRecognitionEngine(){
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   winRecognition = new Recognition();
   winRecognition.lang = 'es-EC';
-  winRecognition.interimResults = false;
+  winRecognition.continuous = true;
+  winRecognition.interimResults = true;
   winRecognition.onresult = (e)=>{
-    const text = e.results[0][0].transcript;
-    const input = document.getElementById('winCommandInput');
-    if(input) input.value = (input.value ? input.value + ' ' : '') + text;
+    let interim = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const transcript = e.results[i][0].transcript;
+      if(e.results[i].isFinal){
+        winFinalBuffer += (winFinalBuffer ? ' ' : '') + transcript;
+      } else {
+        interim += transcript;
+      }
+    }
+    const liveEl = document.getElementById('winLiveTranscript');
+    if(liveEl) liveEl.textContent = (winFinalBuffer + ' ' + interim).trim();
+    clearTimeout(winSilenceTimer);
+    winSilenceTimer = setTimeout(()=>{
+      if(winFinalBuffer.trim()) processWinVoiceCommand(winFinalBuffer.trim());
+      winFinalBuffer = '';
+    }, 1300);
   };
-  winRecognition.onend = ()=>{ winRecognition = null; if(micBtn){ micBtn.style.background=''; } };
-  winRecognition.onerror = ()=>{ winRecognition = null; if(micBtn){ micBtn.style.background=''; } };
-  winRecognition.start();
-  if(micBtn) micBtn.style.background = 'var(--accent)';
+  winRecognition.onerror = (e)=>{
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      winListeningActive = false;
+      applyWinOrbState('idle', 'El navegador bloqueó el micrófono. Revisa los permisos y toca de nuevo.');
+    }
+    // 'no-speech' y otros errores menores se resuelven solos con el auto-reinicio de onend.
+  };
+  winRecognition.onend = ()=>{
+    if(winListeningActive){
+      try{ winRecognition.start(); }catch(e){ setTimeout(()=>{ if(winListeningActive) try{ winRecognition.start(); }catch(e2){} }, 300); }
+    }
+  };
+  try{ winRecognition.start(); }catch(e){}
+}
+
+function stopWinListening(){
+  winListeningActive = false;
+  clearTimeout(winSilenceTimer);
+  if(winAnimFrameId) cancelAnimationFrame(winAnimFrameId);
+  if(winRecognition){ try{ winRecognition.onend = null; winRecognition.stop(); }catch(e){} winRecognition = null; }
+  if(winMicStream){ winMicStream.getTracks().forEach(t=>t.stop()); winMicStream = null; }
+  if(winAudioCtx){ try{ winAudioCtx.close(); }catch(e){} winAudioCtx = null; }
+  winFinalBuffer = '';
+  const orb = document.getElementById('winOrb');
+  if(orb){ orb.style.transform = ''; }
+  applyWinOrbState('idle', 'Toca el círculo para activar a Win');
+  const liveEl = document.getElementById('winLiveTranscript');
+  if(liveEl) liveEl.textContent = '';
+}
+
+// Mientras hay cualquier modal abierto (el formulario de Win, u otro cualquiera del
+// panel), se pausa el reconocimiento de voz para que no capture ruido ni se mezcle con
+// lo que se escribe en el formulario. Se reanuda sola al cerrar el modal, si seguía
+// activada. Es seguro llamarlo aunque no se esté escuchando (no hace nada en ese caso).
+function winPauseForModal(){
+  if(winRecognition){ try{ winRecognition.onend = null; winRecognition.stop(); }catch(e){} }
+}
+function winResumeAfterModal(){
+  if(winListeningActive && state.view === 'win'){
+    setTimeout(()=>{ if(winListeningActive) startWinRecognitionEngine(); }, 400);
+  }
+}
+
+async function processWinVoiceCommand(texto){
+  applyWinOrbState('thinking', 'Entendiendo: "' + texto + '"');
+  const liveEl = document.getElementById('winLiveTranscript');
+  if(liveEl) liveEl.textContent = '';
+  try{
+    const res = await fetch('/api/win-comando', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texto })
+    });
+    const result = await res.json();
+    if(!res.ok){
+      applyWinOrbState('listening', result.error || 'No se pudo entender. Intenta de nuevo.');
+      return;
+    }
+    applyWinOrbState('done', 'Listo, abriendo...');
+    setTimeout(()=>{ if(winListeningActive) applyWinOrbState('listening', 'Escuchando... dime qué necesitas'); }, 900);
+    dispatchWinIntent(result, texto);
+  }catch(e){
+    console.error(e);
+    applyWinOrbState('listening', 'No se pudo conectar. Intenta de nuevo.');
+  }
 }
 
 async function sendWinCommand(){
@@ -3187,7 +3364,7 @@ async function sendWinCommand(){
     const result = await res.json();
     if(!res.ok){ statusEl.textContent = result.error || 'No se pudo entender el comando.'; return; }
     input.value = '';
-    statusEl.textContent = '';
+    statusEl.textContent = winListeningActive ? 'Escuchando... dime qué necesitas' : 'Toca el círculo para activar a Win';
     dispatchWinIntent(result, texto);
   }catch(e){
     console.error(e);
