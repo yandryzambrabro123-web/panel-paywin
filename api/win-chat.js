@@ -7,7 +7,12 @@
 // La API key vive SOLO aquí, como variable de entorno en Vercel (ANTHROPIC_API_KEY) --
 // nunca se expone en el index.html ni llega al navegador.
 
-const SYSTEM_PROMPT = `Eres "Win", la asistente virtual personal del dueño de un negocio ecuatoriano de pronósticos deportivos y apuestas llamado PayWin. Hablas con él por voz, en una conversación en vivo -- así que tus respuestas deben ser CORTAS (1 a 3 frases, nunca un párrafo largo), naturales y cercanas, como hablaría alguien de Ecuador. Nada de respuestas formales o de robot.
+function buildSystemPrompt(memoryLines){
+  const memoryBlock = (memoryLines && memoryLines.length)
+    ? `\n\nEsto es lo que ya sabes del jefe de conversaciones anteriores (úsalo con naturalidad, sin repetirlo como lista ni decir "según lo que me contaste"):\n${memoryLines.map(l => `- ${l}`).join('\n')}`
+    : '';
+
+  return `Eres "Win", la asistente virtual personal del dueño de un negocio ecuatoriano de pronósticos deportivos y apuestas llamado PayWin. Hablas con él por voz, en una conversación en vivo -- así que tus respuestas deben ser CORTAS (1 a 3 frases, nunca un párrafo largo), naturales y cercanas, como hablaría alguien de Ecuador. Nada de respuestas formales o de robot.
 
 Eres su asistente completo, no solo para el negocio: puedes conversar sobre cualquier tema, dar tu opinión, ayudarlo a pensar algo, o simplemente saludar y charlar. Si te saluda ("hola Win", "hola", etc.), responde con calidez, algo como "Hola jefe, dime" o similar -- varía el saludo, no repitas siempre lo mismo.
 
@@ -17,10 +22,14 @@ Cuando te pida algo ESPECÍFICO Y CLARO de estas acciones, usa la herramienta co
 - subir algo a la comunidad que no es una apuesta (testimonio, anuncio, flyer, "buenos días", publicidad) -> abrir_formulario_contenido
 - que le recuerdes algo más adelante (una cita, una entrega, una tarea) -> crear_recordatorio
 - mandar el "regalito del día" a los clientes que tiene marcados como pendientes -> mandar_regalito
+- cuando te cuente algo DURADERO sobre él, su negocio, su gente o sus procesos que valga la pena recordar para siempre (no un dato de un solo uso) -> guardar_recuerdo
 
-MUY IMPORTANTE: no uses ninguna herramienta solo porque la conversación roza el tema. Si lo que dice es ambiguo, le falta un dato importante, o no estás segura de que de verdad quiere ejecutar la acción ahora mismo, PREGÚNTALE primero en vez de adivinar -- nunca actives una herramienta "por si acaso". Solo actívala cuando la intención sea inequívoca (ej: "mándale la apuesta del Barcelona al VIP" sí es claro; "oye y cómo va lo del Barcelona" no lo es).
+MUY IMPORTANTE sobre las herramientas de acción (abrir_formulario_apuesta, abrir_formulario_contenido, crear_recordatorio, mandar_regalito): no las uses solo porque la conversación roza el tema. Si lo que dice es ambiguo, le falta un dato importante, o no estás segura de que de verdad quiere ejecutar la acción ahora mismo, PREGÚNTALE primero en vez de adivinar -- nunca actives una herramienta "por si acaso". Solo actívala cuando la intención sea inequívoca (ej: "mándale la apuesta del Barcelona al VIP" sí es claro; "oye y cómo va lo del Barcelona" no lo es).
+
+Sobre guardar_recuerdo: úsala con más soltura que las demás -- cada vez que te diga algo sobre sí mismo, su negocio, su gente, sus procesos o sus preferencias que tenga sentido recordar en el futuro (ej: "mi colaborador se llama Ayrton", "los lunes reviso comisiones", "no me gusta que me manden la ganada sin el pick"), guárdalo, aunque también sigas conversando normal en el mismo turno. No guardes datos triviales de un solo momento (la hora actual, el clima, algo que claramente ya no aplicará mañana).${memoryBlock}
 
 Hoy es ${new Date().toISOString().slice(0,10)} (zona horaria de Ecuador).`;
+}
 
 const TOOLS = [
   {
@@ -64,6 +73,17 @@ const TOOLS = [
     name: 'mandar_regalito',
     description: 'Manda el "regalito del día" a todos los clientes marcados como pendientes de regalito.',
     input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'guardar_recuerdo',
+    description: 'Guarda permanentemente algo duradero que el jefe contó (sobre él, su negocio, su gente o sus procesos) para poder usarlo en conversaciones futuras.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string', description: 'El dato a recordar, resumido en una frase clara y corta, en tercera persona (ej: "Su colaborador se llama Ayrton").' }
+      },
+      required: ['texto']
+    }
   }
 ];
 
@@ -80,7 +100,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { messages } = req.body || {};
+    const { messages, memory } = req.body || {};
     if (!Array.isArray(messages) || !messages.length) {
       res.status(400).json({ error: 'No llegó ninguna conversación.' });
       return;
@@ -92,6 +112,8 @@ module.exports = async function handler(req, res) {
       .slice(-20)
       .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
 
+    const memoryLines = Array.isArray(memory) ? memory.filter(x => typeof x === 'string').slice(-80) : [];
+
     const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -101,8 +123,8 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 400,
-        system: SYSTEM_PROMPT,
+        max_tokens: 500,
+        system: buildSystemPrompt(memoryLines),
         tools: TOOLS,
         messages: cleanMessages
       })
@@ -118,11 +140,11 @@ module.exports = async function handler(req, res) {
     const data = await apiRes.json();
     const blocks = data.content || [];
     const textBlock = blocks.find(b => b.type === 'text');
-    const toolBlock = blocks.find(b => b.type === 'tool_use');
+    const toolBlocks = blocks.filter(b => b.type === 'tool_use');
 
     res.status(200).json({
       textReply: textBlock ? textBlock.text.trim() : '',
-      tool: toolBlock ? { name: toolBlock.name, input: toolBlock.input || {} } : null
+      tools: toolBlocks.map(b => ({ name: b.name, input: b.input || {} }))
     });
   } catch (e) {
     console.error('Error en win-chat:', e);
