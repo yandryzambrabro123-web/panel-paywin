@@ -255,6 +255,16 @@
     text-align:center; position:relative; padding:20px;
   }
   .win-corner-icons{ position:absolute; top:0; right:0; display:flex; gap:10px; }
+
+  /* Pantalla de Win fija: nada de scroll arriba/abajo, todo centrado y los iconos (menú a la
+     izquierda, bandeja/recordatorios/memoria a la derecha) a la misma altura. */
+  body.win-locked{ overflow:hidden; }
+  body.win-locked #app{ height:100vh; height:100dvh; overflow:hidden; }
+  body.win-locked #main{ overflow:hidden; display:flex; }
+  body.win-locked .win-fullscreen{ min-height:0; height:100%; width:100%; padding:16px; }
+  @media (max-width: 860px){
+    .win-corner-icons{ position:fixed; top:calc(env(safe-area-inset-top, 0px) + 14px); right:14px; z-index:45; }
+  }
   .win-icon-btn{
     position:relative; width:42px; height:42px; border-radius:50%; background:var(--surface-2);
     border:1px solid var(--border); color:var(--text); font-size:17px; cursor:pointer;
@@ -867,7 +877,9 @@ function setView(v){
   const allowed = allowedViewsForRole();
   if(allowed && !allowed.includes(v)) return;
   if(state.view === 'win' && v !== 'win' && typeof stopWinListening === 'function') stopWinListening();
+  if(v === 'win' && state.view !== 'win') winTabJustOpened = true;
   state.view = v;
+  document.body.classList.toggle('win-locked', v === 'win');
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===v));
   render();
 }
@@ -3379,6 +3391,11 @@ let winMicStream = null;
 // se activa sola (ej. al abrir directo desde el acceso directo del celular, sin ese toque), se
 // queda "muda" aunque todo lo demás funcione. Esta bandera controla si ya hubo ese toque.
 let winAudioUnlocked = false;
+// renderWin() se llama muchas veces mientras ya estás en la pestaña (después de cada respuesta,
+// al cerrar un modal, etc.) -- esta bandera distingue esos refrescos de la primera vez que ENTRAS
+// a la pestaña, que es el único momento en que Win debe activarse sola. Sin esto, cada refresco
+// volvía a prender el micrófono aunque lo hubieras apagado tú mismo a propósito.
+let winTabJustOpened = false;
 function unlockWinAudio(){
   try{
     const silent = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAAAAAA==');
@@ -3520,13 +3537,17 @@ function renderWin(){
   } else if(winListeningActive){
     orb.onclick = ()=>{ stopWinListening(); };
     applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
-  } else if(winAudioUnlocked){
+  } else if(winTabJustOpened && winAudioUnlocked){
+    // Recién entraste a la pestaña (y el audio ya estaba desbloqueado de una visita anterior en
+    // esta misma carga de página) -- se activa sola, como siempre.
+    winTabJustOpened = false;
     orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
-    startWinListening(); // ya hubo un toque real antes en esta visita -- se activa sola como siempre
-  } else {
+    startWinListening();
+  } else if(winTabJustOpened && !winAudioUnlocked){
     // Primera vez en esta carga de la página: hace falta un toque real para que el celular deje
     // sonar la voz más adelante (ver unlockWinAudio arriba). Se pide aquí mismo, en el toque que
     // de todas formas el jefe va a dar para activar a Win.
+    winTabJustOpened = false;
     applyWinOrbState('idle', 'Toca para activar a Win');
     orb.onclick = ()=>{
       unlockWinAudio();
@@ -3534,6 +3555,11 @@ function renderWin(){
       orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
       startWinListening();
     };
+  } else {
+    // Solo un refresco de pantalla mientras ya estabas en la pestaña (no una entrada nueva) y el
+    // jefe la había apagado a propósito -- se queda apagada, no se reactiva sola.
+    orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
+    applyWinOrbState('idle', 'Toca el círculo para activar a Win');
   }
 }
 
@@ -4058,10 +4084,10 @@ function isGanadaFallback(kind){ return kind === 'ganada'; }
 function openWinContentForm(nota, destinoGuess){
   openModal(`
     <h3>Subir algo a la comunidad</h3>
-    <div class="field"><label>¿Qué necesitas que suba?</label><input id="f-winContentNote" value="${(nota||'').replace(/"/g,'&quot;')}" placeholder="Ej: testimonio de este cliente"></div>
+    <div class="field"><label>¿Qué necesitas mandar?</label><input id="f-winContentNote" value="${(nota||'').replace(/"/g,'&quot;')}" placeholder="Ej: testimonio de este cliente"></div>
     <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
       <div style="font-size:26px; margin-bottom:6px;">📎</div>
-      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la imagen</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega una imagen (opcional — también puedes mandar solo texto)</div>
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
@@ -4079,11 +4105,16 @@ async function submitWinContent(){
   const destinoSel = document.getElementById('f-winDestino');
   const destino = destinoSel.value === '__custom__' ? (prompt('¿A qué grupo va?') || 'Sin especificar') : destinoSel.value;
   const nota = document.getElementById('f-winContentNote').value.trim();
-  if(!winPendingFile){ alert('Sube una imagen primero.'); return; }
-  openModal(`<h3>Leyendo imagen y redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
+  // La imagen es opcional -- si no hay, se redacta solo con el texto (ver api/win-redactar.js,
+  // ya soporta mandar sin imageBase64).
+  if(!winPendingFile && !nota){ alert('Escribe qué necesitas mandar, o sube una imagen.'); return; }
+  openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
   try{
-    const { base64, mediaType, previewUrl } = await fileToCompressedImage(winPendingFile);
-    const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    let base64 = '', mediaType = '', thumb = '', previewUrl = '';
+    if(winPendingFile){
+      ({ base64, mediaType, previewUrl } = await fileToCompressedImage(winPendingFile));
+      thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    }
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind: 'contenido', destino, code: nota, imageBase64: base64, mediaType })
@@ -4222,10 +4253,11 @@ function enterApp(role){
   // Si se abre con ?win=1 (ej. desde el acceso directo del celular / gesto), entra directo a Win
   // en vez del dashboard -- solo si el rol tiene acceso a esa pestaña.
   try{
-    if(!allowed && new URLSearchParams(window.location.search).get('win') === '1') state.view = 'win';
+    if(!allowed && new URLSearchParams(window.location.search).get('win') === '1'){ state.view = 'win'; winTabJustOpened = true; }
   }catch(e){}
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
+  document.body.classList.toggle('win-locked', state.view === 'win');
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===state.view));
   applyRoleToNav();
   loadAll();
