@@ -47,7 +47,8 @@
 
   /* Botón de menú (hamburguesa): solo aparece en pantallas chicas -- abre/cierra la barra lateral como cajón */
   .menu-toggle{
-    display:none; position:fixed; top:14px; left:14px; z-index:60; width:42px; height:42px;
+    display:none; position:fixed; top:calc(env(safe-area-inset-top, 0px) + 14px); left:14px; z-index:60;
+    width:42px; height:42px;
     border-radius:11px; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
     font-size:19px; align-items:center; justify-content:center; cursor:pointer;
     box-shadow:0 4px 14px rgba(0,0,0,.35);
@@ -86,9 +87,10 @@
     #sidebar{
       position:fixed; top:0; left:0; bottom:0; z-index:50; width:78vw; max-width:280px;
       transform:translateX(-100%); transition:transform .25s ease; box-shadow:0 0 30px rgba(0,0,0,.5);
+      padding-top:calc(env(safe-area-inset-top, 0px) + 24px);
     }
     #sidebar.sidebar-open{ transform:translateX(0); }
-    #main{ padding:72px 16px 32px; max-width:100%; }
+    #main{ padding:calc(env(safe-area-inset-top, 0px) + 68px) 16px 32px; max-width:100%; }
   }
 
   /* Scoreboard strip */
@@ -743,16 +745,36 @@ function coerceRow(key, row){
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
 
+async function fetchSheetKey(key){
+  try{
+    const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
+    const json = await res.json();
+    state[key] = (json.data || []).map(row => coerceRow(key, row));
+  }catch(e){ console.error('Error cargando', key, e); state[key] = []; state.syncError = true; state.failedKeys.push(key); }
+}
+
+// Antes esto traía las 19 hojas de Google Sheets UNA POR UNA (await adentro de un for), así que
+// la pantalla se quedaba en "Conectando..." casi 2 minutos antes de mostrar nada. Ahora se piden
+// todas al mismo tiempo (Promise.all) -- y si entras directo a Win (ej. desde el acceso directo del
+// celular), primero se cargan solo sus 3 hojitas (rapidísimo) y Win ya se muestra y funciona,
+// mientras el resto del panel se sigue cargando atrás sin que tengas que esperarlo.
 async function loadAll(){
   const main = document.getElementById('main');
-  main.innerHTML = '<div class="loading">Conectando con tu hoja de Google Sheets...</div>';
-  for(const key of Object.keys(SHEET_NAMES)){
-    try{
-      const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
-      const json = await res.json();
-      state[key] = (json.data || []).map(row => coerceRow(key, row));
-    }catch(e){ console.error('Error cargando', key, e); state[key] = []; state.syncError = true; state.failedKeys.push(key); }
+  const winKeys = ['winMemory', 'winOutbox', 'winReminders'];
+  const otherKeys = Object.keys(SHEET_NAMES).filter(k => !winKeys.includes(k));
+
+  if(state.view === 'win'){
+    await Promise.all(winKeys.map(fetchSheetKey));
+    state.loaded = true;
+    render();
+    await Promise.all(otherKeys.map(fetchSheetKey));
+    await migrateStakeSales();
+    render();
+    return;
   }
+
+  main.innerHTML = '<div class="loading">Conectando con tu hoja de Google Sheets...</div>';
+  await Promise.all(Object.keys(SHEET_NAMES).map(fetchSheetKey));
   await migrateStakeSales();
   state.loaded = true;
   render();
@@ -3352,6 +3374,25 @@ function openGiftForm(){
 let winRecognition = null;
 let winListeningActive = false;
 let winMicStream = null;
+// En el celular (sobre todo iPhone), el navegador no deja sonar NINGÚN audio -- ni la voz de
+// ElevenLabs ni la del navegador -- hasta que haya habido un toque real en la pantalla. Si Win
+// se activa sola (ej. al abrir directo desde el acceso directo del celular, sin ese toque), se
+// queda "muda" aunque todo lo demás funcione. Esta bandera controla si ya hubo ese toque.
+let winAudioUnlocked = false;
+function unlockWinAudio(){
+  try{
+    const silent = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAAAAAA==');
+    silent.play().catch(()=>{});
+  }catch(e){}
+  try{ getWinSfxCtx(); }catch(e){}
+  try{
+    if('speechSynthesis' in window){
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    }
+  }catch(e){}
+}
 let winAudioCtx = null;
 let winAnalyser = null;
 let winAnimFrameId = null;
@@ -3476,10 +3517,23 @@ function renderWin(){
     document.getElementById('winStatus').textContent = 'Tu navegador no soporta dictado por voz — escribe el comando abajo.';
     orb.style.opacity = '.35'; orb.style.cursor = 'default';
     document.getElementById('winTypeBox').style.display = 'block';
-  } else {
+  } else if(winListeningActive){
+    orb.onclick = ()=>{ stopWinListening(); };
+    applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
+  } else if(winAudioUnlocked){
     orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
-    if(winListeningActive) applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
-    else startWinListening(); // se activa sola al entrar a la pestaña (usa el clic del menú como el permiso inicial)
+    startWinListening(); // ya hubo un toque real antes en esta visita -- se activa sola como siempre
+  } else {
+    // Primera vez en esta carga de la página: hace falta un toque real para que el celular deje
+    // sonar la voz más adelante (ver unlockWinAudio arriba). Se pide aquí mismo, en el toque que
+    // de todas formas el jefe va a dar para activar a Win.
+    applyWinOrbState('idle', 'Toca para activar a Win');
+    orb.onclick = ()=>{
+      unlockWinAudio();
+      winAudioUnlocked = true;
+      orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
+      startWinListening();
+    };
   }
 }
 
