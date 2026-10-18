@@ -209,19 +209,53 @@
   .btn:disabled{opacity:.35; cursor:not-allowed; box-shadow:none; filter:none;}
   .btn:disabled::after{display:none;}
 
-  /* ---- Win: orbe de voz ---- */
+  /* ---- Win: pantalla completa del asistente ---- */
+  .win-fullscreen{
+    min-height:calc(100vh - 60px); display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; position:relative; padding:20px;
+  }
+  .win-corner-icons{ position:absolute; top:0; right:0; display:flex; gap:10px; }
+  .win-icon-btn{
+    position:relative; width:42px; height:42px; border-radius:50%; background:var(--surface-2);
+    border:1px solid var(--border); color:var(--text); font-size:17px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; transition:border-color .15s, transform .15s;
+  }
+  .win-icon-btn:hover{ border-color:var(--accent); transform:translateY(-1px); }
+  .win-icon-badge{
+    position:absolute; top:-4px; right:-4px; background:var(--loss); color:#fff; font-size:10.5px; font-weight:800;
+    border-radius:20px; min-width:18px; height:18px; display:flex; align-items:center; justify-content:center; padding:0 4px;
+  }
+  .win-status{ margin-top:30px; font-size:15px; color:var(--muted); min-height:22px; max-width:560px; }
+  .win-live-transcript{ font-size:13px; color:var(--accent); min-height:18px; margin-top:6px; max-width:560px; }
+  .win-type-toggle{
+    margin-top:22px; background:transparent; border:none; color:var(--muted); font-size:12px;
+    text-decoration:underline; cursor:pointer; opacity:.55;
+  }
+  .win-type-toggle:hover{ opacity:1; }
+
+  .win-aura-wrap{ position:relative; width:260px; height:260px; display:flex; align-items:center; justify-content:center; }
+  .win-ring{
+    position:absolute; width:100%; height:100%; border-radius:50%; border:1px solid rgba(212,175,106,.4); opacity:0;
+    animation: winRingPulse 2.8s ease-out infinite;
+  }
+  .win-ring-2{ animation-delay: 1.4s; }
+  @keyframes winRingPulse{
+    0%{ transform:scale(.5); opacity:.6; }
+    100%{ transform:scale(1.25); opacity:0; }
+  }
+
   .win-orb{
-    width:150px; height:150px; border-radius:50%; margin:0 auto; cursor:pointer;
+    width:190px; height:190px; border-radius:50%; margin:0 auto; cursor:pointer;
     background: radial-gradient(circle at 35% 30%, rgba(255,235,195,.9), var(--accent) 45%, #8a6a2e 75%, #2b2010 100%);
-    box-shadow: 0 0 30px -4px rgba(212,175,106,.5), inset 0 0 20px rgba(0,0,0,.25);
-    transition: transform .08s ease-out, box-shadow .25s ease, filter .25s ease;
+    box-shadow: 0 0 40px -4px rgba(212,175,106,.55), inset 0 0 25px rgba(0,0,0,.25);
+    transition: box-shadow .25s ease, filter .25s ease;
     transform: scale(0.82);
     filter: saturate(0.7) brightness(0.75);
-    position:relative;
+    position:relative; z-index:1;
   }
   .win-orb::after{
     content:''; position:absolute; inset:0; border-radius:50%;
-    background: radial-gradient(circle at 65% 70%, rgba(255,255,255,.12), transparent 55%);
+    background: radial-gradient(circle at 65% 70%, rgba(255,255,255,.14), transparent 55%);
   }
   .win-orb.win-orb-idle{ animation: winOrbBreathe 3.6s ease-in-out infinite; }
   @keyframes winOrbBreathe{
@@ -230,21 +264,22 @@
   }
   .win-orb.win-orb-listening{
     filter:saturate(1.15) brightness(1.05);
-    box-shadow: 0 0 55px -2px rgba(212,175,106,.85), inset 0 0 25px rgba(255,255,255,.15);
+    box-shadow: 0 0 65px -2px rgba(212,175,106,.9), inset 0 0 28px rgba(255,255,255,.15);
   }
   .win-orb.win-orb-thinking{
     animation: winOrbSpin 1.1s linear infinite, winOrbPulseFast 0.7s ease-in-out infinite;
-    box-shadow: 0 0 60px -2px rgba(212,175,106,1), inset 0 0 25px rgba(255,255,255,.2);
+    box-shadow: 0 0 70px -2px rgba(212,175,106,1), inset 0 0 28px rgba(255,255,255,.2);
+  }
+  .win-orb.win-orb-speaking{
+    animation: winOrbPulseFast 0.5s ease-in-out infinite;
+    filter:saturate(1.25) brightness(1.2);
+    box-shadow: 0 0 75px 0px rgba(212,175,106,1), inset 0 0 28px rgba(255,255,255,.25);
   }
   @keyframes winOrbSpin{ 0%{ background-position:0 0; } 100%{ background-position:40px 40px; } }
-  @keyframes winOrbPulseFast{ 0%,100%{ transform:scale(0.95); } 50%{ transform:scale(1.05); } }
+  @keyframes winOrbPulseFast{ 0%,100%{ transform:scale(0.95); } 50%{ transform:scale(1.08); } }
   .win-orb.win-orb-done{
     filter:saturate(1.3) brightness(1.2);
-    box-shadow: 0 0 70px 4px rgba(120,220,150,.8), inset 0 0 25px rgba(255,255,255,.2);
-  }
-  .win-mic-badge{
-    position:absolute; bottom:-4px; right:calc(50% - 68px); width:30px; height:30px; border-radius:50%;
-    background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:14px;
+    box-shadow: 0 0 80px 4px rgba(120,220,150,.85), inset 0 0 28px rgba(255,255,255,.2);
   }
 </style>
 
@@ -3093,62 +3128,27 @@ function renderWin(){
   const pending = outboxRows.filter(o=>o.status==='pendiente');
   const sent = outboxRows.filter(o=>o.status==='enviado');
   const reminderRows = [...state.winReminders].filter(r=>!r.done).sort((a,b)=>(a.dueDate||'9999').localeCompare(b.dueDate||'9999') || (a.dueTime||'99:99').localeCompare(b.dueTime||'99:99'));
-  const today = new Date().toISOString().slice(0,10);
 
   document.getElementById('main').innerHTML = `
-    <div class="toolbar">
-      <div>
-        <div class="page-title">Win</div>
-        <div class="page-sub">Dile qué necesitas — ella abre el formulario que toca</div>
+    <div class="win-fullscreen">
+      <div class="win-corner-icons">
+        <button class="win-icon-btn" id="winOutboxBtn" title="Bandeja de envíos">&#128229;${pending.length ? `<span class="win-icon-badge">${pending.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winRemindersBtn" title="Recordatorios">&#9200;${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
       </div>
-    </div>
-
-    <div class="card" style="margin-bottom:18px; text-align:center; padding:36px 20px 28px;">
-      <div style="position:relative; width:150px; height:150px; margin:0 auto;">
+      <div class="win-aura-wrap">
+        <div class="win-ring win-ring-1"></div>
+        <div class="win-ring win-ring-2"></div>
         <div id="winOrb" class="win-orb win-orb-idle"></div>
-        <div class="win-mic-badge">&#127908;</div>
       </div>
-      <div id="winStatus" style="margin-top:18px; font-size:13.5px; color:var(--muted); min-height:20px;">Toca el círculo para activar a Win</div>
-      <div id="winLiveTranscript" style="font-size:12.5px; color:var(--accent); min-height:18px; margin-top:4px; max-width:480px; margin-left:auto; margin-right:auto;"></div>
-      <div style="margin-top:16px;">
-        <button class="btn secondary small" id="winTypeToggleBtn">Prefiero escribir</button>
-      </div>
-      <div id="winTypeBox" style="display:none; margin-top:16px; text-align:left;">
+      <div id="winStatus" class="win-status">Activando a Win...</div>
+      <div id="winLiveTranscript" class="win-live-transcript"></div>
+      <button class="win-type-toggle" id="winTypeToggleBtn">Prefiero escribir</button>
+      <div id="winTypeBox" style="display:none; margin-top:16px; width:100%; max-width:560px; text-align:left;">
         <div style="display:flex; gap:10px; align-items:flex-start;">
-          <textarea id="winCommandInput" rows="2" placeholder="Ej: manda una apuesta al VIP / se ganó una apuesta, manda la ganada / recuérdame entregar los flyers el martes a las 3pm..." style="flex:1; resize:vertical;"></textarea>
+          <textarea id="winCommandInput" rows="2" placeholder="Ej: manda una apuesta al VIP..." style="flex:1; resize:vertical;"></textarea>
           <button class="btn" id="winSendBtn">Enviar</button>
         </div>
       </div>
-    </div>
-
-    ${reminderRows.length ? `<div class="card" style="margin-bottom:18px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <strong style="font-size:13.5px;">Recordatorios y pendientes</strong>
-        <button class="btn secondary small" id="winAddReminderBtn">+ Agregar</button>
-      </div>
-      ${reminderRows.map(r=>{
-        const overdue = r.dueDate && r.dueDate < today;
-        return `<div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
-          <input type="checkbox" data-done-reminder="${r.id}">
-          <div style="flex:1;">
-            <div style="font-size:13px;">${r.text}</div>
-            ${r.dueDate ? `<div style="font-size:11.5px; color:${overdue ? '#FF8A8E' : 'var(--muted)'};">${overdue ? '⚠️ Vencido · ' : ''}${fmtDate(r.dueDate)}${r.dueTime ? ' · ' + r.dueTime : ''}</div>` : ''}
-          </div>
-          <button class="btn danger small" data-del-reminder="${r.id}">Eliminar</button>
-        </div>`;
-      }).join('')}
-    </div>` : `<div class="card" style="margin-bottom:18px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="font-size:13px; color:var(--muted);">No tienes recordatorios pendientes.</div>
-        <button class="btn secondary small" id="winAddReminderBtn">+ Agregar</button>
-      </div>
-    </div>`}
-
-    <div class="card">
-      <strong style="font-size:13.5px;">Bandeja de envíos${pending.length ? ` · ${pending.length} pendiente${pending.length>1?'s':''}` : ''}</strong>
-      <div style="font-size:12px; color:var(--muted); margin:6px 0 14px;">Esto todavía no se manda solo a WhatsApp — Win lo deja listo (imagen + texto) para que tú lo copies y lo mandes con un toque, mientras conectamos el envío automático.</div>
-      ${pending.length ? pending.map(o=>winOutboxItemHTML(o)).join('') : '<div class="empty">No hay nada pendiente por mandar.</div>'}
-      ${sent.length ? `<div style="margin-top:18px; opacity:.6;"><strong style="font-size:12px;">Ya enviados (${sent.length})</strong>${sent.slice(0,5).map(o=>winOutboxItemHTML(o)).join('')}</div>` : ''}
     </div>
   `;
 
@@ -3159,6 +3159,9 @@ function renderWin(){
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
     if(box.style.display === 'block') document.getElementById('winCommandInput').focus();
   };
+  document.getElementById('winOutboxBtn').onclick = openWinOutboxModal;
+  document.getElementById('winRemindersBtn').onclick = openWinRemindersModal;
+
   const orb = document.getElementById('winOrb');
   if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
     document.getElementById('winStatus').textContent = 'Tu navegador no soporta dictado por voz — escribe el comando abajo.';
@@ -3166,15 +3169,51 @@ function renderWin(){
     document.getElementById('winTypeBox').style.display = 'block';
   } else {
     orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
-    if(winListeningActive) applyWinOrbState('listening', 'Escuchando...');
+    if(winListeningActive) applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
+    else startWinListening(); // se activa sola al entrar a la pestaña (usa el clic del menú como el permiso inicial)
   }
-  const addReminderBtn = document.getElementById('winAddReminderBtn');
-  if(addReminderBtn) addReminderBtn.onclick = ()=>openWinReminderForm('');
-  document.querySelectorAll('[data-done-reminder]').forEach(cb=>cb.onchange=()=>completeReminder(cb.dataset.doneReminder));
-  document.querySelectorAll('[data-del-reminder]').forEach(b=>b.onclick=()=>delItem('winReminders', b.dataset.delReminder, renderWin));
+}
+
+function openWinOutboxModal(){
+  const outboxRows = [...state.winOutbox].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const pending = outboxRows.filter(o=>o.status==='pendiente');
+  const sent = outboxRows.filter(o=>o.status==='enviado');
+  openModal(`
+    <h3>Bandeja de envíos</h3>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Esto todavía no se manda solo a WhatsApp — Win lo deja listo (imagen + texto) para que tú lo copies y lo mandes con un toque.</div>
+    ${pending.length ? pending.map(o=>winOutboxItemHTML(o)).join('') : '<div class="empty">No hay nada pendiente por mandar.</div>'}
+    ${sent.length ? `<div style="margin-top:18px; opacity:.6;"><strong style="font-size:12px;">Ya enviados (${sent.length})</strong>${sent.slice(0,5).map(o=>winOutboxItemHTML(o)).join('')}</div>` : ''}
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>
+  `);
   document.querySelectorAll('[data-copy-outbox]').forEach(b=>b.onclick=()=>copyOutboxCaption(b.dataset.copyOutbox));
-  document.querySelectorAll('[data-sent-outbox]').forEach(b=>b.onclick=()=>markOutboxSent(b.dataset.sentOutbox));
-  document.querySelectorAll('[data-del-outbox]').forEach(b=>b.onclick=()=>delItem('winOutbox', b.dataset.delOutbox, renderWin));
+  document.querySelectorAll('[data-sent-outbox]').forEach(b=>b.onclick=async ()=>{ await markOutboxSent(b.dataset.sentOutbox); closeModal(); openWinOutboxModal(); updateNavBadges(); });
+  document.querySelectorAll('[data-del-outbox]').forEach(b=>b.onclick=async ()=>{ await delItem('winOutbox', b.dataset.delOutbox, ()=>{}); closeModal(); openWinOutboxModal(); updateNavBadges(); });
+}
+
+function openWinRemindersModal(){
+  const today = new Date().toISOString().slice(0,10);
+  const reminderRows = [...state.winReminders].filter(r=>!r.done).sort((a,b)=>(a.dueDate||'9999').localeCompare(b.dueDate||'9999') || (a.dueTime||'99:99').localeCompare(b.dueTime||'99:99'));
+  openModal(`
+    <h3>Recordatorios y pendientes</h3>
+    ${reminderRows.length ? reminderRows.map(r=>{
+      const overdue = r.dueDate && r.dueDate < today;
+      return `<div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
+        <input type="checkbox" data-done-reminder="${r.id}">
+        <div style="flex:1;">
+          <div style="font-size:13px;">${r.text}</div>
+          ${r.dueDate ? `<div style="font-size:11.5px; color:${overdue ? '#FF8A8E' : 'var(--muted)'};">${overdue ? '⚠️ Vencido · ' : ''}${fmtDate(r.dueDate)}${r.dueTime ? ' · ' + r.dueTime : ''}</div>` : ''}
+        </div>
+        <button class="btn danger small" data-del-reminder="${r.id}">Eliminar</button>
+      </div>`;
+    }).join('') : '<div class="empty">No tienes recordatorios pendientes.</div>'}
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn" id="winAddReminderBtn">+ Agregar</button>
+    </div>
+  `);
+  document.getElementById('winAddReminderBtn').onclick = ()=>openWinReminderForm('');
+  document.querySelectorAll('[data-done-reminder]').forEach(cb=>cb.onchange=async ()=>{ await completeReminder(cb.dataset.doneReminder); closeModal(); openWinRemindersModal(); updateNavBadges(); });
+  document.querySelectorAll('[data-del-reminder]').forEach(b=>b.onclick=async ()=>{ await delItem('winReminders', b.dataset.delReminder, ()=>{}); closeModal(); openWinRemindersModal(); updateNavBadges(); });
 }
 
 function winOutboxItemHTML(o){
@@ -3230,10 +3269,11 @@ function applyWinOrbState(mode, statusText){
 // cada vez que se le quiera hablar. Reacciona en vivo al volumen de la voz.
 async function startWinListening(){
   if(winListeningActive) return;
+  applyWinOrbState('idle', 'Activando a Win...');
   try{
     winMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   }catch(e){
-    applyWinOrbState('idle', 'No se pudo activar el micrófono. Revisa los permisos del navegador.');
+    applyWinOrbState('idle', 'No se pudo activar el micrófono. Tócalo para intentar de nuevo.');
     return;
   }
   winListeningActive = true;
@@ -3243,8 +3283,29 @@ async function startWinListening(){
   winAnalyser.fftSize = 256;
   source.connect(winAnalyser);
   winVolumeLoop();
-  applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
-  startWinRecognitionEngine();
+  winSpeak('Hola jefe'); // saluda y, cuando termina de hablar, arranca sola a escuchar
+}
+
+// ---- Voz de Win (texto a voz del navegador) ----
+function winSpeak(text, onDone){
+  const goListen = ()=>{
+    if(!winListeningActive) return;
+    applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
+    startWinRecognitionEngine();
+    if(onDone) onDone();
+  };
+  if(!('speechSynthesis' in window)){ goListen(); return; }
+  try{
+    if(winRecognition){ try{ winRecognition.onend = null; winRecognition.stop(); }catch(e){} }
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'es-EC';
+    utter.rate = 1.03;
+    applyWinOrbState('speaking', text);
+    utter.onend = goListen;
+    utter.onerror = goListen;
+    window.speechSynthesis.speak(utter);
+  }catch(e){ goListen(); }
 }
 
 function winVolumeLoop(){
@@ -3306,6 +3367,7 @@ function stopWinListening(){
   if(winRecognition){ try{ winRecognition.onend = null; winRecognition.stop(); }catch(e){} winRecognition = null; }
   if(winMicStream){ winMicStream.getTracks().forEach(t=>t.stop()); winMicStream = null; }
   if(winAudioCtx){ try{ winAudioCtx.close(); }catch(e){} winAudioCtx = null; }
+  if('speechSynthesis' in window){ try{ window.speechSynthesis.cancel(); }catch(e){} }
   winFinalBuffer = '';
   const orb = document.getElementById('winOrb');
   if(orb){ orb.style.transform = ''; }
@@ -3327,10 +3389,15 @@ function winResumeAfterModal(){
   }
 }
 
+const WIN_GREETING_RE = /^(hola|hey|oye|buenas)[,.]?\s*(win)?[.!¡]*$/i;
 async function processWinVoiceCommand(texto){
-  applyWinOrbState('thinking', 'Entendiendo: "' + texto + '"');
   const liveEl = document.getElementById('winLiveTranscript');
   if(liveEl) liveEl.textContent = '';
+  if(WIN_GREETING_RE.test(texto.trim())){
+    winSpeak('Hola jefe, dime');
+    return;
+  }
+  applyWinOrbState('thinking', 'Entendiendo: "' + texto + '"');
   try{
     const res = await fetch('/api/win-comando', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
