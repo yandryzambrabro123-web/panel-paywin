@@ -611,7 +611,7 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas' };
+const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas', winDifusion: 'WinDifusion' };
 // "Publicidades" guardadas de Win: imagen + texto FIJOS, identificados por nombre (ej: "publicidad
 // de recargas"). Cuando el jefe pide una por nombre, Win la reconoce y la manda directo a la
 // bandeja con ese mismo texto de siempre -- sin redactar nada nuevo con IA.
@@ -644,7 +644,7 @@ const FINANCE_LATEST_BASE = {
 };
 
 let state = {
-  vips: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], winOutbox: [], winReminders: [], winMemory: [], winTemplates: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
+  vips: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], winOutbox: [], winReminders: [], winMemory: [], winTemplates: [], winDifusion: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -708,6 +708,11 @@ function coerceRow(key, row){
       createdAt:row.createdAt||''
     };
   }
+  if(key === 'winDifusion'){
+    // "listas" es un string con los ids de lista separados por coma (ej: "fuertes,ecuabet") --
+    // un mismo contacto puede estar en varias listas de difusión a la vez.
+    return { id:String(row.id||''), nombre:row.nombre||'', telefono:row.telefono||'', listas:row.listas||'', createdAt:row.createdAt||'' };
+  }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
 
@@ -726,7 +731,7 @@ async function fetchSheetKey(key){
 // mientras el resto del panel se sigue cargando atrás sin que tengas que esperarlo.
 async function loadAll(){
   const main = document.getElementById('main');
-  const winKeys = ['winMemory', 'winOutbox', 'winReminders', 'winTemplates'];
+  const winKeys = ['winMemory', 'winOutbox', 'winReminders', 'winTemplates', 'winDifusion'];
   const otherKeys = Object.keys(SHEET_NAMES).filter(k => !winKeys.includes(k));
 
   if(state.view === 'win'){
@@ -2533,6 +2538,7 @@ function renderWin(){
         <button class="win-icon-btn" id="winRemindersBtn" title="Recordatorios">&#9200;${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti">&#129504;${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winTemplatesBtn" title="Imágenes guardadas">&#128444;${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winDifusionBtn" title="Listas de difusión">&#128226;</button>
       </div>
       <div class="win-brand"><span id="winBrandDot" class="win-brand-dot win-brand-dot-idle"></span>WIN</div>
       <div class="win-aura-wrap" id="winAuraWrap">
@@ -2594,6 +2600,7 @@ function renderWin(){
   document.getElementById('winRemindersBtn').onclick = openWinRemindersModal;
   document.getElementById('winMemoryBtn').onclick = openWinMemoryModal;
   document.getElementById('winTemplatesBtn').onclick = openWinTemplatesModal;
+  document.getElementById('winDifusionBtn').onclick = openWinDifusionModal;
 
   const orb = document.getElementById('winOrb');
   orb.style.opacity = ''; orb.style.cursor = '';
@@ -2769,6 +2776,183 @@ function findWinTemplateByName(nombre){
   if(match) return match;
   match = state.winTemplates.find(t => norm(t.nombre).includes(q) || q.includes(norm(t.nombre)));
   return match || null;
+}
+
+// ---- Listas de difusión ----
+// Listas de clientes para mandar avisos/promos masivos por WhatsApp (uno por minuto, con
+// textos distintos entre sí -- ver api/win-redactar-difusion.js y api/win-enviar-cola.js). La
+// lista "stakes" es automática: toma a todo el que ya haya comprado un stake con teléfono
+// guardado (getKnownBuyers), no hace falta agregarla a mano. Las demás se arman agregando
+// contactos uno por uno (quedan guardados en la hoja WinDifusion, con sus listas separadas por
+// coma -- un mismo contacto puede estar en varias).
+const WIN_DIFUSION_LISTAS = [
+  { id: 'stakes', nombre: 'Clientes de Stakes', auto: true },
+  { id: 'fuertes', nombre: 'Clientes Fuertes' },
+  { id: 'mas_parlay', nombre: 'Clientes Más Parlay' },
+  { id: 'ecuabet', nombre: 'Clientes Ecuabet' },
+  { id: 'onexbet', nombre: 'Clientes OneXBet' }
+];
+function winDifusionListaNombre(id){
+  const l = WIN_DIFUSION_LISTAS.find(x=>x.id===id);
+  return l ? l.nombre : id;
+}
+// Devuelve [{nombre, telefono}, ...] de una lista -- mezcla lo automático (stakes) con lo
+// agregado a mano en WinDifusion, sin duplicar por teléfono.
+function getDifusionContactos(listaId){
+  const vistos = new Set();
+  const out = [];
+  const add = (nombre, telefono)=>{
+    const tel = (telefono||'').trim();
+    if(!tel || vistos.has(tel)) return;
+    vistos.add(tel);
+    out.push({ nombre: nombre || '', telefono: tel });
+  };
+  if(listaId === 'stakes'){
+    getKnownBuyers().filter(b=>b.phone).forEach(b=>add(b.name, b.phone));
+  }
+  state.winDifusion.forEach(c=>{
+    const listas = (c.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(listas.includes(listaId)) add(c.nombre, c.telefono);
+  });
+  return out;
+}
+
+function openWinDifusionModal(){
+  openModal(`
+    <h3>Listas de difusión</h3>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Mandan avisos/promos por WhatsApp directo a cada cliente, uno por minuto y con textos distintos entre sí. "Clientes de Stakes" se llena sola con los compradores que ya tienen teléfono guardado -- las demás las armas tú agregando contactos.</div>
+    ${WIN_DIFUSION_LISTAS.map(l=>{
+      const n = getDifusionContactos(l.id).length;
+      return `<div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--border);">
+        <div style="flex:1;">
+          <div style="font-size:13.5px; font-weight:700;">${l.nombre}</div>
+          <div style="font-size:12px; color:var(--muted);">${n} contacto${n===1?'':'s'} con teléfono${l.auto ? ' (automático)' : ''}</div>
+        </div>
+        ${l.auto ? '' : `<button class="btn secondary small" data-win-dif-ver="${l.id}">Ver</button>`}
+        <button class="btn small" data-win-dif-mandar="${l.id}">Mandar</button>
+      </div>`;
+    }).join('')}
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn" id="winDifAddBtn">+ Agregar cliente</button>
+    </div>
+  `);
+  document.getElementById('winDifAddBtn').onclick = openWinDifusionAddForm;
+  document.querySelectorAll('[data-win-dif-ver]').forEach(b=>b.onclick=()=>openWinDifusionListaModal(b.dataset.winDifVer));
+  document.querySelectorAll('[data-win-dif-mandar]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifMandar));
+}
+
+function openWinDifusionListaModal(listaId){
+  const contactos = state.winDifusion.filter(c=>(c.listas||'').split(',').map(s=>s.trim()).includes(listaId));
+  openModal(`
+    <h3>${winDifusionListaNombre(listaId)}</h3>
+    ${contactos.length ? contactos.map(c=>`<div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
+      <div style="flex:1;"><div style="font-size:13.5px; font-weight:600;">${c.nombre || '(sin nombre)'}</div><div style="font-size:12px; color:var(--muted);">${c.telefono}</div></div>
+      <button class="btn danger small" data-win-dif-quitar="${c.id}" data-win-dif-lista="${listaId}">Quitar de esta lista</button>
+    </div>`).join('') : '<div class="empty">Todavía no hay contactos agregados a mano en esta lista.</div>'}
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Volver</button>
+    </div>
+  `);
+  document.querySelectorAll('[data-win-dif-quitar]').forEach(b=>{
+    b.onclick = async ()=>{
+      const c = state.winDifusion.find(x=>x.id===b.dataset.winDifQuitar);
+      if(!c) return;
+      const listas = (c.listas||'').split(',').map(s=>s.trim()).filter(l=>l && l!==b.dataset.winDifLista);
+      c.listas = listas.join(',');
+      if(!listas.length){ state.winDifusion = state.winDifusion.filter(x=>x.id!==c.id); await persist('winDifusion', { deletedIds:[c.id] }); }
+      else await persist('winDifusion');
+      openWinDifusionListaModal(listaId);
+    };
+  });
+}
+
+function openWinDifusionAddForm(){
+  openModal(`
+    <h3>Agregar cliente a difusión</h3>
+    <div class="field"><label>Nombre</label><input id="f-winDifNombre" placeholder="Ej: Juan Pérez"></div>
+    <div class="field"><label>Teléfono</label><input id="f-winDifTelefono" placeholder="0999999999"></div>
+    <div class="field"><label>A qué listas va (marca una o varias)</label>
+      ${WIN_DIFUSION_LISTAS.filter(l=>!l.auto).map(l=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; cursor:pointer;">
+        <input type="checkbox" id="f-winDifLista-${l.id}" value="${l.id}"> ${l.nombre}
+      </label>`).join('')}
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winDifSaveBtn">Guardar</button>
+    </div>
+  `);
+  document.getElementById('winDifSaveBtn').onclick = submitWinDifusionContacto;
+}
+
+async function submitWinDifusionContacto(){
+  const nombre = document.getElementById('f-winDifNombre').value.trim();
+  const telefono = document.getElementById('f-winDifTelefono').value.trim();
+  const listas = WIN_DIFUSION_LISTAS.filter(l=>!l.auto).map(l=>l.id).filter(id=>document.getElementById(`f-winDifLista-${id}`).checked);
+  if(!telefono){ alert('Pon el teléfono.'); return; }
+  if(!listas.length){ alert('Marca a qué lista va.'); return; }
+  state.winDifusion.push({ id: uid(), nombre, telefono, listas: listas.join(','), createdAt: new Date().toISOString() });
+  await persist('winDifusion');
+  closeModal();
+  openWinDifusionModal();
+}
+
+// Arranca el flujo de difusión por voz -- si Win entendió a qué lista se refería, va directo
+// al mensaje; si no, abre la pantalla general para elegir.
+function handleAbrirDifusion(input){
+  const lista = (input && input.lista) || '';
+  if(lista && WIN_DIFUSION_LISTAS.some(l=>l.id===lista)) openWinDifusionComposeModal(lista);
+  else openWinDifusionModal();
+}
+
+function openWinDifusionComposeModal(listaId){
+  const contactos = getDifusionContactos(listaId);
+  openModal(`
+    <h3>Mandar difusión -- ${winDifusionListaNombre(listaId)}</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">${contactos.length} contacto${contactos.length===1?'':'s'} con teléfono. Se manda directo a cada uno, uno por minuto, con varias versiones distintas del mismo mensaje para que no se vea todo igual -- sin revisión manual, como pediste.</div>
+    <div class="field"><label>¿Qué quieres avisar?</label><textarea id="f-winDifMensaje" placeholder="Ej: tenemos una promo de recarga con bono doble hoy hasta las 9pm"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winDifSendBtn" ${contactos.length ? '' : 'disabled'}>Mandar a los ${contactos.length}</button>
+    </div>
+  `);
+  document.getElementById('winDifSendBtn').onclick = ()=>submitWinDifusion(listaId, contactos);
+}
+
+async function submitWinDifusion(listaId, contactos){
+  const instruccion = document.getElementById('f-winDifMensaje').value.trim();
+  if(!instruccion){ alert('Escribe qué quieres avisar.'); return; }
+  if(!contactos.length){ alert('No hay contactos con teléfono en esta lista.'); return; }
+  const btn = document.getElementById('winDifSendBtn');
+  btn.disabled = true; btn.textContent = 'Mandando...';
+  try{
+    const cantidad = Math.max(1, Math.min(6, contactos.length));
+    let variantes = [instruccion];
+    try{
+      const res = await fetch('/api/win-redactar-difusion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruccion, cantidad })
+      });
+      const data = await res.json().catch(()=>({}));
+      if(res.ok && Array.isArray(data.variantes) && data.variantes.length) variantes = data.variantes;
+    }catch(e){ console.error('No se pudo redactar variantes, se manda el mensaje tal cual:', e); }
+
+    const mensajes = contactos.map((c, i) => ({ grupoId: phoneToJid(c.telefono), texto: variantes[i % variantes.length] })).filter(m=>m.grupoId);
+    const colaRes = await fetch('/api/win-enviar-cola', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensajes, intervaloMs: 60000 })
+    });
+    const colaInfo = await colaRes.json().catch(()=>({}));
+    if(!colaRes.ok || !colaInfo.ok) throw new Error(colaInfo.error || 'No se pudo encolar la difusión.');
+    closeModal();
+    renderWin();
+    const msg = `Listo, jefe. Encolé ${mensajes.length} avisos de "${winDifusionListaNombre(listaId)}", uno por minuto -- el primero sale de una.`;
+    if(winListeningActive) winSpeak(msg); else alert(msg);
+  }catch(e){
+    console.error(e);
+    alert(`No se pudo mandar la difusión: ${e.message}`);
+    btn.disabled = false; btn.textContent = `Mandar a los ${contactos.length}`;
+  }
 }
 
 // Dispara el protocolo fijo de la mañana (ver api/win-protocolo-manana.js) ya mismo, en vez de
@@ -3388,7 +3572,8 @@ const WIN_TOOL_ACK = {
   mandar_publicidad_guardada: 'Va, la mando a la bandeja.',
   subir_testimonio: 'Claro, jefe. Sube la captura.',
   mandar_stake_pago: 'Dale, sube la foto del stake.',
-  mandar_partidos_dia: 'Dale, sube las fotos de los partidos.'
+  mandar_partidos_dia: 'Dale, sube las fotos de los partidos.',
+  abrir_difusion: 'Va, te abro las listas de difusión.'
 };
 
 // Estas tres se usan en ráfaga (varios registros por minuto) -- no esperan a que Win hable
@@ -3480,6 +3665,7 @@ function dispatchWinTool(tool){
   else if(tool.name === 'subir_testimonio') openTestimonioUploadModal();
   else if(tool.name === 'mandar_stake_pago') openStakePagoUploadModal();
   else if(tool.name === 'mandar_partidos_dia') openPartidosDiaModal();
+  else if(tool.name === 'abrir_difusion') handleAbrirDifusion(input);
 }
 
 // Grupos reales de WhatsApp conectados -- cada uno con su link de invitación (para el
