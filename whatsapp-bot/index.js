@@ -48,7 +48,13 @@ function pausaHumana() {
 
 async function iniciarConexion() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version } = await fetchLatestBaileysVersion();
+  let version;
+  try {
+    ({ version } = await fetchLatestBaileysVersion());
+    console.log('Versión de WhatsApp Web a usar:', version.join('.'));
+  } catch (e) {
+    console.log('No se pudo obtener la última versión de WhatsApp Web, sigo con la que trae la librería. Error:', e.message);
+  }
 
   sock = makeWASocket({
     version,
@@ -79,7 +85,11 @@ async function iniciarConexion() {
       connected = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const deslogueado = statusCode === DisconnectReason.loggedOut;
-      console.log('Conexión cerrada.', deslogueado ? 'El número fue desvinculado -- hay que escanear el QR de nuevo.' : 'Reconectando...');
+      console.log(
+        'Conexión cerrada. statusCode=', statusCode,
+        'mensaje=', lastDisconnect?.error?.message,
+        deslogueado ? '-- el número fue desvinculado, hay que escanear el QR de nuevo.' : '-- reconectando...'
+      );
       if (!deslogueado) {
         setTimeout(iniciarConexion, 3000);
       }
