@@ -114,7 +114,10 @@ function requireApiKey(req, res, next) {
   if (!API_KEY) {
     return res.status(500).json({ error: 'El servidor no tiene configurada API_KEY todavía.' });
   }
-  if (req.header('x-api-key') !== API_KEY) {
+  // Acepta la clave como header (lo que usa el panel) o como ?key=... en la URL (para poder
+  // abrir /grupos directo desde el navegador sin terminal).
+  const givenKey = req.header('x-api-key') || req.query.key;
+  if (givenKey !== API_KEY) {
     return res.status(401).json({ error: 'No autorizado.' });
   }
   next();
@@ -158,15 +161,26 @@ app.get('/estado', requireApiKey, (req, res) => {
 // link de invitación desde ESE número), y recién ahí aparecen aquí.
 app.get('/grupos', requireApiKey, async (req, res) => {
   if (!connected) {
-    return res.status(503).json({ error: 'El bot no está conectado a WhatsApp todavía.' });
+    return res.status(503).send('El bot no está conectado a WhatsApp todavía.');
   }
   try {
     const grupos = await sock.groupFetchAllParticipating();
     const lista = Object.values(grupos).map((g) => ({ id: g.id, nombre: g.subject }));
-    res.json({ grupos: lista });
+    res.send(`
+      <html>
+        <body style="font-family:sans-serif; padding:24px; max-width:600px; margin:0 auto;">
+          <h2>Grupos donde está metido el número dedicado</h2>
+          <p style="color:#666;">Copia y pásame esta lista completa (nombre + id de cada uno).</p>
+          ${lista.map(g => `<div style="margin-bottom:10px; padding:10px; border:1px solid #ddd; border-radius:8px;">
+            <strong>${g.nombre}</strong><br>
+            <code style="font-size:13px; color:#555;">${g.id}</code>
+          </div>`).join('')}
+        </body>
+      </html>
+    `);
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'No se pudo leer la lista de grupos.', detalle: e.message });
+    res.status(500).send('No se pudo leer la lista de grupos: ' + e.message);
   }
 });
 
