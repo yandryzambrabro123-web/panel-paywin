@@ -140,9 +140,15 @@ module.exports = async function handler(req, res) {
         return;
       }
       const templates = await fetchTemplatesByName();
-      const enviado = await enviarPaso(step, templates, botUrl, botKey);
-      if (!enviado) {
-        res.status(200).json({ ok: true, skipped: true, paso: step.nombre, reason: 'Todavía no está guardada esa publicidad.' });
+      try {
+        const enviado = await enviarPaso(step, templates, botUrl, botKey);
+        if (!enviado) {
+          res.status(200).json({ ok: true, skipped: true, paso: step.nombre, reason: 'Todavía no está guardada esa publicidad.' });
+          return;
+        }
+      } catch (stepErr) {
+        console.error(`Error mandando el paso "${step.nombre}":`, stepErr);
+        res.status(200).json({ ok: false, paso: step.nombre, error: stepErr.message });
         return;
       }
       sentSteps.add(norm(step.nombre));
@@ -162,17 +168,29 @@ module.exports = async function handler(req, res) {
     const enviadosAhora = [];
     const yaEstaban = [];
     const missing = [];
+    const fallidos = [];
 
+    // IMPORTANTE: cada paso va en su propio try/catch. Si uno falla (ej. el bot no responde a
+    // tiempo con un grupo), los pasos anteriores que SÍ se mandaron bien no se deben perder --
+    // si una excepción se escapara del for y cortara el guardado de abajo, el próximo intento
+    // repetiría desde el primer paso una y otra vez (eso fue justo el bug: se quedaba
+    // repitiendo solo "buenos días" porque un paso siguiente fallaba y nunca se guardaba el
+    // progreso).
     for (const step of PROTOCOLO_STEPS) {
       if (sentSteps.has(norm(step.nombre))) { yaEstaban.push(step.nombre); continue; }
-      const enviado = await enviarPaso(step, templates, botUrl, botKey);
-      if (!enviado) { missing.push(step.nombre); continue; }
-      sentSteps.add(norm(step.nombre));
-      enviadosAhora.push(step.nombre);
+      try {
+        const enviado = await enviarPaso(step, templates, botUrl, botKey);
+        if (!enviado) { missing.push(step.nombre); continue; }
+        sentSteps.add(norm(step.nombre));
+        enviadosAhora.push(step.nombre);
+      } catch (stepErr) {
+        console.error(`Error mandando el paso "${step.nombre}":`, stepErr);
+        fallidos.push({ paso: step.nombre, error: stepErr.message });
+      }
     }
 
     await setDedupeState(today, sentSteps);
-    res.status(200).json({ ok: true, skipped: false, enviadosAhora, yaEstaban, missing, totalSteps: PROTOCOLO_STEPS.length });
+    res.status(200).json({ ok: true, skipped: false, enviadosAhora, yaEstaban, missing, fallidos, totalSteps: PROTOCOLO_STEPS.length });
   } catch (e) {
     console.error('Error en el protocolo de la mañana:', e);
     res.status(500).json({ error: 'No se pudo mandar el protocolo.', detalle: e.message });
