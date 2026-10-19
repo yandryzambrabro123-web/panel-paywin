@@ -551,26 +551,9 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhbzMCcoJ5jDjp1lgsaGjLMkGI47SVAfemVMuMnggWd_k-ubqzmBEMlA/exec';
-// Acceso del socio: usuario y contraseña fijos aquí mismo (no pasan por el Google Sheet de
-// login). Este es el acceso de AYRTON — ve "Venta de Stakes" (con nombre y teléfono
-// censurados, sin poder editar nada) y su propia pestaña en "Finanzas de Personal", en modo
-// solo visualizar: ve lo que comisionó hoy y lo que lleva en el mes, sin porcentajes ni
-// filtros ni el detalle de cada apuesta. Puedes cambiar estos dos valores cuando quieras,
-// directo en este archivo.
-const PARTNER_USER = 'socio';
-const PARTNER_PASS = 'Ayrto2026';
-// Nombre con el que está registrado Ayrton en "Personal" (Finanzas de Personal) — así el
-// acceso de socio sabe cuál es SU perfil aunque su usuario de login se llame "socio".
-const AYRTON_STAFF_NAME = 'Ayrton';
-// Acceso de colaboradora (Erika): otro usuario/contraseña fijo aquí mismo. Solo ve Miembros
-// VIP (los 3 grupos), Venta de Stakes, Cuadre Financiero y su propia pestaña en Finanzas de
-// Personal. En Cuadre Financiero solo puede registrar ingresos/egresos (manual o leyendo
-// comprobante con IA); no ve "Actualizar saldo del día", "Reiniciar todo", "Exportar CSV",
-// "Transferencia", ni puede editar/eliminar movimientos ya registrados. En Finanzas de
-// Personal solo ve su propio perfil, en modo visualizar (hoy + mes, sin porcentajes ni
-// filtros), y puede registrar sus ventas VIP (manual, con foto adjunta).
-const COLLAB_USER = 'Erika';
-const COLLAB_PASS = 'Erika-PayWin26!';
+// Ayrton y Erika ya no tienen ningún acceso al panel -- se quitaron sus usuarios/contraseñas
+// fijos y los roles "socio"/"colaboradora" que tenían. Ahora solo entra el admin, con las
+// credenciales que valida el Google Sheet de login.
 function maskName(name){
   if(!name) return '-';
   return String(name).trim().split(/\s+/).map(w => w[0] ? (w[0].toUpperCase() + '*'.repeat(Math.max(w.length-1,2))) : '').join(' ');
@@ -622,10 +605,8 @@ let state = {
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmtMoney(n){ return '$' + (Number(n)||0).toFixed(2); }
 // Quién está registrando el movimiento ahora mismo — se guarda junto con cada movimiento de
-// Cuadre Financiero para saber quién lo metió (tú o Erika) y a qué hora.
+// Cuadre Financiero para saber a qué hora se metió (ya solo entra el admin).
 function currentUserLabel(){
-  if(state.role === 'colaboradora') return 'Erika';
-  if(state.role === 'socio') return 'Ayrton';
   return 'Admin';
 }
 function fmtDateTime(iso){
@@ -795,10 +776,9 @@ function exportCSV(key){
   URL.revokeObjectURL(url);
 }
 
-// Qué vistas puede ver cada rol. null = todas (admin).
+// Ya no hay accesos restringidos (Ayrton y Erika quedaron sin acceso al panel) -- siempre
+// se ve todo.
 function allowedViewsForRole(){
-  if(state.role === 'socio') return ['stakeSales'];
-  if(state.role === 'colaboradora') return ['vips','stakeSales','finance'];
   return null;
 }
 function setView(v){
@@ -818,9 +798,7 @@ function applyRoleToNav(){
     el.style.display = (!allowed || allowed.includes(el.dataset.view)) ? '' : 'none';
   });
   const brandText = document.querySelector('.brand-text');
-  if(brandText) brandText.innerHTML = state.role === 'socio' ? 'Panel<br>Pay Win · Ayrton'
-    : state.role === 'colaboradora' ? 'Panel<br>Pay Win · Erika'
-    : 'Panel<br>Administración<br>Pay Win';
+  if(brandText) brandText.innerHTML = 'Panel<br>Administración<br>Pay Win';
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(el=>{ el.addEventListener('click', ()=>{ setView(el.dataset.view); closeMobileMenu(); }); });
 
@@ -1457,7 +1435,7 @@ async function migrateStakeSales(){
 }
 
 function renderStakeSales(){
-  const readOnly = state.role === 'socio';
+  const readOnly = false; // el acceso de "socio" (Ayrton), que era el único en modo solo-lectura, ya no existe
   const sections = [...state.stakeSections].sort((a,b)=> new Date(b.day||0) - new Date(a.day||0));
   if(!sections.find(x=>x.id===state.stakeSectionId)) state.stakeSectionId = sections[0] ? sections[0].id : '';
   const cur = sections.find(x=>x.id===state.stakeSectionId);
@@ -1667,8 +1645,8 @@ async function refreshFinanceData(){
 }
 
 function renderFinance(){
-  const addOnly = state.role === 'colaboradora'; // solo puede registrar ingresos/egresos, nada más
-  const isAdmin = state.role === 'admin';
+  const addOnly = false; // el acceso de "colaboradora" (Erika), que era el único limitado a solo registrar, ya no existe
+  const isAdmin = true;
   const showRegisteredBy = isAdmin; // quién registró cada movimiento y a qué hora: solo tú lo ves
   const accFilter = state.financeAccountFilter;
   const allRows = accFilter ? state.financeMovements.filter(m=>m.accountId===accFilter) : state.financeMovements;
@@ -3156,12 +3134,11 @@ function render(){
 /* ---------- AUTH ---------- */
 function enterApp(role){
   state.role = role;
-  const allowed = (role === 'socio') ? ['stakeSales'] : (role === 'colaboradora') ? ['vips','stakeSales','finance'] : null;
-  state.view = allowed ? allowed[0] : 'dashboard';
+  state.view = 'dashboard';
   // Si se abre con ?win=1 (ej. desde el acceso directo del celular / gesto), entra directo a Win
-  // en vez del dashboard -- solo si el rol tiene acceso a esa pestaña.
+  // en vez del dashboard.
   try{
-    if(!allowed && new URLSearchParams(window.location.search).get('win') === '1'){ state.view = 'win'; winTabJustOpened = true; }
+    if(new URLSearchParams(window.location.search).get('win') === '1'){ state.view = 'win'; winTabJustOpened = true; }
   }catch(e){}
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
@@ -3177,19 +3154,6 @@ async function attemptLogin(){
   const errEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
   errEl.style.display = 'none';
-
-  // Acceso de la colaboradora: credenciales fijas definidas arriba, no pasan por el Sheet de login.
-  // El usuario no distingue mayúsculas/minúsculas (la contraseña sí, tal cual se definió arriba).
-  // OJO: el acceso de "socio" (Ayrton) quedó deshabilitado a propósito — ya no trabaja con
-  // nosotros, así que esas credenciales ya no dejan entrar a nadie (ver PARTNER_USER/PARTNER_PASS
-  // más arriba, que se quedan solo de referencia por si algún día vuelve a activarse).
-  const userLower = user.toLowerCase();
-  if(userLower === COLLAB_USER.toLowerCase() && pass === COLLAB_PASS){
-    localStorage.setItem('panelVipAuth', 'true');
-    localStorage.setItem('panelRole', 'colaboradora');
-    enterApp('colaboradora');
-    return;
-  }
 
   btn.textContent = 'Verificando...';
   btn.disabled = true;
@@ -3221,12 +3185,13 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 
 if(localStorage.getItem('panelVipAuth') === 'true'){
   const savedRole = localStorage.getItem('panelRole');
-  if(savedRole === 'socio'){
-    // Sesión vieja guardada en el dispositivo de Ayrton — ya no tiene acceso, se cierra sola.
+  if(savedRole === 'socio' || savedRole === 'colaboradora'){
+    // Sesión vieja guardada en el dispositivo de Ayrton o de Erika — ya no tienen acceso,
+    // se cierra sola y los manda de vuelta al login.
     localStorage.removeItem('panelVipAuth');
     localStorage.removeItem('panelRole');
   } else {
-    enterApp(savedRole === 'colaboradora' ? savedRole : 'admin');
+    enterApp('admin');
   }
 }
 </script>
