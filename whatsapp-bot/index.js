@@ -296,6 +296,10 @@ function iniciarColaSiHaceFalta(nuevoIntervaloMs) {
     if (colaTimer) { clearInterval(colaTimer); colaTimer = null; }
   }
   if (colaTimer) return;
+  // El primer aviso se manda de una, sin esperar el minuto completo -- setInterval por sí solo
+  // solo dispara DESPUÉS de que pasa el intervalo completo, y eso hacía parecer que la cola no
+  // estaba haciendo nada durante el primer minuto.
+  tickCola();
   colaTimer = setInterval(tickCola, colaIntervaloMs);
 }
 

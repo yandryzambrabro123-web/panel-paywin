@@ -3793,10 +3793,14 @@ async function submitStakePago(){
     if(mensajes.length){
       const minutos = mensajes.length;
       if(colaInfo && colaInfo.ok){
-        setTimeout(()=>winSpeak(`Ya quedaron ${mensajes.length} avisos en cola, uno por minuto -- en como ${minutos} minutos están todos mandados.`), 400);
+        setTimeout(()=>winSpeak(`Ya quedaron ${mensajes.length} avisos en cola, uno por minuto -- el primero sale de una, en como ${minutos} minutos están todos mandados.`), 400);
       } else {
         setTimeout(()=>winSpeak('No se pudo conectar con el bot para mandar los avisos a los compradores. Revisa la conexión.'), 400);
       }
+    } else {
+      // Nunca se queda en silencio -- si no hay nadie en cola, el jefe tiene que saber por qué
+      // (normalmente: ningún comprador registrado tiene teléfono guardado).
+      setTimeout(()=>winSpeak('No mandé avisos a nadie -- no encontré compradores con teléfono guardado. Revisa que los registros en Venta de Stakes tengan el número.'), 400);
     }
   }catch(e){
     console.error(e);
