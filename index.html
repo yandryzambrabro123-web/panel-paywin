@@ -1880,6 +1880,386 @@ function renderFinanceCharts(rows){
   });
 }
 
+function openFinanceMovementForm(rerender, editId){
+  const existing = editId ? state.financeMovements.find(x=>x.id===editId) : null;
+  openModal(`
+    <h3>${existing ? 'Editar movimiento' : 'Registrar movimiento'}</h3>
+    ${existing && existing.transferId ? `<div style="background:#1C2E4A; color:#8FC1FF; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">Este movimiento forma parte de una transferencia. Si lo editas, el otro lado (caja o banco) no cambia automáticamente — revísalo también si hace falta.</div>` : ''}
+    <div class="field"><label>Cuenta</label>
+      <select id="f-finAcc">
+        ${FINANCE_ACCOUNTS.map(a=>`<option value="${a.id}" ${existing&&existing.accountId===a.id?'selected':''}>${a.name} (${a.type==='banco'?'Banco':'Caja'})</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Tipo</label>
+      <select id="f-finType">
+        <option value="in" ${!existing||existing.type==='in'?'selected':''}>Ingreso (entra dinero)</option>
+        <option value="out" ${existing&&existing.type==='out'?'selected':''}>Egreso (sale dinero)</option>
+      </select>
+    </div>
+    <div class="field"><label>Monto ($)</label><input id="f-finAmount" type="number" step="0.01" placeholder="50" value="${existing?existing.amount||'':''}"></div>
+    <div class="field"><label>N° de comprobante (opcional)</label><input id="f-finNum" placeholder="Ej: 64817155" value="${existing?existing.comprobanteNumero||'':''}"></div>
+    <div class="field"><label>Fecha</label><input id="f-finDate" type="date" value="${existing?existing.date||'':new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota</label><textarea id="f-finNote" placeholder="Ej: depósito de Jhon, comisión, ajuste...">${existing?existing.note||'':''}</textarea></div>
+    ${existing && state.role==='admin' ? `
+    <div style="border-top:1px solid var(--border); margin:14px 0; padding-top:14px;">
+      <div style="font-size:11.5px; color:var(--muted); margin-bottom:10px;">Este movimiento es de antes de que el panel guardara esto automático — si te acuerdas quién lo registró y cuándo, lo puedes completar aquí a mano. Déjalo vacío si no lo sabes.</div>
+      <div class="field"><label>Registrado por (opcional)</label>
+        <select id="f-finCreatedBy">
+          <option value="" ${!existing.createdBy?'selected':''}>— Sin dato —</option>
+          <option value="Admin" ${existing.createdBy==='Admin'?'selected':''}>Admin</option>
+          <option value="Erika" ${existing.createdBy==='Erika'?'selected':''}>Erika</option>
+        </select>
+      </div>
+      <div class="field"><label>Hora de registro (opcional)</label><input id="f-finCreatedAt" type="datetime-local" value="${existing.createdAt ? existing.createdAt.slice(0,16) : ''}"></div>
+    </div>
+    ` : ''}
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveFinMovement">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveFinMovement').onclick = async ()=>{
+    const amount = Number(document.getElementById('f-finAmount').value);
+    if(!amount || amount<=0){ alert('Pon un monto válido.'); return; }
+    const data = {
+      accountId: document.getElementById('f-finAcc').value,
+      type: document.getElementById('f-finType').value,
+      amount,
+      date: document.getElementById('f-finDate').value || new Date().toISOString().slice(0,10),
+      note: document.getElementById('f-finNote').value.trim(),
+      comprobanteNumero: document.getElementById('f-finNum').value.trim()
+    };
+    if(existing){
+      Object.assign(existing, data);
+      if(state.role==='admin'){
+        const cbEl = document.getElementById('f-finCreatedBy');
+        const caEl = document.getElementById('f-finCreatedAt');
+        if(cbEl) existing.createdBy = cbEl.value;
+        if(caEl) existing.createdAt = caEl.value ? new Date(caEl.value).toISOString() : '';
+      }
+    } else {
+      state.financeMovements.push({ id: uid(), transferId:'', ...data, createdAt: new Date().toISOString(), createdBy: currentUserLabel() });
+    }
+    closeModal();
+    rerender();
+    await persist('financeMovements');
+  };
+}
+
+// Transferencia: registra en un solo paso el egreso en la caja y el ingreso en el banco
+// (p.ej. cuando se "efectiviza" una recarga: sale de la caja de la casa de apuestas y entra al banco).
+function openFinanceTransferForm(rerender){
+  const cajas = FINANCE_ACCOUNTS.filter(a=>a.type==='caja');
+  const bancos = FINANCE_ACCOUNTS.filter(a=>a.type==='banco');
+  openModal(`
+    <h3>Transferencia: caja → banco</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Registra a la vez la salida de la caja y la entrada al banco por un mismo movimiento de dinero (ej. una recarga que se efectiviza).</div>
+    <div class="field"><label>Caja de origen (sale el dinero)</label>
+      <select id="f-trFrom">${cajas.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>Banco de destino (entra el dinero)</label>
+      <select id="f-trTo">${bancos.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>Monto ($)</label><input id="f-trAmount" type="number" step="0.01" placeholder="50"></div>
+    <div class="field"><label>Fecha</label><input id="f-trDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota</label><input id="f-trNote" placeholder="Ej: recarga Más Parley - Jordy"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="saveTransfer">Guardar</button>
+    </div>
+  `);
+  document.getElementById('saveTransfer').onclick = async ()=>{
+    const amount = Number(document.getElementById('f-trAmount').value);
+    if(!amount || amount<=0){ alert('Pon un monto válido.'); return; }
+    const from = document.getElementById('f-trFrom').value;
+    const to = document.getElementById('f-trTo').value;
+    const date = document.getElementById('f-trDate').value || new Date().toISOString().slice(0,10);
+    const note = document.getElementById('f-trNote').value.trim();
+    const transferId = uid();
+    const createdAt = new Date().toISOString();
+    const createdBy = currentUserLabel();
+    state.financeMovements.push({ id: uid(), accountId: from, type:'out', amount, date, note, transferId, createdAt, createdBy });
+    state.financeMovements.push({ id: uid(), accountId: to, type:'in', amount, date, note, transferId, createdAt, createdBy });
+    closeModal();
+    rerender();
+    await persist('financeMovements');
+  };
+}
+
+// Comprime y convierte la imagen del comprobante a base64 antes de mandarla a leer,
+// para que la subida sea rápida y liviana en datos móviles.
+function fileToCompressedImage(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const maxW = 1100;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        resolve({ base64: dataUrl.split(',')[1], mediaType: 'image/jpeg', previewUrl: dataUrl });
+      };
+      img.onerror = ()=>reject(new Error('No se pudo leer la imagen.'));
+      img.src = reader.result;
+    };
+    reader.onerror = ()=>reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Versión chiquita de la misma imagen, solo para guardarla en el historial (Google Sheets
+// tiene un límite de ~50.000 caracteres por celda). Va probando con tamaños y calidades cada
+// vez más chicos hasta que el resultado entre bien holgado en ese límite — las capturas de
+// pantalla con texto nítido a veces pesan más de lo esperado aunque se vean "chiquitas".
+function fileToThumbnail(file){
+  const MAX_CHARS = 38000;
+  const steps = [
+    { w: 480, q: 0.55 }, { w: 480, q: 0.4 }, { w: 360, q: 0.5 },
+    { w: 360, q: 0.35 }, { w: 260, q: 0.4 }, { w: 200, q: 0.35 }, { w: 160, q: 0.3 }
+  ];
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        let result = '';
+        for(const step of steps){
+          const scale = Math.min(1, step.w / img.width);
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          canvas.width = w; canvas.height = h;
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', step.q);
+          if(dataUrl.length <= MAX_CHARS){ result = dataUrl; break; }
+          result = dataUrl; // nos quedamos con el más chico probado por si ninguno entra
+        }
+        resolve(result.length <= MAX_CHARS ? result : '');
+      };
+      img.onerror = ()=>reject(new Error('No se pudo leer la imagen.'));
+      img.src = reader.result;
+    };
+    reader.onerror = ()=>reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function openReceiptPhoto(dataUrl){
+  openModal(`
+    <h3>Foto del comprobante</h3>
+    <img src="${dataUrl}" style="max-width:100%; border-radius:8px; display:block;">
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>
+  `);
+}
+
+function openFinanceReceiptForm(rerender){
+  openModal(`
+    <h3>Leer comprobante con IA</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Sube una captura de una transferencia bancaria o de un retiro de caja. El sistema va a leer el monto y la cuenta — tú solo confirmas antes de que se registre.</div>
+    <div id="receiptDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:30px 16px; text-align:center; cursor:pointer;">
+      <div style="font-size:28px; margin-bottom:8px;">📎</div>
+      <div style="font-size:13.5px; color:var(--muted);">Arrastra la captura aquí, o haz clic para elegirla</div>
+    </div>
+    <input id="receiptFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+    </div>
+  `);
+
+  const dropzone = document.getElementById('receiptDropzone');
+  const fileInput = document.getElementById('receiptFileInput');
+  dropzone.onclick = ()=>fileInput.click();
+  dropzone.ondragover = (e)=>{ e.preventDefault(); dropzone.style.borderColor = 'var(--accent)'; };
+  dropzone.ondragleave = ()=>{ dropzone.style.borderColor = 'var(--border)'; };
+  dropzone.ondrop = (e)=>{
+    e.preventDefault();
+    e.stopPropagation(); // evita que el listener global de arrastrar-y-soltar lo procese dos veces
+    dropzone.style.borderColor = 'var(--border)';
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleReceiptFile(e.dataTransfer.files[0], rerender);
+  };
+  fileInput.onchange = ()=>{
+    if(fileInput.files && fileInput.files[0]) handleReceiptFile(fileInput.files[0], rerender);
+  };
+}
+
+async function handleReceiptFile(file, rerender){
+  openModal(`
+    <h3>Leyendo comprobante...</h3>
+    <div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>
+  `);
+  try{
+    const { base64, mediaType, previewUrl } = await fileToCompressedImage(file);
+    let thumb = '';
+    try{ thumb = await fileToThumbnail(file); }catch(e){ thumb = ''; }
+    const res = await fetch('/api/leer-comprobante', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, mediaType })
+    });
+    const result = await res.json();
+    if(!res.ok){
+      showReceiptError(result.error || 'No se pudo leer el comprobante.', rerender);
+      return;
+    }
+    showReceiptConfirm(result, previewUrl, thumb, rerender);
+  }catch(e){
+    console.error(e);
+    showReceiptError('No se pudo leer el comprobante. Revisa tu conexión e intenta de nuevo.', rerender);
+  }
+}
+
+// Modo rápido para cuando entran muchos comprobantes seguidos: estando en Cuadre Financiero,
+// arrastra la imagen (desde la carpeta de Descargas, por ejemplo) a CUALQUIER parte de la
+// pantalla, o cópiala (Ctrl+C en WhatsApp/galería) y pégala con Ctrl+V — sin tener que abrir
+// el botón "Leer comprobante" primero. Así el flujo queda: pega y confirma, pega y confirma...
+let _financeDragDepth = 0;
+function financeDropOverlay(show){
+  let el = document.getElementById('financeDropOverlay');
+  if(show && !el){
+    el = document.createElement('div');
+    el.id = 'financeDropOverlay';
+    el.style.cssText = 'position:fixed; inset:0; z-index:500; background:rgba(212,175,106,0.12); border:3px dashed var(--accent); display:flex; align-items:center; justify-content:center; pointer-events:none;';
+    el.innerHTML = '<div style="background:var(--surface); border:1px solid var(--accent); border-radius:10px; padding:18px 26px; font-size:15px; font-weight:700; color:var(--accent);">📎 Suelta aquí para leer el comprobante</div>';
+    document.body.appendChild(el);
+  } else if(!show && el){
+    el.remove();
+  }
+}
+window.addEventListener('dragenter', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  e.preventDefault();
+  _financeDragDepth++;
+  financeDropOverlay(true);
+});
+window.addEventListener('dragover', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  e.preventDefault();
+});
+window.addEventListener('dragleave', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  _financeDragDepth = Math.max(0, _financeDragDepth-1);
+  if(_financeDragDepth === 0) financeDropOverlay(false);
+});
+window.addEventListener('drop', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  e.preventDefault();
+  _financeDragDepth = 0;
+  financeDropOverlay(false);
+  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(file && file.type && file.type.startsWith('image/')) handleReceiptFile(file, renderFinance);
+});
+window.addEventListener('paste', (e)=>{
+  if(state.view !== 'finance' || !state.loaded) return;
+  const items = (e.clipboardData && e.clipboardData.items) || [];
+  for(const item of items){
+    if(item.type && item.type.startsWith('image/')){
+      const file = item.getAsFile();
+      if(file){ e.preventDefault(); handleReceiptFile(file, renderFinance); }
+      break;
+    }
+  }
+});
+
+function showReceiptError(message, rerender){
+  openModal(`
+    <h3>No se pudo leer</h3>
+    <div style="background:var(--loss-dim); color:#FF8A8E; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:16px;">${message}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="retryReceiptBtn">Intentar de nuevo</button>
+      <button class="btn secondary" id="manualFallbackBtn">Registrar manual</button>
+    </div>
+  `);
+  document.getElementById('retryReceiptBtn').onclick = ()=>openFinanceReceiptForm(rerender);
+  document.getElementById('manualFallbackBtn').onclick = ()=>openFinanceMovementForm(rerender);
+}
+
+function showReceiptConfirm(result, previewUrl, thumb, rerender){
+  const accountId = FINANCE_ACCOUNTS.find(a=>a.id===result.accountId) ? result.accountId : '';
+  const type = result.type === 'out' ? 'out' : (result.type === 'in' ? 'in' : 'in');
+  const amount = typeof result.amount === 'number' ? result.amount : '';
+  const comprobanteNumero = result.comprobanteNumero ? String(result.comprobanteNumero) : '';
+  const lowConfidence = result.confidence === 'baja' || !accountId || !amount;
+
+  openModal(`
+    <h3>Confirmar movimiento</h3>
+    <img src="${previewUrl}" style="max-width:100%; max-height:160px; border-radius:8px; margin-bottom:12px; display:block;">
+    ${lowConfidence ? `<div style="background:#4A3B14; color:var(--pending); border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">No estoy 100% seguro de algunos datos — revísalos antes de confirmar.${result.reason ? ' ' + result.reason : ''}</div>` : ''}
+    ${!thumb ? `<div style="background:#4A3B14; color:var(--pending); border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">⚠️ Esta foto pesa demasiado y no se pudo guardar en el historial (sí se registrará el movimiento, solo que sin la foto).</div>` : ''}
+    ${result.detectedText ? `<div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Leído: "${String(result.detectedText).replace(/"/g,'&quot;')}"</div>` : ''}
+    <div id="dupWarning"></div>
+    <div class="field"><label>Cuenta</label>
+      <select id="f-rcAcc">
+        <option value="">Selecciona una cuenta</option>
+        ${FINANCE_ACCOUNTS.map(a=>`<option value="${a.id}" ${accountId===a.id?'selected':''}>${a.name} (${a.type==='banco'?'Banco':'Caja'})</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Tipo</label>
+      <select id="f-rcType">
+        <option value="in" ${type==='in'?'selected':''}>Ingreso (entra dinero)</option>
+        <option value="out" ${type==='out'?'selected':''}>Egreso (sale dinero)</option>
+      </select>
+    </div>
+    <div class="field"><label>Monto ($)</label><input id="f-rcAmount" type="number" step="0.01" value="${amount}"></div>
+    <div class="field"><label>N° de comprobante</label><input id="f-rcNum" placeholder="Ej: 64817155" value="${comprobanteNumero.replace(/"/g,'&quot;')}"></div>
+    <div class="field"><label>Fecha</label><input id="f-rcDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Nota</label><input id="f-rcNote" value="${result.detectedText ? String(result.detectedText).replace(/"/g,'&quot;') : ''}"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="confirmReceiptBtn">Confirmar y registrar</button>
+    </div>
+  `);
+
+  // Aviso "inteligente" de posible duplicado: mismo número de comprobante ya registrado antes.
+  const checkDup = ()=>{
+    const num = document.getElementById('f-rcNum').value.trim();
+    const box = document.getElementById('dupWarning');
+    if(!num){ box.innerHTML = ''; return; }
+    const dup = state.financeMovements.find(m=>m.comprobanteNumero && m.comprobanteNumero===num);
+    if(dup){
+      const a = financeAccount(dup.accountId);
+      box.innerHTML = `<div style="background:var(--loss-dim); color:#FF8A8E; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">⚠️ Ya existe un movimiento con el N° de comprobante <b>${num}</b> (${a?a.name:dup.accountId}, ${fmtMoney(dup.amount)}, ${fmtDate(dup.date)}). Revisa que no sea el mismo comprobante repetido.</div>`;
+    } else {
+      box.innerHTML = '';
+    }
+  };
+  checkDup();
+  document.getElementById('f-rcNum').oninput = checkDup;
+
+  document.getElementById('confirmReceiptBtn').onclick = async ()=>{
+    const acc = document.getElementById('f-rcAcc').value;
+    const amt = Number(document.getElementById('f-rcAmount').value);
+    const num = document.getElementById('f-rcNum').value.trim();
+    if(!acc){ alert('Elige a qué cuenta pertenece.'); return; }
+    if(!amt || amt<=0){ alert('Pon un monto válido.'); return; }
+    if(num && state.financeMovements.some(m=>m.comprobanteNumero && m.comprobanteNumero===num)){
+      if(!confirm('Ese N° de comprobante ya está registrado antes. ¿Seguro que quieres registrarlo de todos modos?')) return;
+    }
+    state.financeMovements.push({
+      id: uid(),
+      accountId: acc,
+      type: document.getElementById('f-rcType').value,
+      amount: amt,
+      date: document.getElementById('f-rcDate').value || new Date().toISOString().slice(0,10),
+      note: document.getElementById('f-rcNote').value.trim(),
+      comprobanteNumero: num,
+      receiptImage: thumb || '',
+      transferId: '',
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserLabel()
+    });
+    closeModal();
+    rerender();
+    await persist('financeMovements');
+  };
+}
+
 /* ---------- GIFTS (regalitos) — same shape as picks + recipient ---------- */
 function renderGifts(){
   const rows = filterByDate(state.gifts, 'date', 'gifts');
