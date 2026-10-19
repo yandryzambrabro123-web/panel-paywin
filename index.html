@@ -3570,6 +3570,17 @@ function buildStakePagoDM(name, cuota, hora, valor){
   return `${saludo}, soy Win, la asistente de PayWin. 👋\n\nTenemos un stake de pago disponible:\n🎯 Cuota: ${cuota}\n🕒 Hora: ${hora}\n💵 Valor: ${valor}\n\nSi lo quieres adquirir, escríbenos al 096 385 2803.`;
 }
 
+// Número local guardado (ej: "0991234567") -> jid de WhatsApp para mandar un DM directo.
+// Si ya viene con código de país (593...) se respeta tal cual.
+function phoneToJid(phoneRaw){
+  let p = (phoneRaw || '').replace(/[^\d]/g, '');
+  if(!p) return '';
+  if(p.startsWith('593')) { /* ya trae código de país */ }
+  else if(p.startsWith('0')) p = '593' + p.slice(1);
+  else p = '593' + p;
+  return p + '@s.whatsapp.net';
+}
+
 function openStakePagoUploadModal(){
   openModal(`
     <h3>Publicar stake de pago</h3>
@@ -3611,17 +3622,36 @@ async function submitStakePago(){
     const caption = STAKE_PAGO_TEXT_BASE.replace('{cuota}', cuota).replace('{hora}', hora).replace('{valor}', valor);
 
     // Compradores conocidos (cualquiera que ya haya comprado un stake antes, con teléfono
-    // guardado) -- se deja un mensaje individual listo en la bandeja para que él lo revise y
-    // mande a mano, en vez de mandarlo solo: así no se arriesga el número dedicado a un patrón
-    // de mensajes masivos a contactos personales (ver whatsapp-bot/README.md).
+    // guardado) -- se mandan solos, uno por minuto, directo desde el bot de WhatsApp (que
+    // corre 24/7 en Railway, ver /enviar-cola en whatsapp-bot/index.js). No se revisan a
+    // mano uno por uno -- el jefe pidió explícitamente este ritmo para bajar el riesgo del
+    // número dedicado, aceptando que es un número desechable para esta prueba.
     const buyers = getKnownBuyers().filter(b=>b.phone);
-    for(const b of buyers){
-      await pushToOutbox('stake_pago', `${b.name} (${b.phone})`, buildStakePagoDM(b.name, cuota, hora, valor), thumb || previewUrl, true);
+    const mensajes = buyers.map(b => ({ grupoId: phoneToJid(b.phone), texto: buildStakePagoDM(b.name, cuota, hora, valor) })).filter(m=>m.grupoId);
+    let colaInfo = null;
+    if(mensajes.length){
+      try{
+        const colaRes = await fetch('/api/win-enviar-cola', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mensajes, intervaloMs: 60000 })
+        });
+        colaInfo = await colaRes.json().catch(()=>null);
+        if(!colaRes.ok) throw new Error((colaInfo && colaInfo.error) || 'No se pudo encolar los avisos.');
+      }catch(e){
+        console.error(e);
+        colaInfo = { error: e.message };
+      }
     }
-    if(buyers.length) await persist('winOutbox');
 
     openWinCaptionConfirm('stake_pago', grupos, caption, thumb || previewUrl, { base64, mediaType });
-    if(buyers.length) setTimeout(()=>winSpeak(`Ya dejé ${buyers.length} mensajes listos en tu bandeja para los que han comprado antes.`), 400);
+    if(mensajes.length){
+      const minutos = mensajes.length;
+      if(colaInfo && colaInfo.ok){
+        setTimeout(()=>winSpeak(`Ya quedaron ${mensajes.length} avisos en cola, uno por minuto -- en como ${minutos} minutos están todos mandados.`), 400);
+      } else {
+        setTimeout(()=>winSpeak('No se pudo conectar con el bot para mandar los avisos a los compradores. Revisa la conexión.'), 400);
+      }
+    }
   }catch(e){
     console.error(e);
     alert('No se pudo procesar el stake. Intenta de nuevo.');
