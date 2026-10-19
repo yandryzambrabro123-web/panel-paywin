@@ -254,6 +254,26 @@
     min-height:calc(100vh - 60px); display:flex; flex-direction:column; align-items:center; justify-content:center;
     text-align:center; position:relative; padding:20px;
   }
+  /* Fondo tipo HUD: una cuadrícula tenue centrada en el reactor + una línea de escaneo que
+     sube y baja sola -- le mete más "energía" de fondo sin competir con el reactor, que
+     sigue siendo lo único realmente vistoso de la pantalla. */
+  .win-fullscreen::before{
+    content:''; position:absolute; inset:0; z-index:-1; pointer-events:none;
+    background-image:
+      linear-gradient(rgba(212,175,106,.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(212,175,106,.07) 1px, transparent 1px);
+    background-size:46px 46px;
+    -webkit-mask:radial-gradient(ellipse 58% 60% at 50% 46%, #000 0%, transparent 72%);
+            mask:radial-gradient(ellipse 58% 60% at 50% 46%, #000 0%, transparent 72%);
+  }
+  .win-fullscreen::after{
+    content:''; position:absolute; left:6%; right:6%; height:1px; z-index:-1; pointer-events:none; top:8%;
+    background:linear-gradient(90deg, transparent, rgba(255,222,160,.55), transparent);
+    animation:winScanline 7s ease-in-out infinite;
+  }
+  @keyframes winScanline{
+    0%,4%{ top:8%; opacity:0; } 10%{ opacity:.55; } 48%{ top:92%; opacity:.55; } 54%{ opacity:0; } 100%{ top:92%; opacity:0; }
+  }
   .win-corner-icons{ position:absolute; top:0; right:0; display:flex; gap:10px; }
 
   /* Pantalla de Win fija: nada de scroll arriba/abajo, todo centrado y los iconos (menú a la
@@ -336,6 +356,33 @@
   @keyframes winRingPulse{
     0%{ transform:scale(.55); opacity:.65; }
     100%{ transform:scale(1.35); opacity:0; }
+  }
+
+  /* ---- Ráfaga: cuando registras varios movimientos seguidos (cuadre, stakes) sin que Win
+     tenga que hablar en cada uno, esto es la señal visual -- una onda verde que sale del
+     reactor en cada registro, y una píldora con la cuenta mientras la ráfaga sigue viva. ---- */
+  .win-shock-ring{
+    position:absolute; width:260px; height:260px; border-radius:50%; z-index:2; pointer-events:none;
+    border:2px solid rgba(120,220,150,.9); box-shadow:0 0 18px rgba(120,220,150,.7);
+    opacity:0;
+  }
+  .win-shock-ring.win-shock-fire{ animation:winShockPulse .6s ease-out; }
+  @keyframes winShockPulse{
+    0%{ transform:scale(.72); opacity:.9; }
+    100%{ transform:scale(1.5); opacity:0; }
+  }
+  .win-burst-badge{
+    position:absolute; top:-6px; left:50%; transform:translate(-50%,-14px);
+    display:flex; align-items:center; gap:6px; padding:5px 13px; border-radius:20px;
+    background:rgba(15,28,20,.88); border:1px solid rgba(120,220,150,.55);
+    color:#c8ffd8; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.5px;
+    box-shadow:0 0 16px rgba(120,220,150,.35); opacity:0; pointer-events:none;
+    transition:opacity .25s ease, transform .25s ease; z-index:3; white-space:nowrap;
+  }
+  .win-burst-badge.win-burst-show{ opacity:1; transform:translate(-50%,0); }
+  .win-burst-badge .win-burst-dot{
+    width:7px; height:7px; border-radius:50%; background:#7adc96; box-shadow:0 0 8px rgba(120,220,150,.95);
+    animation:winDotPulse .7s ease-in-out infinite;
   }
 
   /* ---- Destellos: motas de energia que orbitan y titilan alrededor del nucleo, como un aura ---- */
@@ -1953,6 +2000,50 @@ let winFinalBuffer = '';
 let winSilenceTimer = null;
 let winConversation = [];
 
+// Para ráfagas de registros rápidos (cuadre, secciones de stake, ventas de stake -- el jefe
+// puede mandar varios por minuto): en vez de que Win diga la frase completa en cada uno
+// (eso significa esperar la llamada de voz y toda su reproducción antes de poder seguir
+// hablando), nada más se oye un sonidito y se sigue escuchando de una. Cuando pasa un rato
+// sin que llegue nada nuevo, ahí sí Win habla una sola vez para cerrar la ráfaga.
+let winFastBatchPending = 0;
+let winFastBatchTimer = null;
+// Onda verde + píldora con la cuenta, para que se vea (sin que Win tenga que decir nada)
+// que cada registro de la ráfaga sí se guardó, en tiempo real.
+function winFireShockRing(){
+  const ring = document.getElementById('winShockRing');
+  if(!ring) return;
+  ring.classList.remove('win-shock-fire');
+  // Forzar reflow para que el navegador deje reiniciar la animación aunque se dispare de nuevo
+  // antes de que termine la anterior (ráfaga rápida, un disparo tras otro).
+  void ring.offsetWidth;
+  ring.classList.add('win-shock-fire');
+}
+function winUpdateBurstBadge(){
+  const badge = document.getElementById('winBurstBadge');
+  const text = document.getElementById('winBurstBadgeText');
+  if(!badge || !text) return;
+  if(winFastBatchPending > 0){
+    text.textContent = winFastBatchPending === 1 ? '1 registro' : `${winFastBatchPending} registros`;
+    badge.classList.add('win-burst-show');
+  } else {
+    badge.classList.remove('win-burst-show');
+  }
+}
+function winNoteFastBatchActivity(){
+  winFastBatchPending++;
+  winFireShockRing();
+  winUpdateBurstBadge();
+  clearTimeout(winFastBatchTimer);
+  winFastBatchTimer = setTimeout(()=>{
+    const n = winFastBatchPending;
+    winFastBatchPending = 0;
+    winUpdateBurstBadge();
+    if(n > 0){
+      winSpeak(n === 1 ? 'Listo, jefe. Quedó completado. ¿Algo más en lo que te ayude?' : `Listo, jefe. Quedaron completadas las ${n} tareas. ¿Algo más en lo que te ayude?`);
+    }
+  }, 4500);
+}
+
 // Primera vez que se abre Win: le carga de una lo que el jefe ya le contó al panel sobre su
 // negocio, para que arranque conociéndolo en vez de empezar en blanco. Solo corre si todavía
 // no tiene nada guardado -- de ahí en adelante, Win sigue aprendiendo sola con guardar_recuerdo.
@@ -2031,6 +2122,8 @@ function renderWin(){
             <circle class="r-core" cx="0" cy="0" r="10"/>
           </svg>
         </div>
+        <div class="win-shock-ring" id="winShockRing"></div>
+        <div class="win-burst-badge" id="winBurstBadge"><span class="win-burst-dot"></span><span id="winBurstBadgeText">0</span></div>
         <div class="win-sparks" id="winSparks">
           ${Array.from({ length: 22 }, (_, i) => {
             const r = 130 + Math.round(Math.random() * 70);
@@ -2317,7 +2410,8 @@ async function handleRegistrarCuadre(input){
   });
   if(state.view === 'finance') renderFinance();
   await persist('financeMovements');
-  winSpeak(`Cuadre actualizado. ${tipo === 'in' ? 'Ingreso' : 'Egreso'} de ${fmtMoney(monto)} en ${acc.name}.`);
+  playWinSfx('confirm');
+  winNoteFastBatchActivity();
 }
 
 function findStakeSectionByName(tituloDicho){
@@ -2340,7 +2434,8 @@ async function handleCrearSeccionStake(input){
   state.stakeSectionId = sec.id;
   if(state.view === 'stakeSales') renderStakeSales();
   await persist('stakeSections');
-  winSpeak(`Listo, creé la sección "${titulo}" para el ${fmtDate(sec.day)}.`);
+  playWinSfx('confirm');
+  winNoteFastBatchActivity();
 }
 
 async function handleRegistrarVentaStake(input){
@@ -2386,7 +2481,8 @@ async function handleRegistrarVentaStake(input){
   state.stakeSectionId = sec.id;
   if(state.view === 'stakeSales') renderStakeSales();
   await persist('stakeSales');
-  winSpeak(`Venta registrada. ${match.name}, ${fmtMoney(sec.price)}, en "${sec.title}".`);
+  playWinSfx('confirm');
+  winNoteFastBatchActivity();
 }
 
 function winOutboxItemHTML(o){
@@ -2556,6 +2652,11 @@ function playWinSfx(type){
     } else if(type === 'action'){
       winSfxTone(ctx, { freq:520, start:0, dur:.09, type:'triangle', gain:.08 });
       winSfxTone(ctx, { freq:780, start:.08, dur:.12, type:'triangle', gain:.08 });
+    } else if(type === 'confirm'){
+      // Sonidito corto para las ráfagas de registros rápidos -- confirma que esa acción puntual
+      // ya quedó guardada, sin tener que esperar a que Win diga toda la frase.
+      winSfxTone(ctx, { freq:1100, start:0, dur:.07, type:'sine', gain:.06 });
+      winSfxTone(ctx, { freq:1450, start:.06, dur:.09, type:'sine', gain:.06 });
     }
   }catch(e){ /* efecto decorativo -- si falla, no pasa nada */ }
 }
@@ -2682,6 +2783,9 @@ function stopWinListening(){
   if(winVoiceAudio){ try{ winVoiceAudio.pause(); }catch(e){} winVoiceAudio = null; }
   winFinalBuffer = '';
   winConversation = [];
+  clearTimeout(winFastBatchTimer);
+  winFastBatchPending = 0;
+  winUpdateBurstBadge();
   const orb = document.getElementById('winOrb');
   if(orb){ orb.style.transform = ''; }
   applyWinOrbState('idle', 'Toca el círculo para activar a Win');
@@ -2709,11 +2813,13 @@ const WIN_TOOL_ACK = {
   abrir_formulario_contenido: 'Va, sube la imagen.',
   crear_recordatorio: 'Listo, te lo anoto.',
   mandar_regalito: 'Dale, vamos con el regalito del día.',
-  mandar_publicidad_guardada: 'Va, la mando a la bandeja.',
-  registrar_cuadre: 'Dale, lo registro.',
-  crear_seccion_stake: 'Va, creo la sección.',
-  registrar_venta_stake: 'Dale, reviso.'
+  mandar_publicidad_guardada: 'Va, la mando a la bandeja.'
 };
+
+// Estas tres se usan en ráfaga (varios registros por minuto) -- no esperan a que Win hable
+// para seguir, y el "listo" no es frase por frase sino al final de la ráfaga (ver
+// winNoteFastBatchActivity).
+const WIN_FAST_BATCH_TOOLS = ['registrar_cuadre', 'crear_seccion_stake', 'registrar_venta_stake'];
 
 async function processWinVoiceCommand(texto){
   const liveEl = document.getElementById('winLiveTranscript');
@@ -2741,6 +2847,23 @@ async function processWinVoiceCommand(texto){
     }
 
     const firstAction = actionTools[0];
+
+    // Ráfaga rápida: ni frase ni pausa del micrófono -- un sonidito nada más y se sigue
+    // escuchando de una, para que el jefe pueda mandar varios registros seguidos sin esperar
+    // a que Win termine de hablar cada vez.
+    if(firstAction && WIN_FAST_BATCH_TOOLS.includes(firstAction.name)){
+      winConversation.push({ role: 'assistant', content: `(${firstAction.name})` });
+      applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
+      dispatchWinTool(firstAction);
+      return;
+    }
+
+    // Un comando normal interrumpe/cierra cualquier ráfaga pendiente -- Win ya va a hablar
+    // de todas formas, así que no hace falta un "listo" aparte después.
+    winFastBatchPending = 0;
+    clearTimeout(winFastBatchTimer);
+    winUpdateBurstBadge();
+
     const spoken = (result.textReply && result.textReply.trim()) || (firstAction ? WIN_TOOL_ACK[firstAction.name] : null) || 'Ok.';
     winConversation.push({ role: 'assistant', content: firstAction ? `${spoken} (${firstAction.name})` : spoken });
     winSpeak(spoken, ()=>{ if(firstAction) dispatchWinTool(firstAction); });
@@ -2765,7 +2888,10 @@ async function sendWinCommand(){
 
 function dispatchWinTool(tool){
   const input = tool.input || {};
-  playWinSfx('action');
+  // Las de ráfaga rápida suenan solas cuando de verdad terminan de guardarse (ver los
+  // handleRegistrar.../handleCrear... y winNoteFastBatchActivity) -- acá sonaría antes de
+  // tiempo, mientras todavía se está guardando.
+  if(!WIN_FAST_BATCH_TOOLS.includes(tool.name)) playWinSfx('action');
   if(tool.name === 'abrir_formulario_apuesta') openWinBetForm(input.kind === 'ganada' ? 'ganada' : 'nueva_apuesta', input.destino || '');
   else if(tool.name === 'abrir_formulario_contenido') openWinContentForm(input.nota || '', input.destino || '');
   else if(tool.name === 'crear_recordatorio') openWinReminderForm(input.texto || '', input.fecha || '', input.hora || '');
