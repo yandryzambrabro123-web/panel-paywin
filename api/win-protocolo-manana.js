@@ -3,14 +3,20 @@
 //
 // La dispara Vercel Cron de lunes a viernes a las 8am de Ecuador (ver vercel.json en la raíz --
 // "0 13 * * 1-5" porque Ecuador siempre es UTC-5, sin horario de verano). También se puede
-// disparar a mano antes de esa hora desde Win, con el tool "mandar_protocolo_manana" (ver
-// api/win-chat.js e index.html) -- en ese caso, el envío automático de las 8am ese mismo día
-// ya no se repite (se guarda la fecha del último envío en la hoja "WinProtocoloManana").
+// disparar a mano antes de esa hora desde Win, con los tools "mandar_protocolo_manana" (todo
+// lo que falte) y "mandar_paso_protocolo_manana" (una sola pieza) -- ver api/win-chat.js e
+// index.html.
+//
+// El control de qué ya se mandó hoy es POR PASO, no por el día completo: si a las 7am pides
+// nada más la de "buenos días", a las 8am el cron manda el resto (recargas y retiros,
+// beneficios, apuesta gratis) pero NO repite buenos días. Si no pides nada a mano, el cron
+// manda las 4. Se guarda en la hoja "WinProtocoloManana" (fecha + lista de pasos ya mandados
+// hoy, separados por coma) y se reinicia solo cuando cambia la fecha.
 //
 // Las imágenes y textos del protocolo viven en "Publicidades guardadas" (la hoja
 // WinPlantillas de siempre -- lo mismo que usa Win para "manda la publicidad de..."), con
-// estos nombres FIJOS. Así se pueden actualizar las imágenes (por ejemplo la de "beneficios
-// recargar", que hay que cambiar) desde el panel, sin tocar ningún código:
+// estos nombres FIJOS. Así se pueden actualizar las imágenes (por ejemplo si cambia la de
+// "beneficios recargar") desde el panel, sin tocar ningún código:
 //   "protocolo buenos días"         -> Gratis 1, Gratis 2, Gratis 3 y VIP
 //   "protocolo recargas y retiros"  -> Gratis 1, Gratis 2, Gratis 3
 //   "protocolo beneficios recargar" -> Gratis 1, Gratis 2, Gratis 3
@@ -38,27 +44,36 @@ const PROTOCOLO_STEPS = [
   { nombre: 'protocolo apuesta gratis', destinos: GRATIS_JIDS }
 ];
 
+const norm = s => (s || '').toLowerCase().trim();
+
 // Ecuador siempre es UTC-5, sin horario de verano -- no hace falta ninguna librería de zonas.
 function ecuadorDateStr() {
   return new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-async function getLastSentDate() {
+// Devuelve { date, sentSteps: Set<nombre normalizado> } -- si la fecha guardada no es hoy,
+// sentSteps viene vacío (es un día nuevo, no se arrastra nada del día anterior).
+async function getDedupeState(today) {
   try {
     const res = await fetch(`${SHEETS_API_URL}?sheet=${DEDUPE_SHEET}`);
     const json = await res.json();
     const row = (json.data || [])[0];
-    return row ? row.lastSentDate || '' : '';
+    if (!row || row.lastSentDate !== today) return { sentSteps: new Set() };
+    const list = (row.sentSteps || '').split('|').map(norm).filter(Boolean);
+    return { sentSteps: new Set(list) };
   } catch (e) {
-    return ''; // si falla la lectura, se prefiere mandar de más que no mandar nada
+    return { sentSteps: new Set() }; // si falla la lectura, se prefiere mandar de más que no mandar nada
   }
 }
 
-async function setLastSentDate(dateStr) {
+async function setDedupeState(today, sentStepsSet) {
   await fetch(SHEETS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ sheet: DEDUPE_SHEET, data: [{ id: 'estado', lastSentDate: dateStr }] })
+    body: JSON.stringify({
+      sheet: DEDUPE_SHEET,
+      data: [{ id: 'estado', lastSentDate: today, sentSteps: Array.from(sentStepsSet).join('|') }]
+    })
   });
 }
 
@@ -66,7 +81,6 @@ async function fetchTemplatesByName() {
   const res = await fetch(`${SHEETS_API_URL}?sheet=${TEMPLATES_SHEET}`);
   const json = await res.json();
   const rows = json.data || [];
-  const norm = s => (s || '').toLowerCase().trim();
   const map = new Map();
   rows.forEach(r => map.set(norm(r.nombre), r));
   return map;
@@ -82,6 +96,15 @@ async function enviarAlBot(botUrl, botKey, grupoId, texto, imagenBase64, mediaTy
   if (!res.ok || !data.ok) throw new Error(data.error || 'El bot de WhatsApp no pudo mandar el mensaje.');
 }
 
+async function enviarPaso(step, templates, botUrl, botKey) {
+  const tpl = templates.get(norm(step.nombre));
+  if (!tpl) return false; // todavía no se guardó esa publicidad -- se salta sin tumbar el resto
+  for (const jid of step.destinos) {
+    await enviarAlBot(botUrl, botKey, jid, tpl.texto || '', tpl.base64 || '', tpl.mediaType || 'image/jpeg');
+  }
+  return true;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     res.status(405).json({ error: 'Método no permitido.' });
@@ -95,34 +118,63 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  // Pedido de un solo paso suelto (ej: "manda ya la de buenos días"): viene en el body del POST.
+  let soloPaso = '';
+  if (req.method === 'POST' && req.body) {
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body;
+    soloPaso = norm(body.step || '');
+  }
+
   try {
     const today = ecuadorDateStr();
-    const lastSent = await getLastSentDate();
-    if (lastSent === today) {
-      res.status(200).json({ ok: true, skipped: true, reason: 'El protocolo de hoy ya se había mandado.' });
+    const { sentSteps } = await getDedupeState(today);
+
+    if (soloPaso) {
+      const step = PROTOCOLO_STEPS.find(s => norm(s.nombre) === soloPaso);
+      if (!step) {
+        res.status(400).json({ ok: false, error: 'No reconozco ese paso del protocolo.' });
+        return;
+      }
+      if (sentSteps.has(norm(step.nombre))) {
+        res.status(200).json({ ok: true, skipped: true, paso: step.nombre, reason: 'Esa pieza ya se había mandado hoy.' });
+        return;
+      }
+      const templates = await fetchTemplatesByName();
+      const enviado = await enviarPaso(step, templates, botUrl, botKey);
+      if (!enviado) {
+        res.status(200).json({ ok: true, skipped: true, paso: step.nombre, reason: 'Todavía no está guardada esa publicidad.' });
+        return;
+      }
+      sentSteps.add(norm(step.nombre));
+      await setDedupeState(today, sentSteps);
+      res.status(200).json({ ok: true, skipped: false, paso: step.nombre });
+      return;
+    }
+
+    // Modo completo (cron de las 8am, o "manda ya todo el protocolo"): manda solo lo que
+    // falte -- lo que ya se mandó hoy (a mano, paso por paso) se saltea sin repetirlo.
+    if (sentSteps.size === PROTOCOLO_STEPS.length) {
+      res.status(200).json({ ok: true, skipped: true, reason: 'El protocolo de hoy ya se había mandado completo.' });
       return;
     }
 
     const templates = await fetchTemplatesByName();
-    let sentSteps = 0;
-    let missing = [];
+    const enviadosAhora = [];
+    const yaEstaban = [];
+    const missing = [];
 
     for (const step of PROTOCOLO_STEPS) {
-      const tpl = templates.get(step.nombre.toLowerCase().trim());
-      if (!tpl) {
-        missing.push(step.nombre);
-        continue; // todavía no se guardó esa publicidad -- se salta sin tumbar el resto
-      }
-      for (const jid of step.destinos) {
-        await enviarAlBot(botUrl, botKey, jid, tpl.texto || '', tpl.base64 || '', tpl.mediaType || 'image/jpeg');
-      }
-      sentSteps++;
+      if (sentSteps.has(norm(step.nombre))) { yaEstaban.push(step.nombre); continue; }
+      const enviado = await enviarPaso(step, templates, botUrl, botKey);
+      if (!enviado) { missing.push(step.nombre); continue; }
+      sentSteps.add(norm(step.nombre));
+      enviadosAhora.push(step.nombre);
     }
 
-    await setLastSentDate(today);
-    res.status(200).json({ ok: true, skipped: false, sentSteps, totalSteps: PROTOCOLO_STEPS.length, missing });
+    await setDedupeState(today, sentSteps);
+    res.status(200).json({ ok: true, skipped: false, enviadosAhora, yaEstaban, missing, totalSteps: PROTOCOLO_STEPS.length });
   } catch (e) {
     console.error('Error en el protocolo de la mañana:', e);
-    res.status(500).json({ error: 'No se pudo mandar el protocolo completo.', detalle: e.message });
+    res.status(500).json({ error: 'No se pudo mandar el protocolo.', detalle: e.message });
   }
 };

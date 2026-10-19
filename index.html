@@ -2714,18 +2714,48 @@ function findWinTemplateByName(nombre){
 }
 
 // Dispara el protocolo fijo de la mañana (ver api/win-protocolo-manana.js) ya mismo, en vez de
-// esperar a las 8am -- el mismo endpoint que corre solo con Vercel Cron todos los días. Si ya se
-// mandó hoy (a mano o automático), el propio endpoint avisa que no lo repite.
+// esperar a las 8am -- el mismo endpoint que corre solo con Vercel Cron todos los días. El control
+// es POR PIEZA: si ya mandaste algo a mano antes (completo o suelto con mandar_paso_protocolo_manana),
+// eso no se repite -- solo se manda lo que todavía falte. El cron de las 8am funciona igual: si ya
+// mandaste algo a mano, a las 8 solo manda el resto.
 async function handleMandarProtocoloManana(){
   try{
     const res = await fetch('/api/win-protocolo-manana', { method: 'POST' });
     const data = await res.json().catch(()=>({}));
     if(!res.ok || !data.ok) throw new Error(data.error || 'No se pudo mandar.');
-    if(data.skipped) winSpeak('El protocolo de hoy ya se había mandado -- no lo repito.');
-    else winSpeak('Listo, jefe. Mandé el protocolo completo de la mañana.');
+    if(data.skipped) winSpeak('El protocolo de hoy ya se había mandado completo -- no lo repito.');
+    else if(!data.enviadosAhora || !data.enviadosAhora.length) winSpeak('Ya estaba todo mandado, no quedaba nada pendiente.');
+    else winSpeak(`Listo, jefe. Mandé lo que faltaba del protocolo (${data.enviadosAhora.length} de ${data.totalSteps}).`);
   }catch(e){
     console.error(e);
     winSpeak('No se pudo mandar el protocolo. Revisa la conexión e intenta de nuevo.');
+  }
+}
+
+// Manda YA MISMO una sola pieza suelta del protocolo de la mañana (ej: solo "buenos días"), y la
+// marca como mandada para hoy -- así el cron de las 8am (o un "manda todo" posterior) ya no la repite.
+const WIN_PASO_PROTOCOLO_NOMBRES = {
+  buenos_dias: 'protocolo buenos días',
+  recargas_retiros: 'protocolo recargas y retiros',
+  beneficios_recargar: 'protocolo beneficios recargar',
+  apuesta_gratis: 'protocolo apuesta gratis'
+};
+async function handleMandarPasoProtocoloManana(input){
+  const nombre = WIN_PASO_PROTOCOLO_NOMBRES[(input && input.paso) || ''];
+  if(!nombre){ winSpeak('No reconozco esa pieza del protocolo.'); return; }
+  try{
+    const res = await fetch('/api/win-protocolo-manana', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: nombre })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data.ok) throw new Error(data.error || 'No se pudo mandar.');
+    if(data.skipped) winSpeak(`Esa ya se había mandado hoy -- no la repito.`);
+    else winSpeak(`Listo, jefe. Mandé "${nombre.replace('protocolo ','')}". El resto sigue para las 8.`);
+  }catch(e){
+    console.error(e);
+    winSpeak('No se pudo mandar esa pieza. Revisa la conexión e intenta de nuevo.');
   }
 }
 
@@ -3209,7 +3239,8 @@ const WIN_TOOL_ACK = {
   abrir_formulario_contenido: 'Va, sube la imagen.',
   crear_recordatorio: 'Listo, te lo anoto.',
   mandar_regalito: 'Dale, vamos con el regalito del día.',
-  mandar_protocolo_manana: 'Dale, mando el protocolo completo.',
+  mandar_protocolo_manana: 'Dale, mando lo que falte del protocolo.',
+  mandar_paso_protocolo_manana: 'Dale, mando esa pieza ya mismo.',
   mandar_publicidad_guardada: 'Va, la mando a la bandeja.'
 };
 
@@ -3294,6 +3325,7 @@ function dispatchWinTool(tool){
   else if(tool.name === 'crear_recordatorio') openWinReminderForm(input.texto || '', input.fecha || '', input.hora || '');
   else if(tool.name === 'mandar_regalito') openWinGiftFlow();
   else if(tool.name === 'mandar_protocolo_manana') handleMandarProtocoloManana();
+  else if(tool.name === 'mandar_paso_protocolo_manana') handleMandarPasoProtocoloManana(tool.input);
   else if(tool.name === 'mandar_publicidad_guardada') handleMandarPublicidadGuardada(input);
   else if(tool.name === 'registrar_cuadre') handleRegistrarCuadre(input);
   else if(tool.name === 'crear_seccion_stake') handleCrearSeccionStake(input);

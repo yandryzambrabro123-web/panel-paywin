@@ -33,7 +33,7 @@ Cuando te pida algo ESPECÍFICO Y CLARO de estas acciones, usa la herramienta co
 - subir algo a la comunidad que no es una apuesta (testimonio, anuncio, flyer, "buenos días", publicidad) -> abrir_formulario_contenido. La imagen ahí es OPCIONAL -- si el dueño dice que quiere mandar solo texto, sin imagen, respeta eso y no insistas en que suba una foto.
 - que le recuerdes algo más adelante (una cita, una entrega, una tarea) -> crear_recordatorio
 - mandar el "regalito del día" a los clientes que tiene marcados como pendientes -> mandar_regalito
-- mandar ya mismo el protocolo fijo de la mañana (lo mismo que se manda solo todos los días a las 8am a las comunidades gratis, más el "buenos días" al VIP) -> mandar_protocolo_manana. Si ya se mandó hoy (a mano o automático), el panel mismo avisa que no lo repite -- tú no tienes que verificar eso.
+- mandar ya mismo TODO lo que falte del protocolo fijo de la mañana (lo mismo que se manda solo todos los días a las 8am a las comunidades gratis, más el "buenos días" al VIP) -> mandar_protocolo_manana. Si pide nada más UNA pieza suelta de ese protocolo (ej. "manda ya la de buenos días", "manda ya la de recargas y retiros") -> mandar_paso_protocolo_manana con el paso correspondiente. El panel lleva el control de qué ya se mandó hoy, pieza por pieza -- tú no tienes que verificar eso, simplemente manda lo que te pidan y el panel avisa si algo ya se había mandado.
 - registrar un movimiento de dinero en el Cuadre Financiero (un ingreso o un egreso en una cuenta/caja) -> registrar_cuadre. Ej: "registra un ingreso de 20 dólares en Banco Pichincha" -> cuenta:"Banco Pichincha", tipo:"ingreso", monto:20.
 - crear una nueva sección/fecha para vender stakes -> crear_seccion_stake. Ej: "crea una nueva sección de stakes para el 20 de octubre" -> fecha:"2026-10-20".
 - registrar que alguien compró un stake -> registrar_venta_stake. Ej: "registra una compra de Juan Pérez" -> nombre:"Juan Pérez". Esta NUNCA la decides tú sola si el nombre no quedó claro -- si lo entendiste bien, actívala siempre (el panel ya se encarga de avisar si ese comprador no está registrado, tú no tienes que verificarlo).
@@ -91,8 +91,23 @@ const TOOLS = [
   },
   {
     name: 'mandar_protocolo_manana',
-    description: 'Manda ya mismo todo el protocolo fijo de la mañana (buenos días + publicidades de siempre) a las comunidades gratis, y el "buenos días" también al VIP -- lo mismo que se manda solo todos los días a las 8am. Si ya se mandó hoy, no hace nada (el panel avisa que no lo repite).',
+    description: 'Manda ya mismo TODO lo que falte del protocolo fijo de la mañana (buenos días + publicidades de siempre) a las comunidades gratis, y el "buenos días" también al VIP -- lo mismo que se manda solo todos los días a las 8am. Si ya se mandó todo hoy, no hace nada. Si ya se mandó una parte a mano (con mandar_paso_protocolo_manana), solo manda lo que faltaba -- no repite lo ya enviado.',
     input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'mandar_paso_protocolo_manana',
+    description: 'Manda ya mismo UNA SOLA pieza suelta del protocolo de la mañana (por ejemplo, solo "buenos días", sin el resto). Úsala cuando pida mandar nada más una parte específica del protocolo antes de las 8am. Esa pieza queda marcada como mandada hoy, así que ni el envío automático de las 8am ni un "manda todo el protocolo" posterior la repiten -- solo mandan lo que siga pendiente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        paso: {
+          type: 'string',
+          enum: ['buenos_dias', 'recargas_retiros', 'beneficios_recargar', 'apuesta_gratis'],
+          description: 'Qué pieza mandar: buenos_dias, recargas_retiros, beneficios_recargar o apuesta_gratis.'
+        }
+      },
+      required: ['paso']
+    }
   },
   {
     name: 'mandar_publicidad_guardada',
