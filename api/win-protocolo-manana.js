@@ -1,8 +1,8 @@
 // Función serverless de Vercel: manda sola, sin que nadie tenga que abrir el panel, la
 // secuencia fija de la mañana a las comunidades gratis (y el "buenos días" también al VIP).
 //
-// La dispara Vercel Cron todos los días a las 8am de Ecuador (ver vercel.json en la raíz --
-// "0 13 * * *" porque Ecuador siempre es UTC-5, sin horario de verano). También se puede
+// La dispara Vercel Cron de lunes a viernes a las 8am de Ecuador (ver vercel.json en la raíz --
+// "0 13 * * 1-5" porque Ecuador siempre es UTC-5, sin horario de verano). También se puede
 // disparar a mano antes de esa hora desde Win, con el tool "mandar_protocolo_manana" (ver
 // api/win-chat.js e index.html) -- en ese caso, el envío automático de las 8am ese mismo día
 // ya no se repite (se guarda la fecha del último envío en la hoja "WinProtocoloManana").

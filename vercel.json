@@ -1,5 +1,5 @@
 {
   "crons": [
-    { "path": "/api/win-protocolo-manana", "schedule": "0 13 * * *" }
+    { "path": "/api/win-protocolo-manana", "schedule": "0 13 * * 1-5" }
   ]
 }
