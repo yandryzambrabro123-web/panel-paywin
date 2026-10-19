@@ -19,6 +19,14 @@
 //               en Vercel (WA_BOT_API_KEY) cuando conectemos el panel.
 //   PORT     -- puerto del servidor (Railway la pone sola, no hace falta tocarla).
 
+// La librería de WhatsApp necesita la función "crypto" disponible globalmente, pero en
+// Node 18 (lo que usa Railway por defecto) no viene así de fábrica -- por eso salía el
+// error "crypto is not defined" y el bot se desconectaba justo después de conectar, sin
+// llegar nunca a mostrar el QR. Esto la deja disponible antes de cargar todo lo demás.
+if (typeof global.crypto === 'undefined') {
+  global.crypto = require('node:crypto').webcrypto;
+}
+
 const express = require('express');
 const {
   default: makeWASocket,
