@@ -209,6 +209,22 @@ app.post('/enviar', requireApiKey, async (req, res) => {
   }
 });
 
+// Ruta de uso único para identificar, a mano, cuál id de /grupos corresponde a cuál grupo
+// real cuando salen nombres duplicados -- manda un texto cortito directo desde el navegador
+// (sin necesitar el panel ni curl) para ver en qué grupo aparece.
+// Ejemplo: /probar?key=TU_API_KEY&grupoId=1203...@g.us&texto=PRUEBA A
+app.get('/probar', requireApiKey, async (req, res) => {
+  if (!connected) return res.status(503).send('El bot no está conectado a WhatsApp todavía.');
+  const { grupoId, texto } = req.query;
+  if (!grupoId || !texto) return res.status(400).send('Faltan los parámetros grupoId y texto en la URL.');
+  try {
+    await sock.sendMessage(grupoId, { text: String(texto) });
+    res.send(`Mandado. Revisa en tu WhatsApp (como miembro normal) en qué grupo apareció "${texto}".`);
+  } catch (e) {
+    res.status(500).send('No se pudo mandar: ' + e.message);
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor del bot de WhatsApp escuchando en el puerto ${PORT}.`);
 });
