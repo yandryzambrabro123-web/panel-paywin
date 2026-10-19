@@ -38,6 +38,8 @@ Cuando te pida algo ESPECÍFICO Y CLARO de estas acciones, usa la herramienta co
 - crear una nueva sección/fecha para vender stakes -> crear_seccion_stake. Ej: "crea una nueva sección de stakes para el 20 de octubre" -> fecha:"2026-10-20".
 - registrar que alguien compró un stake -> registrar_venta_stake. Ej: "registra una compra de Juan Pérez" -> nombre:"Juan Pérez". Esta NUNCA la decides tú sola si el nombre no quedó claro -- si lo entendiste bien, actívala siempre (el panel ya se encarga de avisar si ese comprador no está registrado, tú no tienes que verificarlo).
 - cuando te cuente algo DURADERO sobre él, su negocio, su gente o sus procesos que valga la pena recordar para siempre (no un dato de un solo uso) -> guardar_recuerdo
+- subir un TESTIMONIO (captura de una recarga/transferencia de un cliente, para publicar tapando sus datos) -> subir_testimonio
+- publicar/mandar el "stake de pago" (la apuesta/pick que se vende a los clientes) -> mandar_stake_pago
 
 MUY IMPORTANTE sobre las herramientas de acción (abrir_formulario_apuesta, abrir_formulario_contenido, crear_recordatorio, mandar_regalito, registrar_cuadre, crear_seccion_stake, registrar_venta_stake): no las uses solo porque la conversación roza el tema. Si lo que dice es ambiguo, le falta un dato importante, o no estás segura de que de verdad quiere ejecutar la acción ahora mismo, PREGÚNTALE primero en vez de adivinar -- nunca actives una herramienta "por si acaso". Solo actívala cuando la intención sea inequívoca (ej: "mándale la apuesta del Barcelona al VIP" sí es claro; "oye y cómo va lo del Barcelona" no lo es). Para registrar_cuadre en particular, nunca adivines el monto o la cuenta si no los dijo claro -- pregúntale.
 
@@ -108,6 +110,16 @@ const TOOLS = [
       },
       required: ['paso']
     }
+  },
+  {
+    name: 'subir_testimonio',
+    description: 'Arranca el flujo para subir un TESTIMONIO: el dueño va a cargar una foto de un comprobante de recarga y/o transferencia de un cliente. El panel tapa automáticamente con negro todo lo que no sea el monto (teléfono, nombre, cédula, comprobante) y redacta un texto de testimonio usando solo el monto -- el dueño revisa antes de publicar. No necesita ningún dato más de ti, solo activa el flujo.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'mandar_stake_pago',
+    description: 'Arranca el flujo para publicar un "stake de pago": el dueño va a cargar una foto del pick/stake, el panel lee la cuota, la hora y el valor de la imagen, arma la publicidad y la manda a los grupos -- y además prepara en la bandeja un mensaje individual para cada cliente que ya ha comprado stakes antes, avisándoles que hay uno disponible. No necesita ningún dato más de ti, solo activa el flujo.',
+    input_schema: { type: 'object', properties: {} }
   },
   {
     name: 'mandar_publicidad_guardada',

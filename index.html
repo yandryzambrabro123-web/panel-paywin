@@ -3241,7 +3241,9 @@ const WIN_TOOL_ACK = {
   mandar_regalito: 'Dale, vamos con el regalito del día.',
   mandar_protocolo_manana: 'Dale, mando lo que falte del protocolo.',
   mandar_paso_protocolo_manana: 'Dale, mando esa pieza ya mismo.',
-  mandar_publicidad_guardada: 'Va, la mando a la bandeja.'
+  mandar_publicidad_guardada: 'Va, la mando a la bandeja.',
+  subir_testimonio: 'Claro, jefe. Sube la captura.',
+  mandar_stake_pago: 'Dale, sube la foto del stake.'
 };
 
 // Estas tres se usan en ráfaga (varios registros por minuto) -- no esperan a que Win hable
@@ -3330,6 +3332,8 @@ function dispatchWinTool(tool){
   else if(tool.name === 'registrar_cuadre') handleRegistrarCuadre(input);
   else if(tool.name === 'crear_seccion_stake') handleCrearSeccionStake(input);
   else if(tool.name === 'registrar_venta_stake') handleRegistrarVentaStake(input);
+  else if(tool.name === 'subir_testimonio') openTestimonioUploadModal();
+  else if(tool.name === 'mandar_stake_pago') openStakePagoUploadModal();
 }
 
 // Grupos reales de WhatsApp conectados -- cada uno con su link de invitación (para el
@@ -3422,6 +3426,208 @@ function wireWinDropzone(){
     const item = [...e.clipboardData.items].find(i=>i.type.startsWith('image/'));
     if(item) setFile(item.getAsFile());
   }, { once: true });
+}
+
+// ---------- Testimonio: tapa automáticamente todo lo que no sea el monto ----------
+// En vez de "detectar y tapar" los datos sensibles (riesgoso si al modelo se le pasa algo),
+// el servidor (api/leer-testimonio.js) nos dice dónde está el MONTO (lo único que debe
+// quedar visible) y acá se pinta la imagen entera de negro, dejando ver solo esos recuadros
+// -- cualquier dato que el modelo no haya reconocido queda tapado por default, nunca expuesto.
+function openTestimonioUploadModal(){
+  openModal(`
+    <h3>Subir testimonio</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube la captura de la recarga y/o transferencia. Win tapa con negro todo menos el monto antes de mostrarte el resultado -- revisa bien la imagen antes de publicar.</div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
+      <div style="font-size:26px; margin-bottom:6px;">📎</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la captura</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="field"><label>¿A qué grupo va?</label>${winGroupPickerHTML('f-testiGroups', ['Gratis 1','Gratis 2','Gratis 3'])}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="submitTestimonioBtn">Procesar</button>
+    </div>
+  `);
+  wireWinDropzone();
+  document.getElementById('submitTestimonioBtn').onclick = submitTestimonio;
+}
+
+// Redibuja la imagen ORIGINAL (no la comprimida que se manda a leer, para mejor nitidez) en
+// un canvas totalmente negro, y solo "recorta" de vuelta los recuadros de los montos
+// detectados (con un margen de seguridad). Devuelve el canvas resultante.
+function buildRedactedImage(file, montos){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const maxW = 1600;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const src = document.createElement('canvas');
+        src.width = w; src.height = h;
+        src.getContext('2d').drawImage(img, 0, 0, w, h);
+
+        const out = document.createElement('canvas');
+        out.width = w; out.height = h;
+        const octx = out.getContext('2d');
+        octx.fillStyle = '#000';
+        octx.fillRect(0, 0, w, h);
+
+        const PAD = 0.025; // margen extra alrededor de cada monto, por si el recuadro vino muy justo
+        (montos || []).forEach(m=>{
+          const padX = w * PAD, padY = h * PAD;
+          let bx = Math.max(0, (Number(m.x) || 0) * w - padX);
+          let by = Math.max(0, (Number(m.y) || 0) * h - padY);
+          let bw = Math.min(w - bx, (Number(m.w) || 0) * w + padX * 2);
+          let bh = Math.min(h - by, (Number(m.h) || 0) * h + padY * 2);
+          if(bw <= 0 || bh <= 0) return;
+          octx.drawImage(src, bx, by, bw, bh, bx, by, bw, bh);
+        });
+        resolve(out);
+      };
+      img.onerror = ()=>reject(new Error('No se pudo leer la imagen.'));
+      img.src = reader.result;
+    };
+    reader.onerror = ()=>reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Mismas reglas de compresión/miniatura que fileToCompressedImage/fileToThumbnail, pero
+// partiendo de un canvas ya en memoria (la imagen redactada) en vez de un File.
+function canvasToCompressed(canvas){
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+  return { base64: dataUrl.split(',')[1], mediaType: 'image/jpeg', previewUrl: dataUrl };
+}
+function canvasToThumbnail(canvas){
+  const MAX_CHARS = 38000;
+  const steps = [
+    { w: 480, q: 0.55 }, { w: 480, q: 0.4 }, { w: 360, q: 0.5 },
+    { w: 360, q: 0.35 }, { w: 260, q: 0.4 }, { w: 200, q: 0.35 }, { w: 160, q: 0.3 }
+  ];
+  let result = '';
+  for(const step of steps){
+    const scale = Math.min(1, step.w / canvas.width);
+    const w = Math.max(1, Math.round(canvas.width * scale));
+    const h = Math.max(1, Math.round(canvas.height * scale));
+    const c2 = document.createElement('canvas');
+    c2.width = w; c2.height = h;
+    c2.getContext('2d').drawImage(canvas, 0, 0, w, h);
+    const dataUrl = c2.toDataURL('image/jpeg', step.q);
+    result = dataUrl;
+    if(dataUrl.length <= MAX_CHARS) break;
+  }
+  return result.length <= MAX_CHARS ? result : '';
+}
+
+async function submitTestimonio(){
+  const grupos = getCheckedWinGroups('f-testiGroups');
+  if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
+  if(!winPendingFile){ alert('Sube la captura primero.'); return; }
+  const file = winPendingFile;
+  openModal(`<h3>Procesando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Leyendo la imagen y tapando los datos. Esto toma unos segundos.</div>`);
+  try{
+    const { base64, mediaType } = await fileToCompressedImage(file);
+    const res = await fetch('/api/leer-testimonio', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, mediaType })
+    });
+    const result = await res.json();
+    if(!res.ok) throw new Error(result.error || 'No se pudo procesar.');
+    if(!result.montos || !result.montos.length){
+      alert('No pude identificar el monto con seguridad en esta imagen, así que no voy a arriesgarme a publicarla. Intenta con una captura más clara (que se vea bien el valor) o recórtala antes de subirla.');
+      closeModal();
+      renderWin();
+      return;
+    }
+    const outCanvas = await buildRedactedImage(file, result.montos);
+    const compressed = canvasToCompressed(outCanvas);
+    const thumb = canvasToThumbnail(outCanvas);
+    openWinCaptionConfirm('contenido', grupos, result.texto || 'Testimonio de nuestro cliente. 🙌', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType });
+  }catch(e){
+    console.error(e);
+    alert('No se pudo procesar el testimonio. Intenta de nuevo.');
+    closeModal();
+    renderWin();
+  }
+}
+
+// ---------- Stake de pago: lee cuota/hora/valor de la imagen y avisa a compradores anteriores ----------
+const STAKE_PAGO_TEXT_BASE = `🔥 STAKE DE PAGO DISPONIBLE 🔥
+
+🎯 Cuota: {cuota}
+🕒 Hora: {hora}
+💵 Valor: {valor}
+
+📲 Si lo quieres, escríbenos al 096 385 2803`;
+
+function buildStakePagoDM(name, cuota, hora, valor){
+  const primerNombre = (name || '').trim().split(/\s+/)[0] || '';
+  const saludo = primerNombre ? `Hola ${primerNombre}` : 'Hola';
+  return `${saludo}, soy Win, la asistente de PayWin. 👋\n\nTenemos un stake de pago disponible:\n🎯 Cuota: ${cuota}\n🕒 Hora: ${hora}\n💵 Valor: ${valor}\n\nSi lo quieres adquirir, escríbenos al 096 385 2803.`;
+}
+
+function openStakePagoUploadModal(){
+  openModal(`
+    <h3>Publicar stake de pago</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube la captura del pick. Win lee la cuota, la hora y el valor, arma la publicidad para los grupos y deja en tu bandeja un mensaje individual para cada comprador anterior.</div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
+      <div style="font-size:26px; margin-bottom:6px;">📎</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la captura</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="field"><label>¿A qué grupo va la publicidad?</label>${winGroupPickerHTML('f-stakeGroups', ['Gratis 1','Gratis 2','Gratis 3'])}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="submitStakePagoBtn">Procesar</button>
+    </div>
+  `);
+  wireWinDropzone();
+  document.getElementById('submitStakePagoBtn').onclick = submitStakePago;
+}
+
+async function submitStakePago(){
+  const grupos = getCheckedWinGroups('f-stakeGroups');
+  if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
+  if(!winPendingFile){ alert('Sube la captura primero.'); return; }
+  const file = winPendingFile;
+  openModal(`<h3>Leyendo...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
+  try{
+    const { base64, mediaType, previewUrl } = await fileToCompressedImage(file);
+    const thumb = await fileToThumbnail(file).catch(()=> '');
+    const res = await fetch('/api/leer-stake', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, mediaType })
+    });
+    const result = await res.json();
+    if(!res.ok) throw new Error(result.error || 'No se pudo leer el stake.');
+    const cuota = result.cuota || '-';
+    const hora = result.hora || '-';
+    const valor = result.valor || '-';
+    const caption = STAKE_PAGO_TEXT_BASE.replace('{cuota}', cuota).replace('{hora}', hora).replace('{valor}', valor);
+
+    // Compradores conocidos (cualquiera que ya haya comprado un stake antes, con teléfono
+    // guardado) -- se deja un mensaje individual listo en la bandeja para que él lo revise y
+    // mande a mano, en vez de mandarlo solo: así no se arriesga el número dedicado a un patrón
+    // de mensajes masivos a contactos personales (ver whatsapp-bot/README.md).
+    const buyers = getKnownBuyers().filter(b=>b.phone);
+    for(const b of buyers){
+      await pushToOutbox('stake_pago', `${b.name} (${b.phone})`, buildStakePagoDM(b.name, cuota, hora, valor), thumb || previewUrl, true);
+    }
+    if(buyers.length) await persist('winOutbox');
+
+    openWinCaptionConfirm('stake_pago', grupos, caption, thumb || previewUrl, { base64, mediaType });
+    if(buyers.length) setTimeout(()=>winSpeak(`Ya dejé ${buyers.length} mensajes listos en tu bandeja para los que han comprado antes.`), 400);
+  }catch(e){
+    console.error(e);
+    alert('No se pudo procesar el stake. Intenta de nuevo.');
+    closeModal();
+    renderWin();
+  }
 }
 
 async function submitWinBet(kind){
