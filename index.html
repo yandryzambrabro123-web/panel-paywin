@@ -2391,6 +2391,14 @@ function openGiftForm(){
 let winRecognition = null;
 let winListeningActive = false;
 let winMicStream = null;
+// El reconocimiento de voz del navegador (SpeechRecognition) NO existe en NINGÚN navegador de
+// iPhone (Apple no lo implementa en WebKit, el motor que usan todos ahí -- Safari, Chrome,
+// cualquiera). En esos casos Win funciona con "mantén tocado para hablar": graba el audio y lo
+// manda a transcribir (api/win-transcribir.js) en vez de "escuchar" todo el rato.
+const winHasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+let winPTTRecorder = null;
+let winPTTChunks = [];
+let winPTTRecording = false;
 // En el celular (sobre todo iPhone), el navegador no deja sonar NINGÚN audio -- ni la voz de
 // ElevenLabs ni la del navegador -- hasta que haya habido un toque real en la pantalla. Si Win
 // se activa sola (ej. al abrir directo desde el acceso directo del celular, sin ese toque), se
@@ -2403,8 +2411,13 @@ let winAudioUnlocked = false;
 let winTabJustOpened = false;
 function unlockWinAudio(){
   try{
-    const silent = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAAAAAA==');
-    silent.play().catch(()=>{});
+    // OJO: reusa el MISMO elemento <audio> que va a usar después para la voz real de Win
+    // (winAudioEl) -- en iPhone, desbloquear un <audio> distinto no desbloquea los que se
+    // crean después. Por eso antes "funcionaba una vez y luego se quedaba muda": cada
+    // respuesta creaba un Audio() nuevo, que volvía a estar bloqueado.
+    if(!winAudioEl){ winAudioEl = new Audio(); winAudioEl.setAttribute('playsinline', 'true'); }
+    winAudioEl.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAAAAAA==';
+    winAudioEl.play().catch(()=>{});
   }catch(e){}
   try{ getWinSfxCtx(); }catch(e){}
   try{
@@ -2583,18 +2596,16 @@ function renderWin(){
   document.getElementById('winTemplatesBtn').onclick = openWinTemplatesModal;
 
   const orb = document.getElementById('winOrb');
-  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
-    document.getElementById('winStatus').textContent = 'Tu navegador no soporta dictado por voz — escribe el comando abajo.';
-    orb.style.opacity = '.35'; orb.style.cursor = 'default';
-    document.getElementById('winTypeBox').style.display = 'block';
-  } else if(winListeningActive){
-    orb.onclick = ()=>{ stopWinListening(); };
-    applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
+  orb.style.opacity = ''; orb.style.cursor = '';
+  orb.onclick = winOrbTap;
+
+  if(winListeningActive){
+    if(winHasSpeechRecognition) applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
+    else applyWinOrbState('listening', winPTTRecording ? 'Grabando... toca para mandar' : 'Toca y mantén para hablar');
   } else if(winTabJustOpened && winAudioUnlocked){
     // Recién entraste a la pestaña (y el audio ya estaba desbloqueado de una visita anterior en
     // esta misma carga de página) -- se activa sola, como siempre.
     winTabJustOpened = false;
-    orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
     startWinListening();
   } else if(winTabJustOpened && !winAudioUnlocked){
     // Primera vez en esta carga de la página: hace falta un toque real para que el celular deje
@@ -2602,18 +2613,23 @@ function renderWin(){
     // de todas formas el jefe va a dar para activar a Win.
     winTabJustOpened = false;
     applyWinOrbState('idle', 'Toca para activar a Win');
-    orb.onclick = ()=>{
-      unlockWinAudio();
-      winAudioUnlocked = true;
-      orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
-      startWinListening();
-    };
   } else {
     // Solo un refresco de pantalla mientras ya estabas en la pestaña (no una entrada nueva) y el
     // jefe la había apagado a propósito -- se queda apagada, no se reactiva sola.
-    orb.onclick = ()=>{ winListeningActive ? stopWinListening() : startWinListening(); };
     applyWinOrbState('idle', 'Toca el círculo para activar a Win');
   }
+}
+
+// Un solo punto de entrada para el toque del círculo, sin importar el navegador: desbloquea el
+// audio la primera vez, prende el micrófono si estaba apagado, y de ahí en adelante se comporta
+// distinto según el navegador soporte o no el dictado continuo (ver winHasSpeechRecognition):
+// con soporte, el toque apaga todo; sin soporte (iPhone), el toque arranca/corta la grabación de
+// "mantén tocado para hablar", y para apagar del todo basta con salir de la pestaña de Win.
+function winOrbTap(){
+  if(!winAudioUnlocked){ unlockWinAudio(); winAudioUnlocked = true; }
+  if(!winListeningActive){ startWinListening(); return; }
+  if(winHasSpeechRecognition){ stopWinListening(); return; }
+  if(winPTTRecording) winPTTStopAndSend(); else winPTTStart();
 }
 
 function openWinOutboxModal(){
@@ -3064,7 +3080,7 @@ async function startWinListening(){
   source.connect(winAnalyser);
   winVolumeLoop();
   winConversation = []; // conversación nueva cada vez que se activa el micrófono
-  applyWinOrbState('listening', 'Escuchando... dile "hola Win" para empezar');
+  applyWinOrbState('listening', winHasSpeechRecognition ? 'Escuchando... dile "hola Win" para empezar' : 'Listo -- toca y mantén para hablar');
   // La cara despierta justo cuando la secuencia de arranque se disuelve, no de entrada.
   const orb = document.getElementById('winOrb');
   const auraWrap = document.getElementById('winAuraWrap');
@@ -3077,11 +3093,82 @@ async function startWinListening(){
       if(auraWrap) auraWrap.classList.remove('win-booting');
     }, 950);
   }, 2500);
-  startWinRecognitionEngine();
+  // En navegadores sin reconocimiento de voz nativo (todo iPhone), el micrófono queda listo
+  // (para el medidor de nivel y para grabar) pero no se arranca ningún dictado continuo solo --
+  // se espera el toque de "mantén para hablar" (ver winPTTStart/winPTTStopAndSend y winOrbTap).
+  if(winHasSpeechRecognition) startWinRecognitionEngine();
+}
+
+// ---- "Mantén tocado para hablar" (iPhone y cualquier navegador sin SpeechRecognition) ----
+// En vez de escuchar continuo, se grava mientras el jefe mantiene tocado el círculo y, al
+// soltarlo, se manda el audio a transcribir con ElevenLabs (api/win-transcribir.js) -- de ahí
+// sale el texto que sigue el mismo camino de siempre (processWinVoiceCommand).
+function winPTTPickMimeType(){
+  const candidates = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'];
+  for(const type of candidates){
+    if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return '';
+}
+
+function winPTTStart(){
+  if(!winMicStream || winPTTRecording) return;
+  try{
+    const mimeType = winPTTPickMimeType();
+    winPTTRecorder = mimeType ? new MediaRecorder(winMicStream, { mimeType }) : new MediaRecorder(winMicStream);
+    winPTTChunks = [];
+    winPTTRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) winPTTChunks.push(e.data); };
+    winPTTRecorder.onstop = ()=>{ winPTTFinish(winPTTRecorder.mimeType || mimeType || 'audio/mp4'); };
+    winPTTRecorder.start();
+    winPTTRecording = true;
+    applyWinOrbState('listening', 'Grabando... toca para mandar');
+    playWinSfx('wake');
+  }catch(e){
+    console.error('No se pudo empezar a grabar:', e);
+    applyWinOrbState('idle', 'No se pudo grabar. Toca para intentar de nuevo.');
+  }
+}
+
+function winPTTStopAndSend(){
+  if(!winPTTRecorder || !winPTTRecording) return;
+  applyWinOrbState('thinking', 'Mandando audio...');
+  try{ winPTTRecorder.stop(); }catch(e){ winPTTRecording = false; }
+  winPTTRecording = false;
+}
+
+async function winPTTFinish(mimeType){
+  if(!winPTTChunks.length){
+    applyWinOrbState('listening', 'No se grabó nada -- toca y mantén para hablar');
+    return;
+  }
+  const blob = new Blob(winPTTChunks, { type: mimeType });
+  winPTTChunks = [];
+  try{
+    const audioBase64 = await new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const res = await fetch('/api/win-transcribir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioBase64, mimeType })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data.text){ throw new Error((data && data.error) || 'No se pudo transcribir.'); }
+    processWinVoiceCommand(data.text.trim());
+  }catch(e){
+    console.error('Error transcribiendo con ElevenLabs:', e);
+    applyWinOrbState('listening', 'No te escuché bien -- toca y mantén para hablar de nuevo');
+  }
 }
 
 // ---- Voz de Win (texto a voz del navegador) ----
-let winVoiceAudio = null;
+// UN SOLO elemento <audio>, reusado para todas las respuestas -- crear uno nuevo (new Audio())
+// en cada respuesta es justo lo que hacía que la voz se "bloqueara" después de la primera vez
+// en iPhone: Safari solo deja sonar sin restricciones al elemento que ya tocaste/desbloqueaste,
+// no a uno creado después.
+let winAudioEl = null;
 let winSfxCtx = null;
 
 // Efectos de sonido de Win: generados con Web Audio (no son archivos, así que no hay nada que
@@ -3136,8 +3223,14 @@ function playWinSfx(type){
 async function winSpeak(text, onDone){
   const goListen = ()=>{
     if(!winListeningActive) return;
-    applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
-    startWinRecognitionEngine();
+    if(winHasSpeechRecognition){
+      applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
+      startWinRecognitionEngine();
+    } else {
+      // Modo "mantén tocado para hablar" (iPhone) -- no hay nada que arrancar solo, queda
+      // lista esperando el próximo toque.
+      applyWinOrbState('listening', 'Toca y mantén para hablar');
+    }
     if(onDone) onDone();
   };
   if(winRecognition){ try{ winRecognition.onend = null; winRecognition.stop(); }catch(e){} }
@@ -3150,13 +3243,17 @@ async function winSpeak(text, onDone){
     if(!res.ok) throw new Error('voz no disponible');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    if(winVoiceAudio){ try{ winVoiceAudio.pause(); }catch(e){} }
-    winVoiceAudio = new Audio(url);
+    if(!winAudioEl){ winAudioEl = new Audio(); winAudioEl.setAttribute('playsinline', 'true'); }
+    try{ winAudioEl.pause(); }catch(e){}
+    const prevUrl = winAudioEl.dataset.objectUrl;
+    winAudioEl.src = url;
+    winAudioEl.dataset.objectUrl = url;
     applyWinOrbState('speaking', text);
     playWinSfx('speakStart');
-    winVoiceAudio.onended = ()=>{ URL.revokeObjectURL(url); goListen(); };
-    winVoiceAudio.onerror = ()=>{ URL.revokeObjectURL(url); winSpeakBrowser(text, goListen); };
-    await winVoiceAudio.play();
+    winAudioEl.onended = ()=>{ URL.revokeObjectURL(url); goListen(); };
+    winAudioEl.onerror = ()=>{ URL.revokeObjectURL(url); winSpeakBrowser(text, goListen); };
+    if(prevUrl && prevUrl !== url){ try{ URL.revokeObjectURL(prevUrl); }catch(e){} }
+    await winAudioEl.play();
   }catch(e){
     winSpeakBrowser(text, goListen);
   }
@@ -3249,7 +3346,11 @@ function stopWinListening(){
   if(winMicStream){ winMicStream.getTracks().forEach(t=>t.stop()); winMicStream = null; }
   if(winAudioCtx){ try{ winAudioCtx.close(); }catch(e){} winAudioCtx = null; }
   if('speechSynthesis' in window){ try{ window.speechSynthesis.cancel(); }catch(e){} }
-  if(winVoiceAudio){ try{ winVoiceAudio.pause(); }catch(e){} winVoiceAudio = null; }
+  // OJO: solo se pausa, nunca se descarta (winAudioEl = null) -- es el mismo elemento que ya
+  // quedó desbloqueado para reproducir sin restricciones en iPhone, y crear uno nuevo más
+  // adelante volvería a estar bloqueado.
+  if(winAudioEl){ try{ winAudioEl.pause(); }catch(e){} }
+  if(winPTTRecorder){ try{ if(winPTTRecording) winPTTRecorder.stop(); }catch(e){} winPTTRecorder = null; winPTTRecording = false; }
   winFinalBuffer = '';
   winConversation = [];
   clearTimeout(winFastBatchTimer);
