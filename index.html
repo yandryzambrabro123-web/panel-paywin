@@ -3723,10 +3723,11 @@ async function handleMandarPublicidadGuardada(input){
     return;
   }
   const destinoDicho = (input.destino || '').trim();
+  const tplSendImage = tpl.base64 ? { base64: tpl.base64, mediaType: tpl.mediaType || 'image/jpeg' } : null;
   // Puede haber mencionado más de un grupo a la vez (ej. "los tres gratis").
   const matched = WIN_GROUPS.filter(g => destinoDicho && destinoDicho.toLowerCase().includes(g.nombre.toLowerCase()));
   if(matched.length){
-    openWinCaptionConfirm('contenido', matched.map(g=>g.nombre), tpl.texto || tpl.nombre, tpl.thumb || '');
+    openWinCaptionConfirm('contenido', matched.map(g=>g.nombre), tpl.texto || tpl.nombre, tpl.thumb || '', tplSendImage);
     return;
   }
   // No vino un destino claro (o no calzó con ningún grupo conocido) -- se pregunta con checkboxes
@@ -3743,7 +3744,7 @@ async function handleMandarPublicidadGuardada(input){
   document.getElementById('winConfirmTplBtn').onclick = ()=>{
     const grupos = getCheckedWinGroups('f-winTplGroups');
     if(!grupos.length){ alert('Marca al menos un grupo.'); return; }
-    openWinCaptionConfirm('contenido', grupos, tpl.texto || tpl.nombre, tpl.thumb || '');
+    openWinCaptionConfirm('contenido', grupos, tpl.texto || tpl.nombre, tpl.thumb || '', tplSendImage);
   };
 }
 
@@ -4128,22 +4129,29 @@ function dispatchWinTool(tool){
   else if(tool.name === 'mandar_publicidad_guardada') handleMandarPublicidadGuardada(input);
 }
 
-// Grupos reales de WhatsApp conectados -- cada uno con su link de invitación, para que la
-// bandeja de envíos pueda abrir DIRECTO el grupo correcto en vez de que el jefe tenga que
-// buscarlo a mano. El link vacío (1X2) queda pendiente hasta que lo pase.
+// Grupos reales de WhatsApp conectados -- cada uno con su link de invitación (para el
+// botón manual de "abrir grupo") y, cuando ya esté enlazado el bot de WhatsApp dedicado
+// (ver /whatsapp-bot/README.md), su "jid" real -- el id interno que usa WhatsApp para ese
+// grupo (algo como "1203xxxxxxxx@g.us", se obtiene con GET /grupos del bot una vez que el
+// número dedicado se unió a cada grupo). Mientras un grupo no tenga jid, el envío sigue
+// siendo manual (copiar + abrir). El link vacío (1X2) queda pendiente hasta que lo pase.
 const WIN_GROUPS = [
-  { nombre: 'Gratis 1', link: 'https://chat.whatsapp.com/LUr5xcMMas5LrupdiGO24p' },
-  { nombre: 'Gratis 2', link: 'https://chat.whatsapp.com/GvqDG0ejTRv2eWJ18aJ3De' },
-  { nombre: 'Gratis 3', link: 'https://chat.whatsapp.com/HIb82bDAZHI4wAGXTadBve' },
-  { nombre: 'VIP', link: 'https://chat.whatsapp.com/GQ0QxxU85LTH222xshkrrA' },
-  { nombre: 'VIP 1XBET', link: 'https://chat.whatsapp.com/LW7Jv2oLTMPC0EY6fuQG5B' },
-  { nombre: 'VIP Más Parley', link: 'https://chat.whatsapp.com/CKflDIZfyFh9cHPgTYiobt' },
-  { nombre: '1X2', link: '' }
+  { nombre: 'Gratis 1', link: 'https://chat.whatsapp.com/LUr5xcMMas5LrupdiGO24p', jid: '' },
+  { nombre: 'Gratis 2', link: 'https://chat.whatsapp.com/GvqDG0ejTRv2eWJ18aJ3De', jid: '' },
+  { nombre: 'Gratis 3', link: 'https://chat.whatsapp.com/HIb82bDAZHI4wAGXTadBve', jid: '' },
+  { nombre: 'VIP', link: 'https://chat.whatsapp.com/GQ0QxxU85LTH222xshkrrA', jid: '' },
+  { nombre: 'VIP 1XBET', link: 'https://chat.whatsapp.com/LW7Jv2oLTMPC0EY6fuQG5B', jid: '' },
+  { nombre: 'VIP Más Parley', link: 'https://chat.whatsapp.com/CKflDIZfyFh9cHPgTYiobt', jid: '' },
+  { nombre: '1X2', link: '', jid: '' }
 ];
 const WIN_DESTINOS = WIN_GROUPS.map(g => g.nombre);
 function winGroupLink(nombre){
   const g = WIN_GROUPS.find(x => x.nombre.toLowerCase() === (nombre||'').toLowerCase());
   return g ? g.link : '';
+}
+function winGroupJid(nombre){
+  const g = WIN_GROUPS.find(x => x.nombre.toLowerCase() === (nombre||'').toLowerCase());
+  return g ? g.jid : '';
 }
 // Checkboxes en vez de un select -- así se puede marcar varios grupos a la vez (ej. los 3
 // gratis juntos) y Win manda una entrada en la bandeja por cada uno, cada una con su propio
@@ -4230,7 +4238,7 @@ async function submitWinBet(kind){
     });
     const result = await res.json();
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
-    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl);
+    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType });
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
@@ -4245,26 +4253,33 @@ function escapeForTextarea(text){
 }
 
 // Paso final: Win ya redactó el texto solo (sin que el jefe tenga que escribir nada), y aquí se
-// lo muestra listo para revisar/editar. Cada grupo tiene su propio botón que copia el texto al
-// portapapeles Y abre ese chat de WhatsApp directo en el mismo toque -- ya no hay que pasar por
-// la bandeja de entrada primero; solo falta pegar y darle enviar allá. Igual se deja un registro
-// en la bandeja (como "enviado") para tener historial.
-function openWinCaptionConfirm(kind, grupos, caption, thumb){
+// lo muestra listo para revisar/editar. Si el grupo ya tiene "jid" (el bot de WhatsApp dedicado
+// ya está conectado y metido en ese grupo -- ver /whatsapp-bot/README.md), el botón manda el
+// mensaje SOLO, sin tocar WhatsApp. Si todavía no, se ofrece el botón manual de siempre (copiar
+// + abrir el grupo). "sendImage" es {base64, mediaType} de la imagen en buena calidad para el
+// envío automático (puede ser null si es solo texto) -- separado de "thumb", que es la versión
+// chiquita que se guarda en el historial de la bandeja.
+function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage){
   const groupButtonsHTML = grupos.map((g, i) => {
+    const jid = winGroupJid(g);
     const link = winGroupLink(g);
+    if(jid){
+      return `<button class="btn ${i===0 ? '' : 'secondary'}" data-win-auto-group="${encodeURIComponent(g)}" style="width:100%; margin-bottom:8px;">Mandar directo a "${g}"</button>`;
+    }
     return `<button class="btn ${i===0 ? '' : 'secondary'}" data-win-send-group="${encodeURIComponent(g)}" style="width:100%; margin-bottom:8px;">${link ? `Copiar y abrir "${g}"` : `Copiar texto (falta link de "${g}")`}</button>`;
   }).join('');
   openModal(`
     <h3>Así quedó el texto</h3>
     ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
     <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:130px;">${escapeForTextarea(caption)}</textarea></div>
-    <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Cada botón copia el texto y abre ese grupo directo en WhatsApp -- ya solo pegas y le das enviar allá.</div>
+    <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Los grupos con bot conectado se mandan solos en un toque. Los demás copian el texto y abren el chat para pegar y enviar.</div>
     ${groupButtonsHTML}
     <div class="modal-actions">
       <button class="btn secondary" id="winCaptionDoneBtn">Listo, cerrar</button>
     </div>
   `);
   document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
+
   document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
     const grupo = decodeURIComponent(btn.dataset.winSendGroup);
     btn.onclick = ()=>{
@@ -4278,6 +4293,37 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb){
       btn.textContent = link ? 'Copiado y grupo abierto ✓' : 'Texto copiado ✓';
       btn.disabled = true;
       btn.classList.add('secondary');
+    };
+  });
+
+  document.querySelectorAll('[data-win-auto-group]').forEach(btn=>{
+    const grupo = decodeURIComponent(btn.dataset.winAutoGroup);
+    btn.onclick = async ()=>{
+      const box = document.getElementById('f-winCaptionConfirm');
+      const finalCaption = (box && box.value.trim()) || caption;
+      const jid = winGroupJid(grupo);
+      btn.disabled = true;
+      btn.textContent = 'Mandando...';
+      try{
+        const res = await fetch('/api/win-enviar-whatsapp', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            grupoId: jid, texto: finalCaption,
+            imagenBase64: sendImage ? sendImage.base64 : '', mediaType: sendImage ? sendImage.mediaType : ''
+          })
+        });
+        const result = await res.json().catch(()=>({}));
+        if(!res.ok || !result.ok) throw new Error(result.error || 'No se pudo mandar.');
+        await pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado');
+        await persist('winOutbox');
+        btn.textContent = `Mandado a "${grupo}" ✓`;
+        btn.classList.add('secondary');
+      }catch(e){
+        console.error(e);
+        alert(`No se pudo mandar automático a "${grupo}": ${e.message}\n\nCopia el texto y mándalo a mano por esta vez.`);
+        btn.disabled = false;
+        btn.textContent = `Mandar directo a "${grupo}"`;
+      }
     };
   });
 }
@@ -4322,7 +4368,7 @@ async function submitWinContent(){
     });
     const result = await res.json();
     const caption = (result && result.caption) || nota || 'Nuevo contenido.';
-    openWinCaptionConfirm('contenido', grupos, caption, thumb || previewUrl);
+    openWinCaptionConfirm('contenido', grupos, caption, thumb || previewUrl, base64 ? { base64, mediaType } : null);
     return;
   }catch(e){
     console.error(e);
