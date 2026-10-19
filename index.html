@@ -2781,12 +2781,14 @@ function findWinTemplateByName(nombre){
 // ---- Listas de difusión ----
 // Listas de clientes para mandar avisos/promos masivos por WhatsApp (uno por minuto, con
 // textos distintos entre sí -- ver api/win-redactar.js (modo "difusion") y api/win-enviar.js
-// (modo "cola"). La lista "stakes" es automática: toma a todo el que ya haya comprado un stake con teléfono
-// guardado (getKnownBuyers), no hace falta agregarla a mano. Las demás se arman agregando
-// contactos uno por uno (quedan guardados en la hoja WinDifusion, con sus listas separadas por
-// coma -- un mismo contacto puede estar en varias).
+// (modo "cola"). Las 5 son MANUALES -- se arman agregando contactos uno por uno, o de una sola
+// vez para "Clientes de Stakes" con el botón "Cargar de Venta de Stakes" (copia lo que haya en
+// ese momento en Venta de Stakes hacia WinDifusion; no se vuelve a sincronizar sola después --
+// así la lista no depende de que esa otra hoja haya terminado de cargar para mostrar algo, y el
+// jefe manda manualmente cuando quiera, sin sorpresas). Quedan guardados en la hoja WinDifusion,
+// con sus listas separadas por coma -- un mismo contacto puede estar en varias.
 const WIN_DIFUSION_LISTAS = [
-  { id: 'stakes', nombre: 'Clientes de Stakes', auto: true },
+  { id: 'stakes', nombre: 'Clientes de Stakes' },
   { id: 'fuertes', nombre: 'Clientes Fuertes' },
   { id: 'mas_parlay', nombre: 'Clientes Más Parlay' },
   { id: 'ecuabet', nombre: 'Clientes Ecuabet' },
@@ -2796,39 +2798,68 @@ function winDifusionListaNombre(id){
   const l = WIN_DIFUSION_LISTAS.find(x=>x.id===id);
   return l ? l.nombre : id;
 }
-// Devuelve [{nombre, telefono}, ...] de una lista -- mezcla lo automático (stakes) con lo
-// agregado a mano en WinDifusion, sin duplicar por teléfono.
+// Devuelve [{nombre, telefono}, ...] de una lista, sin duplicar por teléfono.
 function getDifusionContactos(listaId){
   const vistos = new Set();
   const out = [];
-  const add = (nombre, telefono)=>{
-    const tel = (telefono||'').trim();
-    if(!tel || vistos.has(tel)) return;
-    vistos.add(tel);
-    out.push({ nombre: nombre || '', telefono: tel });
-  };
-  if(listaId === 'stakes'){
-    getKnownBuyers().filter(b=>b.phone).forEach(b=>add(b.name, b.phone));
-  }
   state.winDifusion.forEach(c=>{
     const listas = (c.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
-    if(listas.includes(listaId)) add(c.nombre, c.telefono);
+    if(!listas.includes(listaId)) return;
+    const tel = (c.telefono||'').trim();
+    if(!tel || vistos.has(tel)) return;
+    vistos.add(tel);
+    out.push({ nombre: c.nombre || '', telefono: tel });
   });
   return out;
+}
+
+// Copia (una sola vez, a pedido) todos los compradores conocidos de Venta de Stakes que tengan
+// teléfono guardado hacia la lista manual "stakes" de WinDifusion -- no pisa ni duplica a los
+// que ya estén ahí (combina por teléfono).
+async function cargarContactosDeVentaStakes(){
+  const btn = document.getElementById('winDifCargarStakesBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Cargando...'; }
+  try{
+    const compradores = getKnownBuyers().filter(b=>b.phone);
+    const existentes = new Map(state.winDifusion.map(c=>[(c.telefono||'').trim(), c]));
+    let agregados = 0, actualizados = 0;
+    compradores.forEach(b=>{
+      const tel = (b.phone||'').trim();
+      if(!tel) return;
+      const existente = existentes.get(tel);
+      if(existente){
+        const listas = (existente.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
+        if(!listas.includes('stakes')){ listas.push('stakes'); existente.listas = listas.join(','); actualizados++; }
+      } else {
+        const nuevo = { id: uid(), nombre: b.name || '', telefono: tel, listas: 'stakes', createdAt: new Date().toISOString() };
+        state.winDifusion.push(nuevo);
+        existentes.set(tel, nuevo);
+        agregados++;
+      }
+    });
+    await persist('winDifusion');
+    alert(`Listo -- ${agregados} contactos nuevos agregados a "Clientes de Stakes"${actualizados ? ` y ${actualizados} que ya estaban se agregaron a esta lista` : ''}. En total hay ${getDifusionContactos('stakes').length}.`);
+    openWinDifusionModal();
+  }catch(e){
+    console.error(e);
+    alert('No se pudo cargar los contactos. Intenta de nuevo.');
+    if(btn){ btn.disabled = false; btn.textContent = 'Cargar de Venta de Stakes'; }
+  }
 }
 
 function openWinDifusionModal(){
   openModal(`
     <h3>Listas de difusión</h3>
-    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Mandan avisos/promos por WhatsApp directo a cada cliente, uno por minuto y con textos distintos entre sí. "Clientes de Stakes" se llena sola con los compradores que ya tienen teléfono guardado -- las demás las armas tú agregando contactos.</div>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Mandan avisos/promos por WhatsApp directo a cada cliente, uno por minuto y con textos distintos entre sí. Todas son manuales: agregas contactos uno por uno, o en "Clientes de Stakes" puedes cargar de una vez a todos los que ya están en Venta de Stakes.</div>
     ${WIN_DIFUSION_LISTAS.map(l=>{
       const n = getDifusionContactos(l.id).length;
-      return `<div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--border);">
-        <div style="flex:1;">
+      return `<div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--border); flex-wrap:wrap;">
+        <div style="flex:1; min-width:140px;">
           <div style="font-size:13.5px; font-weight:700;">${l.nombre}</div>
-          <div style="font-size:12px; color:var(--muted);">${n} contacto${n===1?'':'s'} con teléfono${l.auto ? ' (automático)' : ''}</div>
+          <div style="font-size:12px; color:var(--muted);">${n} contacto${n===1?'':'s'} con teléfono</div>
         </div>
-        ${l.auto ? '' : `<button class="btn secondary small" data-win-dif-ver="${l.id}">Ver</button>`}
+        ${l.id === 'stakes' ? `<button class="btn secondary small" id="winDifCargarStakesBtn">Cargar de Venta de Stakes</button>` : ''}
+        <button class="btn secondary small" data-win-dif-ver="${l.id}">Ver</button>
         <button class="btn small" data-win-dif-mandar="${l.id}">Mandar</button>
       </div>`;
     }).join('')}
@@ -2838,6 +2869,8 @@ function openWinDifusionModal(){
     </div>
   `);
   document.getElementById('winDifAddBtn').onclick = openWinDifusionAddForm;
+  const cargarBtn = document.getElementById('winDifCargarStakesBtn');
+  if(cargarBtn) cargarBtn.onclick = cargarContactosDeVentaStakes;
   document.querySelectorAll('[data-win-dif-ver]').forEach(b=>b.onclick=()=>openWinDifusionListaModal(b.dataset.winDifVer));
   document.querySelectorAll('[data-win-dif-mandar]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifMandar));
 }
@@ -2873,7 +2906,7 @@ function openWinDifusionAddForm(){
     <div class="field"><label>Nombre</label><input id="f-winDifNombre" placeholder="Ej: Juan Pérez"></div>
     <div class="field"><label>Teléfono</label><input id="f-winDifTelefono" placeholder="0999999999"></div>
     <div class="field"><label>A qué listas va (marca una o varias)</label>
-      ${WIN_DIFUSION_LISTAS.filter(l=>!l.auto).map(l=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; cursor:pointer;">
+      ${WIN_DIFUSION_LISTAS.map(l=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; cursor:pointer;">
         <input type="checkbox" id="f-winDifLista-${l.id}" value="${l.id}"> ${l.nombre}
       </label>`).join('')}
     </div>
@@ -2888,7 +2921,7 @@ function openWinDifusionAddForm(){
 async function submitWinDifusionContacto(){
   const nombre = document.getElementById('f-winDifNombre').value.trim();
   const telefono = document.getElementById('f-winDifTelefono').value.trim();
-  const listas = WIN_DIFUSION_LISTAS.filter(l=>!l.auto).map(l=>l.id).filter(id=>document.getElementById(`f-winDifLista-${id}`).checked);
+  const listas = WIN_DIFUSION_LISTAS.map(l=>l.id).filter(id=>document.getElementById(`f-winDifLista-${id}`).checked);
   if(!telefono){ alert('Pon el teléfono.'); return; }
   if(!listas.length){ alert('Marca a qué lista va.'); return; }
   state.winDifusion.push({ id: uid(), nombre, telefono, listas: listas.join(','), createdAt: new Date().toISOString() });
