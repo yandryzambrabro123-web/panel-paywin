@@ -2780,8 +2780,8 @@ function findWinTemplateByName(nombre){
 
 // ---- Listas de difusión ----
 // Listas de clientes para mandar avisos/promos masivos por WhatsApp (uno por minuto, con
-// textos distintos entre sí -- ver api/win-redactar-difusion.js y api/win-enviar-cola.js). La
-// lista "stakes" es automática: toma a todo el que ya haya comprado un stake con teléfono
+// textos distintos entre sí -- ver api/win-redactar.js (modo "difusion") y api/win-enviar.js
+// (modo "cola"). La lista "stakes" es automática: toma a todo el que ya haya comprado un stake con teléfono
 // guardado (getKnownBuyers), no hace falta agregarla a mano. Las demás se arman agregando
 // contactos uno por uno (quedan guardados en la hoja WinDifusion, con sus listas separadas por
 // coma -- un mismo contacto puede estar en varias).
@@ -2929,18 +2929,18 @@ async function submitWinDifusion(listaId, contactos){
     const cantidad = Math.max(1, Math.min(6, contactos.length));
     let variantes = [instruccion];
     try{
-      const res = await fetch('/api/win-redactar-difusion', {
+      const res = await fetch('/api/win-redactar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruccion, cantidad })
+        body: JSON.stringify({ modo: 'difusion', instruccion, cantidad })
       });
       const data = await res.json().catch(()=>({}));
       if(res.ok && Array.isArray(data.variantes) && data.variantes.length) variantes = data.variantes;
     }catch(e){ console.error('No se pudo redactar variantes, se manda el mensaje tal cual:', e); }
 
     const mensajes = contactos.map((c, i) => ({ grupoId: phoneToJid(c.telefono), texto: variantes[i % variantes.length] })).filter(m=>m.grupoId);
-    const colaRes = await fetch('/api/win-enviar-cola', {
+    const colaRes = await fetch('/api/win-enviar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mensajes, intervaloMs: 60000 })
+      body: JSON.stringify({ modo: 'cola', mensajes, intervaloMs: 60000 })
     });
     const colaInfo = await colaRes.json().catch(()=>({}));
     if(!colaRes.ok || !colaInfo.ok) throw new Error(colaInfo.error || 'No se pudo encolar la difusión.');
@@ -3963,9 +3963,9 @@ async function submitStakePago(){
     let colaInfo = null;
     if(mensajes.length){
       try{
-        const colaRes = await fetch('/api/win-enviar-cola', {
+        const colaRes = await fetch('/api/win-enviar', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mensajes, intervaloMs: 60000 })
+          body: JSON.stringify({ modo: 'cola', mensajes, intervaloMs: 60000 })
         });
         colaInfo = await colaRes.json().catch(()=>null);
         if(!colaRes.ok) throw new Error((colaInfo && colaInfo.error) || 'No se pudo encolar los avisos.');
@@ -3999,7 +3999,7 @@ async function submitStakePago(){
 // ---- Partidos del día (varias fotos + un solo texto) ----
 // A diferencia del resto de flujos (una sola imagen), aquí se suben hasta 5 fotos (una por
 // partido/pick del día) y se manda primero cada foto por separado y al final un único texto
-// que las resume -- ver api/win-enviar-multiple.js y el endpoint /enviar-multiple del bot.
+// que las resume -- ver api/win-enviar.js (modo "multiple") y el endpoint /enviar-multiple del bot.
 let winPartidosFiles = [];
 
 function openPartidosDiaModal(){
@@ -4120,9 +4120,9 @@ function openWinPartidosConfirm(grupos, caption, thumbs, images){
       btn.disabled = true;
       btn.textContent = 'Mandando...';
       try{
-        const res = await fetch('/api/win-enviar-multiple', {
+        const res = await fetch('/api/win-enviar', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ grupoId: jid, imagenes: images, texto: finalCaption })
+          body: JSON.stringify({ modo: 'multiple', grupoId: jid, imagenes: images, texto: finalCaption })
         });
         const result = await res.json().catch(()=>({}));
         if(!res.ok || !result.ok) throw new Error(result.error || 'No se pudo mandar.');
@@ -4222,10 +4222,10 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage){
       btn.disabled = true;
       btn.textContent = 'Mandando...';
       try{
-        const res = await fetch('/api/win-enviar-whatsapp', {
+        const res = await fetch('/api/win-enviar', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            grupoId: jid, texto: finalCaption,
+            modo: 'directo', grupoId: jid, texto: finalCaption,
             imagenBase64: sendImage ? sendImage.base64 : '', mediaType: sendImage ? sendImage.mediaType : ''
           })
         });

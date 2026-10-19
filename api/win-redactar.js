@@ -1,7 +1,19 @@
 // Función serverless de Vercel: redacta el texto final que va a acompañar un mensaje para la
-// comunidad (apuesta nueva, ganada, contenido/testimonio o regalito del día), usando la API de
-// Anthropic. Si llega una imagen, la "lee" (visión) para apoyarse en lo que muestra. El dueño
-// siempre revisa el resultado en el panel antes de mandarlo — esto solo redacta el borrador.
+// comunidad (apuesta nueva, ganada, contenido/testimonio, regalito del día o partidos del día),
+// y también las variantes de un mensaje de difusión masiva -- todo usando la API de Anthropic.
+// Si llega una imagen (o varias), la "lee" (visión) para apoyarse en lo que muestra. El dueño
+// siempre revisa el resultado en el panel antes de mandarlo (salvo las difusiones, que se
+// mandan directo, por pedido explícito del dueño).
+//
+// Junta en un solo archivo lo que antes era win-redactar.js + win-redactar-difusion.js, porque
+// el plan de Vercel que usa este proyecto tiene un límite de 12 funciones serverless por
+// despliegue, y entre todos los endpoints de Win ya se había pasado ese límite -- los
+// despliegues quedaban en "Error" sin avisar claro por qué. Body: { modo, ... }, donde modo es
+// uno de:
+//   (vacío o cualquier otro valor, por defecto) -- redacta UN texto, igual que antes:
+//     { kind, destino, code, imageBase64?, mediaType?, images? }
+//   "difusion" -- redacta VARIAS versiones distintas del mismo mensaje de difusión:
+//     { instruccion, cantidad? } -> responde { variantes: [...] }
 //
 // La API key vive SOLO aquí, como variable de entorno en Vercel (ANTHROPIC_API_KEY) —
 // nunca se expone en el index.html ni llega al navegador.
@@ -18,6 +30,37 @@ function extractText(text) {
   return (text || '').trim().replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
 }
 
+function parseVariantes(text, cantidad) {
+  const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const variantes = [];
+  for (const line of lines) {
+    const m = line.match(/^\d+[\.\)]\s*(.+)$/);
+    if (m) variantes.push(m[1].trim());
+  }
+  if (variantes.length) return variantes.slice(0, cantidad);
+  return text && text.trim() ? [text.trim()] : [];
+}
+
+async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
+  const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens, system, messages })
+  });
+  if (!apiRes.ok) {
+    const errText = await apiRes.text();
+    console.error('Error de Anthropic:', apiRes.status, errText);
+    return null;
+  }
+  const data = await apiRes.json();
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  return textBlock ? textBlock.text : '';
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método no permitido.' });
@@ -30,13 +73,45 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  const body = req.body || {};
+
+  if (body.modo === 'difusion') {
+    try {
+      const { instruccion, cantidad } = body;
+      const n = Math.max(1, Math.min(8, Number(cantidad) || 5));
+      if (!instruccion) {
+        res.status(400).json({ error: 'Falta la instrucción del mensaje.', variantes: [] });
+        return;
+      }
+      const systemPrompt = `Vas a redactar un mensaje de difusión corto para enviar por WhatsApp a clientes de una agencia de pronósticos deportivos/apuestas llamada PayWin, avisando algo puntual (una promo, un stake disponible, un aviso) según la instrucción que te den. Tono: cercano, directo, 1-2 emojis como máximo, pocas líneas, fácil de leer en el celular. No inventes datos (montos, horarios, cuotas) que no te hayan dado.
+
+Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo contenido y oferta, pero con palabras, orden y tono ligeramente distintos entre sí, para que no se vean como una copia exacta mandada a todos. Responde ÚNICAMENTE con las ${n} versiones, cada una en su propia línea, numeradas así: "1. texto", "2. texto", etc. Sin explicaciones, sin encabezados, sin markdown.`;
+
+      const text = await llamarAnthropic(apiKey, {
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `Instrucción del dueño: ${instruccion}` }],
+        max_tokens: 700
+      });
+      if (text === null) {
+        res.status(502).json({ error: 'No se pudo redactar las variantes (servicio de IA).', variantes: [instruccion] });
+        return;
+      }
+      const variantes = parseVariantes(text, n);
+      res.status(200).json({ variantes: variantes.length ? variantes : [instruccion] });
+    } catch (e) {
+      console.error('Error redactando variantes de difusión:', e);
+      res.status(500).json({ error: 'No se pudo redactar las variantes.', variantes: [] });
+    }
+    return;
+  }
+
+  // Modo por defecto: redactar un texto (apuesta, contenido, regalito, partidos del día, etc.)
   try {
-    const { kind, destino, code, imageBase64, mediaType, images } = req.body || {};
+    const { kind, destino, code, imageBase64, mediaType, images } = body;
     const systemPrompt = PROMPTS[kind] || PROMPTS.contenido;
 
     const userContent = [];
     if (Array.isArray(images) && images.length) {
-      // Varias imágenes a la vez (ej. "partidos del día": una foto por partido).
       images.forEach(img => {
         if (img && img.base64) {
           userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType || 'image/jpeg', data: img.base64 } });
@@ -50,32 +125,12 @@ module.exports = async function handler(req, res) {
     instructionText += ' Responde ÚNICAMENTE con el texto final listo para pegar en WhatsApp, sin explicaciones, sin comillas envolventes, sin markdown.';
     userContent.push({ type: 'text', text: instructionText });
 
-    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-5',
-        max_tokens: 400,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userContent }]
-      })
-    });
-
-    if (!apiRes.ok) {
-      const errText = await apiRes.text();
-      console.error('Error de Anthropic:', apiRes.status, errText);
+    const text = await llamarAnthropic(apiKey, { system: systemPrompt, messages: [{ role: 'user', content: userContent }], max_tokens: 400 });
+    if (text === null) {
       res.status(502).json({ error: 'No se pudo redactar el texto (servicio de IA).', caption: code || '' });
       return;
     }
-
-    const data = await apiRes.json();
-    const textBlock = (data.content || []).find(b => b.type === 'text');
-    const caption = extractText(textBlock ? textBlock.text : '') || code || '';
-
+    const caption = extractText(text) || code || '';
     res.status(200).json({ caption });
   } catch (e) {
     console.error('Error redactando:', e);
