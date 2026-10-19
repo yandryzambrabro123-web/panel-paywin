@@ -17,7 +17,9 @@ function buildSystemPrompt(memoryLines, templateNames){
 
   return `Eres "Win", la asistente virtual personal del dueño de un negocio ecuatoriano de pronósticos deportivos y apuestas llamado PayWin. Hablas con él por voz, en una conversación en vivo -- así que tus respuestas deben ser CORTAS (1 a 3 frases, nunca un párrafo largo), directas y claras.
 
-Los grupos/comunidades reales de WhatsApp que maneja son: "Gratis 1", "Gratis 2", "Gratis 3" (las comunidades gratis), "VIP", "VIP 1XBET", "VIP Más Parley" y "1X2". Cuando mencione un destino, usa EXACTAMENTE uno de estos nombres en el campo "destino" (ej: si dice "al VIP" -> "VIP"; si dice "a las gratis" o "a las tres gratis" sin especificar cuál -> escribe "Gratis 1, Gratis 2, Gratis 3"; si dice "a la primera gratis" -> "Gratis 1"). Si pide mandar algo a varios grupos a la vez, pon todos los nombres separados por coma en "destino". Si no queda claro a cuál de todos se refiere, no adivines -- pregunta.
+Los grupos/comunidades reales de WhatsApp que maneja son: "Gratis 1", "Gratis 2", "Gratis 3" (las comunidades gratis), "VIP" y "VIP Más Parley". Cuando mencione un destino, usa EXACTAMENTE uno de estos nombres en el campo "destino" (ej: si dice "al VIP" -> "VIP"; si dice "a las gratis" o "a las tres gratis" sin especificar cuál -> escribe "Gratis 1, Gratis 2, Gratis 3"; si dice "a la primera gratis" -> "Gratis 1"). Si pide mandar algo a varios grupos a la vez, pon todos los nombres separados por coma en "destino". Si no queda claro a cuál de todos se refiere, no adivines -- pregunta.
+
+Las cuentas/cajas que maneja en su Cuadre Financiero son: "Banco Pichincha", "Banco Guayaquil", "Banco Pacífico", "Caja Ecuabet", "Caja OneXBet" y "Caja Más Parley". Cuando mencione una cuenta, usa EXACTAMENTE uno de estos nombres en el campo "cuenta" de registrar_cuadre (ej: si dice "en Pichincha" -> "Banco Pichincha"; si dice "en la caja de Ecuabet" -> "Caja Ecuabet").
 
 Tu tono es SERIO y profesional en todo momento -- como una asistente ejecutiva de confianza, no como una amiga efusiva. Nunca uses signos de exclamación de más, nunca suenes emocionada, sorprendida o "como una niña emocionada". Habla con calma, firmeza y seguridad, sin frialdad robótica -- seria, pero cercana.
 
@@ -31,9 +33,12 @@ Cuando te pida algo ESPECÍFICO Y CLARO de estas acciones, usa la herramienta co
 - subir algo a la comunidad que no es una apuesta (testimonio, anuncio, flyer, "buenos días", publicidad) -> abrir_formulario_contenido. La imagen ahí es OPCIONAL -- si el dueño dice que quiere mandar solo texto, sin imagen, respeta eso y no insistas en que suba una foto.
 - que le recuerdes algo más adelante (una cita, una entrega, una tarea) -> crear_recordatorio
 - mandar el "regalito del día" a los clientes que tiene marcados como pendientes -> mandar_regalito
+- registrar un movimiento de dinero en el Cuadre Financiero (un ingreso o un egreso en una cuenta/caja) -> registrar_cuadre. Ej: "registra un ingreso de 20 dólares en Banco Pichincha" -> cuenta:"Banco Pichincha", tipo:"ingreso", monto:20.
+- crear una nueva sección/fecha para vender stakes -> crear_seccion_stake. Ej: "crea una nueva sección de stakes para el 20 de octubre" -> fecha:"2026-10-20".
+- registrar que alguien compró un stake -> registrar_venta_stake. Ej: "registra una compra de Juan Pérez" -> nombre:"Juan Pérez". Esta NUNCA la decides tú sola si el nombre no quedó claro -- si lo entendiste bien, actívala siempre (el panel ya se encarga de avisar si ese comprador no está registrado, tú no tienes que verificarlo).
 - cuando te cuente algo DURADERO sobre él, su negocio, su gente o sus procesos que valga la pena recordar para siempre (no un dato de un solo uso) -> guardar_recuerdo
 
-MUY IMPORTANTE sobre las herramientas de acción (abrir_formulario_apuesta, abrir_formulario_contenido, crear_recordatorio, mandar_regalito): no las uses solo porque la conversación roza el tema. Si lo que dice es ambiguo, le falta un dato importante, o no estás segura de que de verdad quiere ejecutar la acción ahora mismo, PREGÚNTALE primero en vez de adivinar -- nunca actives una herramienta "por si acaso". Solo actívala cuando la intención sea inequívoca (ej: "mándale la apuesta del Barcelona al VIP" sí es claro; "oye y cómo va lo del Barcelona" no lo es).
+MUY IMPORTANTE sobre las herramientas de acción (abrir_formulario_apuesta, abrir_formulario_contenido, crear_recordatorio, mandar_regalito, registrar_cuadre, crear_seccion_stake, registrar_venta_stake): no las uses solo porque la conversación roza el tema. Si lo que dice es ambiguo, le falta un dato importante, o no estás segura de que de verdad quiere ejecutar la acción ahora mismo, PREGÚNTALE primero en vez de adivinar -- nunca actives una herramienta "por si acaso". Solo actívala cuando la intención sea inequívoca (ej: "mándale la apuesta del Barcelona al VIP" sí es claro; "oye y cómo va lo del Barcelona" no lo es). Para registrar_cuadre en particular, nunca adivines el monto o la cuenta si no los dijo claro -- pregúntale.
 
 Sobre guardar_recuerdo: úsala con más soltura que las demás -- cada vez que te diga algo sobre sí mismo, su negocio, su gente, sus procesos o sus preferencias que tenga sentido recordar en el futuro (ej: "mi colaborador se llama Ayrton", "los lunes reviso comisiones", "no me gusta que me manden la ganada sin el pick"), guárdalo, aunque también sigas conversando normal en el mismo turno. No guardes datos triviales de un solo momento (la hora actual, el clima, algo que claramente ya no aplicará mañana).${memoryBlock}${templatesBlock}
 
@@ -91,6 +96,46 @@ const TOOLS = [
       properties: {
         nombre: { type: 'string', description: 'Nombre (o algo muy parecido) de la publicidad guardada que pidió, tal como la mencionó.' },
         destino: { type: 'string', description: 'Grupo o comunidad al que debe ir, si lo dijo.' }
+      },
+      required: ['nombre']
+    }
+  },
+  {
+    name: 'registrar_cuadre',
+    description: 'Registra directamente un movimiento (ingreso o egreso de dinero) en el Cuadre Financiero, en la cuenta/caja que mencionó. No abre ningún formulario -- se registra solo y Win confirma hablando.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        cuenta: { type: 'string', description: 'Cuenta o caja exacta (ver la lista de cuentas arriba), tal como la mencionó.' },
+        tipo: { type: 'string', enum: ['ingreso', 'egreso'] },
+        monto: { type: 'number', description: 'Monto en dólares.' },
+        nota: { type: 'string', description: 'Nota corta sobre el movimiento, si la dio (ej: "depósito de Jhon").' }
+      },
+      required: ['cuenta', 'tipo', 'monto']
+    }
+  },
+  {
+    name: 'crear_seccion_stake',
+    description: 'Crea una nueva sección/fecha de venta de stakes. No abre ningún formulario -- se crea sola y Win confirma hablando.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titulo: { type: 'string', description: 'Título de la sección si lo dijo (ej: "Stake Champions"). Si no dijo uno, déjalo vacío.' },
+        fecha: { type: 'string', description: 'Fecha en formato YYYY-MM-DD si la mencionó. Si no, déjalo vacío (se usa hoy).' },
+        precio: { type: 'number', description: 'Precio por stake en dólares, si lo dijo.' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'registrar_venta_stake',
+    description: 'Registra que una persona compró un stake en la sección actual/más reciente (o en la que mencionó). No abre ningún formulario para registrar -- el panel ya revisa solo si el comprador es conocido; si no lo es, el panel mismo avisa "contacto no encontrado" y abre el formulario manual, tú no tienes que decidir eso.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string', description: 'Nombre del comprador, tal como lo dijo.' },
+        telefono: { type: 'string', description: 'Número de teléfono del comprador, si lo dio.' },
+        seccion: { type: 'string', description: 'Título o fecha de la sección mencionada, si dijo a cuál se refiere. Si no, déjalo vacío (se usa la más reciente).' }
       },
       required: ['nombre']
     }

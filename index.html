@@ -3748,6 +3748,121 @@ async function handleMandarPublicidadGuardada(input){
   };
 }
 
+// ---------- Registro por voz: Cuadre Financiero y Venta de Stakes ----------
+// A diferencia de mandar_regalito/mandar_publicidad_guardada (que abren un flujo o una
+// confirmación visual), estas acciones registran el dato directo, sin ningún formulario
+// ni modal -- Win nada más confirma hablando. La única excepción es el comprador de un
+// stake que no es alguien ya conocido: ahí el jefe pidió explícitamente que Win NUNCA
+// invente el registro -- avisa "contacto no encontrado" y deja el formulario manual
+// abierto (prellenado) para que él mismo lo complete.
+function winNormalizeText(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+}
+
+function findFinanceAccountByName(nombreDicho){
+  const q = winNormalizeText(nombreDicho);
+  if(!q) return null;
+  let acc = FINANCE_ACCOUNTS.find(a => winNormalizeText(a.name) === q);
+  if(acc) return acc;
+  acc = FINANCE_ACCOUNTS.find(a => winNormalizeText(a.name).includes(q) || q.includes(winNormalizeText(a.name)));
+  return acc || null;
+}
+
+async function handleRegistrarCuadre(input){
+  const acc = findFinanceAccountByName(input.cuenta);
+  if(!acc){
+    const nombres = FINANCE_ACCOUNTS.map(a=>a.name).join(', ');
+    winSpeak(`No reconocí esa cuenta. Las que manejas son: ${nombres}.`);
+    return;
+  }
+  const monto = Number(input.monto);
+  if(!monto || monto <= 0){
+    winSpeak('No te entendí bien el monto. Dímelo de nuevo con el número claro.');
+    return;
+  }
+  const tipo = input.tipo === 'egreso' ? 'out' : 'in';
+  state.financeMovements.push({
+    id: uid(), transferId: '', accountId: acc.id, type: tipo, amount: monto,
+    date: new Date().toISOString().slice(0,10),
+    note: (input.nota || '').trim(),
+    comprobanteNumero: '',
+    receiptImage: '',
+    createdAt: new Date().toISOString(), createdBy: currentUserLabel()
+  });
+  if(state.view === 'finance') renderFinance();
+  await persist('financeMovements');
+  winSpeak(`Cuadre actualizado. ${tipo === 'in' ? 'Ingreso' : 'Egreso'} de ${fmtMoney(monto)} en ${acc.name}.`);
+}
+
+function findStakeSectionByName(tituloDicho){
+  if(!state.stakeSections.length) return null;
+  const sorted = [...state.stakeSections].sort((a,b)=> new Date(b.day||0) - new Date(a.day||0));
+  const q = winNormalizeText(tituloDicho);
+  if(!q) return sorted[0]; // no dijo cuál -- se asume la sección más reciente
+  return sorted.find(s => winNormalizeText(s.title).includes(q) || q.includes(winNormalizeText(s.title))) || sorted[0];
+}
+
+async function handleCrearSeccionStake(input){
+  const titulo = (input.titulo || '').trim() || `Stake ${state.stakeSections.length + 1}`;
+  const sec = {
+    id: uid(),
+    day: input.fecha || new Date().toISOString().slice(0,10),
+    title: titulo,
+    price: Number(input.precio) || 0
+  };
+  state.stakeSections.push(sec);
+  state.stakeSectionId = sec.id;
+  if(state.view === 'stakeSales') renderStakeSales();
+  await persist('stakeSections');
+  winSpeak(`Listo, creé la sección "${titulo}" para el ${fmtDate(sec.day)}.`);
+}
+
+async function handleRegistrarVentaStake(input){
+  const sec = findStakeSectionByName(input.seccion);
+  if(!sec){
+    winSpeak('Todavía no tienes ninguna sección de venta de stakes creada. Pídeme primero que cree una.');
+    return;
+  }
+  const nombreDicho = (input.nombre || '').trim();
+  if(!nombreDicho){
+    winSpeak('No capté el nombre del comprador. Dímelo de nuevo.');
+    return;
+  }
+  // "Contacto conocido" = ya compró un stake antes, o ya es cliente VIP registrado. Si no
+  // aparece en ninguna de las dos listas, no se inventa el registro -- se avisa y se deja
+  // el formulario manual abierto para que el jefe lo complete él mismo.
+  const q = winNormalizeText(nombreDicho);
+  const buyers = getKnownBuyers();
+  const vipPools = [...(state.vips||[]), ...(state.vips1x2||[]), ...(state.vips1xbet||[])];
+  let match = buyers.find(b => winNormalizeText(b.name) === q)
+    || vipPools.filter(v=>winNormalizeText(v.name)===q).map(v=>({ name:v.name, phone:v.contact||'' }))[0]
+    || buyers.find(b => winNormalizeText(b.name).includes(q) || q.includes(winNormalizeText(b.name)))
+    || vipPools.filter(v=>winNormalizeText(v.name).includes(q) || q.includes(winNormalizeText(v.name))).map(v=>({ name:v.name, phone:v.contact||'' }))[0];
+
+  if(!match){
+    winSpeak('Contacto no encontrado. Agrégalo manualmente -- te dejo el formulario abierto.');
+    state.stakeSectionId = sec.id;
+    openStakeSaleForm(sec.id);
+    const nameEl = document.getElementById('f-saleName');
+    if(nameEl) nameEl.value = nombreDicho;
+    const phoneEl = document.getElementById('f-salePhone');
+    if(input.telefono && phoneEl) phoneEl.value = input.telefono.trim();
+    return;
+  }
+
+  state.stakeSales.push({
+    id: uid(), sectionId: sec.id, day: sec.day,
+    name: match.name,
+    phone: (input.telefono && input.telefono.trim()) || match.phone || '',
+    amount: Number(sec.price) || 0,
+    status: 'paid'
+  });
+  state.stakeSectionId = sec.id;
+  if(state.view === 'stakeSales') renderStakeSales();
+  await persist('stakeSales');
+  winSpeak(`Venta registrada. ${match.name}, ${fmtMoney(sec.price)}, en "${sec.title}".`);
+}
+
 function winOutboxItemHTML(o){
   return `<div style="display:flex; gap:12px; padding:12px 0; border-top:1px solid var(--border);">
     ${o.image ? `<img src="${o.image}" style="width:70px; height:70px; object-fit:cover; border-radius:8px; flex-shrink:0;">` : ''}
@@ -4068,7 +4183,10 @@ const WIN_TOOL_ACK = {
   abrir_formulario_contenido: 'Va, sube la imagen.',
   crear_recordatorio: 'Listo, te lo anoto.',
   mandar_regalito: 'Dale, vamos con el regalito del día.',
-  mandar_publicidad_guardada: 'Va, la mando a la bandeja.'
+  mandar_publicidad_guardada: 'Va, la mando a la bandeja.',
+  registrar_cuadre: 'Dale, lo registro.',
+  crear_seccion_stake: 'Va, creo la sección.',
+  registrar_venta_stake: 'Dale, reviso.'
 };
 
 async function processWinVoiceCommand(texto){
@@ -4127,6 +4245,9 @@ function dispatchWinTool(tool){
   else if(tool.name === 'crear_recordatorio') openWinReminderForm(input.texto || '', input.fecha || '', input.hora || '');
   else if(tool.name === 'mandar_regalito') openWinGiftFlow();
   else if(tool.name === 'mandar_publicidad_guardada') handleMandarPublicidadGuardada(input);
+  else if(tool.name === 'registrar_cuadre') handleRegistrarCuadre(input);
+  else if(tool.name === 'crear_seccion_stake') handleCrearSeccionStake(input);
+  else if(tool.name === 'registrar_venta_stake') handleRegistrarVentaStake(input);
 }
 
 // Grupos reales de WhatsApp conectados -- cada uno con su link de invitación (para el
@@ -4134,7 +4255,7 @@ function dispatchWinTool(tool){
 // (ver /whatsapp-bot/README.md), su "jid" real -- el id interno que usa WhatsApp para ese
 // grupo (algo como "1203xxxxxxxx@g.us", se obtiene con GET /grupos del bot una vez que el
 // número dedicado se unió a cada grupo). Mientras un grupo no tenga jid, el envío sigue
-// siendo manual (copiar + abrir). El link vacío (1X2) queda pendiente hasta que lo pase.
+// siendo manual (copiar + abrir). VIP 1XBET y 1X2 ya no se manejan -- se quitaron de la lista.
 const WIN_GROUPS = [
   { nombre: 'Gratis 1', link: 'https://chat.whatsapp.com/LUr5xcMMas5LrupdiGO24p', jid: '120363407344055933@g.us' },
   { nombre: 'Gratis 2', link: 'https://chat.whatsapp.com/GvqDG0ejTRv2eWJ18aJ3De', jid: '120363429858156393@g.us' },
