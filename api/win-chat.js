@@ -53,7 +53,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         kind: { type: 'string', enum: ['nueva_apuesta', 'ganada'] },
-        destino: { type: 'string', description: 'Grupo o comunidad mencionado (VIP, 1X2, 1XBET, gratis, etc.), si lo dijo.' }
+        destino: { type: 'string', description: 'Grupo o comunidad mencionado (VIP, gratis, etc.), si lo dijo.' }
       },
       required: ['kind']
     }
