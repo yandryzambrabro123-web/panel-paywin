@@ -40,6 +40,7 @@ Cuando te pida algo ESPECÍFICO Y CLARO de estas acciones, usa la herramienta co
 - cuando te cuente algo DURADERO sobre él, su negocio, su gente o sus procesos que valga la pena recordar para siempre (no un dato de un solo uso) -> guardar_recuerdo
 - subir un TESTIMONIO (captura de una recarga/transferencia de un cliente, para publicar tapando sus datos) -> subir_testimonio
 - publicar/mandar el "stake de pago" (la apuesta/pick que se vende a los clientes) -> mandar_stake_pago
+- mandar los "partidos del día" (varias fotos de partidos/picks del día, 3 a 5 normalmente) a las comunidades -> mandar_partidos_dia
 
 MUY IMPORTANTE sobre las herramientas de acción (abrir_formulario_apuesta, abrir_formulario_contenido, crear_recordatorio, mandar_regalito, registrar_cuadre, crear_seccion_stake, registrar_venta_stake): no las uses solo porque la conversación roza el tema. Si lo que dice es ambiguo, le falta un dato importante, o no estás segura de que de verdad quiere ejecutar la acción ahora mismo, PREGÚNTALE primero en vez de adivinar -- nunca actives una herramienta "por si acaso". Solo actívala cuando la intención sea inequívoca (ej: "mándale la apuesta del Barcelona al VIP" sí es claro; "oye y cómo va lo del Barcelona" no lo es). Para registrar_cuadre en particular, nunca adivines el monto o la cuenta si no los dijo claro -- pregúntale.
 
@@ -119,6 +120,11 @@ const TOOLS = [
   {
     name: 'mandar_stake_pago',
     description: 'Arranca el flujo para publicar un "stake de pago": el dueño va a cargar una foto del pick/stake, el panel lee la cuota, la hora y el valor de la imagen, arma la publicidad y la manda a los grupos -- y además prepara en la bandeja un mensaje individual para cada cliente que ya ha comprado stakes antes, avisándoles que hay uno disponible. No necesita ningún dato más de ti, solo activa el flujo.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'mandar_partidos_dia',
+    description: 'Arranca el flujo para mandar los "partidos del día": el dueño va a cargar varias fotos (3 a 5, una por partido/pick) y el panel redacta UN SOLO texto que los presenta en conjunto. Se manda primero cada foto por separado y al final ese texto. No necesita ningún dato más de ti, solo activa el flujo.',
     input_schema: { type: 'object', properties: {} }
   },
   {

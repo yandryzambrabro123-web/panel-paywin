@@ -184,8 +184,23 @@ app.get('/grupos', requireApiKey, async (req, res) => {
   }
 });
 
+// Línea separadora que se manda sola, como mensaje aparte, justo después de cada publicación
+// a un grupo -- para que en el feed del chat quede claro dónde termina una publicidad/aviso y
+// empieza lo que sigue, en vez de que todo se vea mezclado. Es "mejor esfuerzo": si falla, no
+// tumba el envío principal (ver mandarSeparador).
+const SEPARADOR_TEXTO = '━━━━━━━━━━━━━━━━━━━━';
+async function mandarSeparador(grupoId) {
+  try {
+    await pausaHumana();
+    await sock.sendMessage(grupoId, { text: SEPARADOR_TEXTO });
+  } catch (e) {
+    console.error('No se pudo mandar el separador:', e.message);
+  }
+}
+
 // Manda un texto (y, opcionalmente, una imagen con ese texto como descripción/caption)
-// directo a un grupo. "grupoId" es el id real (ver /grupos), no el nombre.
+// directo a un grupo, y después manda la línea separadora. "grupoId" es el id real
+// (ver /grupos), no el nombre.
 app.post('/enviar', requireApiKey, async (req, res) => {
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
@@ -202,10 +217,42 @@ app.post('/enviar', requireApiKey, async (req, res) => {
     } else {
       await sock.sendMessage(grupoId, { text: texto });
     }
+    await mandarSeparador(grupoId);
     res.json({ ok: true });
   } catch (e) {
     console.error('Error mandando mensaje:', e);
     res.status(500).json({ error: 'No se pudo mandar el mensaje.', detalle: e.message });
+  }
+});
+
+// Manda un paquete de VARIAS fotos + un texto final a un grupo (ej: "partidos del día"): cada
+// foto se manda por separado, sin texto encima, en el orden recibido; al final se manda el
+// texto, y después la línea separadora -- así el feed del grupo muestra todas las fotos
+// juntas y el resumen justo después. Body: { grupoId, imagenes: [{base64, mediaType}], texto }.
+app.post('/enviar-multiple', requireApiKey, async (req, res) => {
+  if (!connected) {
+    return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
+  }
+  const { grupoId, imagenes, texto } = req.body || {};
+  if (!grupoId || !Array.isArray(imagenes) || !imagenes.length) {
+    return res.status(400).json({ error: 'Falta grupoId o las imágenes.' });
+  }
+  try {
+    for (const img of imagenes) {
+      if (!img || !img.base64) continue;
+      await pausaHumana();
+      const buffer = Buffer.from(img.base64, 'base64');
+      await sock.sendMessage(grupoId, { image: buffer, mimetype: img.mediaType || 'image/jpeg' });
+    }
+    if (texto) {
+      await pausaHumana();
+      await sock.sendMessage(grupoId, { text: texto });
+    }
+    await mandarSeparador(grupoId);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error mandando los partidos del día:', e);
+    res.status(500).json({ error: 'No se pudo mandar el paquete de fotos.', detalle: e.message });
   }
 });
 

@@ -10,7 +10,8 @@ const PROMPTS = {
   nueva_apuesta: `Vas a redactar el texto para anunciar una apuesta/pick NUEVO a una comunidad de pronósticos deportivos llamada PayWin. Usa el código/texto que te dieron y, si hay una imagen, apóyate en lo que muestra (pick, cuota, stake). Tono: emocionante, directo, con 1-2 emojis relevantes, pocas líneas, fácil de leer en WhatsApp. No inventes datos (cuota, monto) que no te hayan dado o no veas claro en la imagen.`,
   ganada: `Vas a redactar el texto para anunciar una apuesta GANADA a una comunidad de pronósticos deportivos llamada PayWin. Si hay una imagen, apóyate en lo que muestra (pick, cuota, monto ganado). Tono: celebración, corto, con emojis de fuego/dinero, para generar confianza y ganas de unirse al VIP. No inventes montos que no veas claro.`,
   contenido: `Vas a redactar el texto para publicar algo en una comunidad de pronósticos deportivos llamada PayWin (puede ser un testimonio, un anuncio, un "buenos días", publicidad de recargas/retiros o del VIP, etc.). Usa la nota/instrucción que te dieron y, si hay una imagen, describe o apóyate en lo que muestra sin inventar datos que no se vean claros. Tono: cercano, profesional, con algún emoji si calza, pocas líneas.`,
-  regalito: `Vas a redactar el texto para mandar el "regalito del día" — una apuesta de regalo/cortesía — a un cliente VIP de PayWin como agradecimiento por su recarga. Tono: cálido, de agradecimiento, breve, con 1-2 emojis. Si hay una imagen, apóyate en lo que muestra (pick, cuota).`
+  regalito: `Vas a redactar el texto para mandar el "regalito del día" — una apuesta de regalo/cortesía — a un cliente VIP de PayWin como agradecimiento por su recarga. Tono: cálido, de agradecimiento, breve, con 1-2 emojis. Si hay una imagen, apóyate en lo que muestra (pick, cuota).`,
+  partidos_dia: `Vas a redactar el texto para presentar los "PARTIDOS DEL DÍA" a una comunidad de pronósticos deportivos llamada PayWin. Te van a llegar VARIAS imágenes, una por cada partido/pick del día (cada una puede mostrar equipos, cuota, hora). Mira todas las imágenes y escribe UN SOLO texto corto que las presente en conjunto como el resumen de partidos del día -- no describas cada imagen en detalle, es solo el texto que acompaña a las fotos (que se mandan por separado, antes que este texto). Tono: emocionante, directo, con 1-2 emojis de fútbol/fuego. No inventes datos (equipos, cuotas, horas) que no veas claros en las imágenes.`
 };
 
 function extractText(text) {
@@ -30,11 +31,18 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { kind, destino, code, imageBase64, mediaType } = req.body || {};
+    const { kind, destino, code, imageBase64, mediaType, images } = req.body || {};
     const systemPrompt = PROMPTS[kind] || PROMPTS.contenido;
 
     const userContent = [];
-    if (imageBase64) {
+    if (Array.isArray(images) && images.length) {
+      // Varias imágenes a la vez (ej. "partidos del día": una foto por partido).
+      images.forEach(img => {
+        if (img && img.base64) {
+          userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType || 'image/jpeg', data: img.base64 } });
+        }
+      });
+    } else if (imageBase64) {
       userContent.push({ type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 } });
     }
     let instructionText = `Destino: ${destino || 'comunidad'}.`;

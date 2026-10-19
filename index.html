@@ -3387,7 +3387,8 @@ const WIN_TOOL_ACK = {
   mandar_paso_protocolo_manana: 'Dale, mando esa pieza ya mismo.',
   mandar_publicidad_guardada: 'Va, la mando a la bandeja.',
   subir_testimonio: 'Claro, jefe. Sube la captura.',
-  mandar_stake_pago: 'Dale, sube la foto del stake.'
+  mandar_stake_pago: 'Dale, sube la foto del stake.',
+  mandar_partidos_dia: 'Dale, sube las fotos de los partidos.'
 };
 
 // Estas tres se usan en ráfaga (varios registros por minuto) -- no esperan a que Win hable
@@ -3478,6 +3479,7 @@ function dispatchWinTool(tool){
   else if(tool.name === 'registrar_venta_stake') handleRegistrarVentaStake(input);
   else if(tool.name === 'subir_testimonio') openTestimonioUploadModal();
   else if(tool.name === 'mandar_stake_pago') openStakePagoUploadModal();
+  else if(tool.name === 'mandar_partidos_dia') openPartidosDiaModal();
 }
 
 // Grupos reales de WhatsApp conectados -- cada uno con su link de invitación (para el
@@ -3802,6 +3804,150 @@ async function submitStakePago(){
     closeModal();
     renderWin();
   }
+}
+
+// ---- Partidos del día (varias fotos + un solo texto) ----
+// A diferencia del resto de flujos (una sola imagen), aquí se suben hasta 5 fotos (una por
+// partido/pick del día) y se manda primero cada foto por separado y al final un único texto
+// que las resume -- ver api/win-enviar-multiple.js y el endpoint /enviar-multiple del bot.
+let winPartidosFiles = [];
+
+function openPartidosDiaModal(){
+  winPartidosFiles = [];
+  openModal(`
+    <h3>Partidos del día</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Sube las capturas de los partidos/picks de hoy (hasta 5). Se manda primero cada foto por separado y al final un solo texto que las resume.</div>
+    <input id="winPartidosInput" type="file" accept="image/*" multiple style="display:none;">
+    <button class="btn secondary" id="winPartidosAddBtn" type="button" style="width:100%; margin-bottom:10px;">📎 Elegir fotos</button>
+    <div id="winPartidosPreview" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
+    <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winPartidosGroups', ['Gratis 1', 'Gratis 2', 'Gratis 3'])}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winPartidosGenerateBtn">Generar y mandar</button>
+    </div>
+  `);
+  const input = document.getElementById('winPartidosInput');
+  document.getElementById('winPartidosAddBtn').onclick = ()=>input.click();
+  input.onchange = ()=>{
+    const espacio = Math.max(0, 5 - winPartidosFiles.length);
+    [...input.files].slice(0, espacio).forEach(f=>winPartidosFiles.push(f));
+    renderWinPartidosPreview();
+    input.value = '';
+  };
+  document.getElementById('winPartidosGenerateBtn').onclick = submitPartidosDia;
+  renderWinPartidosPreview();
+}
+
+function renderWinPartidosPreview(){
+  const wrap = document.getElementById('winPartidosPreview');
+  if(!wrap) return;
+  wrap.innerHTML = winPartidosFiles.map((f, i)=>`
+    <div style="position:relative; width:72px; height:72px;">
+      <img data-win-partido-thumb="${i}" style="width:72px; height:72px; object-fit:cover; border-radius:8px; display:block;">
+      <button data-win-partido-remove="${i}" type="button" style="position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; border:none; background:#c0392b; color:#fff; font-size:11px; line-height:1; cursor:pointer;">✕</button>
+    </div>`).join('') + (winPartidosFiles.length >= 5 ? `<div style="font-size:11px; color:var(--muted); align-self:center;">Máximo 5 fotos</div>` : '');
+  winPartidosFiles.forEach((f, i)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{ const img = wrap.querySelector(`[data-win-partido-thumb="${i}"]`); if(img) img.src = reader.result; };
+    reader.readAsDataURL(f);
+  });
+  wrap.querySelectorAll('[data-win-partido-remove]').forEach(btn=>{
+    btn.onclick = ()=>{ winPartidosFiles.splice(Number(btn.dataset.winPartidoRemove), 1); renderWinPartidosPreview(); };
+  });
+}
+
+async function submitPartidosDia(){
+  const grupos = getCheckedWinGroups('f-winPartidosGroups');
+  if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
+  if(!winPartidosFiles.length){ alert('Sube al menos una foto de un partido.'); return; }
+  openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
+  try{
+    const images = [];
+    for(const file of winPartidosFiles){
+      const { base64, mediaType } = await fileToCompressedImage(file);
+      images.push({ base64, mediaType });
+    }
+    const thumbs = await Promise.all(winPartidosFiles.map(f=>fileToThumbnail(f).catch(()=>'')));
+    const res = await fetch('/api/win-redactar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'partidos_dia', destino: grupos.join(', '), images })
+    });
+    const result = await res.json().catch(()=>({}));
+    const caption = (result && result.caption) || 'Estos son los partidos de hoy. 🔥⚽';
+    openWinPartidosConfirm(grupos, caption, thumbs, images);
+  }catch(e){
+    console.error(e);
+    alert('No se pudo generar el texto. Intenta de nuevo.');
+    closeModal();
+    renderWin();
+  }
+}
+
+function openWinPartidosConfirm(grupos, caption, thumbs, images){
+  const groupButtonsHTML = grupos.map((g, i) => {
+    const jid = winGroupJid(g);
+    const link = winGroupLink(g);
+    if(jid){
+      return `<button class="btn ${i===0 ? '' : 'secondary'}" data-win-partidos-auto="${encodeURIComponent(g)}" style="width:100%; margin-bottom:8px;">Mandar directo a "${g}" (${images.length} fotos + texto)</button>`;
+    }
+    return `<button class="btn secondary" data-win-send-group="${encodeURIComponent(g)}" style="width:100%; margin-bottom:8px;">${link ? `Copiar texto y abrir "${g}" (las fotos van a mano)` : `Copiar texto (falta link de "${g}")`}</button>`;
+  }).join('');
+  openModal(`
+    <h3>Así quedó el texto de los partidos del día</h3>
+    <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">${thumbs.filter(Boolean).map(t=>`<img src="${t}" style="width:60px; height:60px; object-fit:cover; border-radius:8px;">`).join('')}</div>
+    <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:120px;">${escapeForTextarea(caption)}</textarea></div>
+    <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Se manda primero cada foto por separado y al final este texto, con una línea separadora después para no mezclarse con lo que siga.</div>
+    ${groupButtonsHTML}
+    <div class="modal-actions">
+      <button class="btn secondary" id="winCaptionDoneBtn">Listo, cerrar</button>
+    </div>
+  `);
+  document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
+
+  document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
+    const grupo = decodeURIComponent(btn.dataset.winSendGroup);
+    btn.onclick = ()=>{
+      const box = document.getElementById('f-winCaptionConfirm');
+      const finalCaption = (box && box.value.trim()) || caption;
+      const link = winGroupLink(grupo);
+      try{ navigator.clipboard.writeText(finalCaption); }catch(e){}
+      if(link) window.open(link, '_blank');
+      else alert(`Todavía no tengo el link de "${grupo}". El texto ya quedó copiado -- mándalo a mano por esta vez.`);
+      pushToOutbox('partidos_dia', grupo, finalCaption, thumbs[0] || '', true, 'enviado').then(()=>persist('winOutbox'));
+      btn.textContent = link ? 'Copiado y grupo abierto ✓' : 'Texto copiado ✓';
+      btn.disabled = true;
+      btn.classList.add('secondary');
+    };
+  });
+
+  document.querySelectorAll('[data-win-partidos-auto]').forEach(btn=>{
+    const grupo = decodeURIComponent(btn.dataset.winPartidosAuto);
+    const textoOriginal = btn.textContent;
+    btn.onclick = async ()=>{
+      const box = document.getElementById('f-winCaptionConfirm');
+      const finalCaption = (box && box.value.trim()) || caption;
+      const jid = winGroupJid(grupo);
+      btn.disabled = true;
+      btn.textContent = 'Mandando...';
+      try{
+        const res = await fetch('/api/win-enviar-multiple', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ grupoId: jid, imagenes: images, texto: finalCaption })
+        });
+        const result = await res.json().catch(()=>({}));
+        if(!res.ok || !result.ok) throw new Error(result.error || 'No se pudo mandar.');
+        await pushToOutbox('partidos_dia', grupo, finalCaption, thumbs[0] || '', true, 'enviado');
+        await persist('winOutbox');
+        btn.textContent = `Mandado a "${grupo}" ✓`;
+        btn.classList.add('secondary');
+      }catch(e){
+        console.error(e);
+        alert(`No se pudo mandar automático a "${grupo}": ${e.message}`);
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+      }
+    };
+  });
 }
 
 async function submitWinBet(kind){
