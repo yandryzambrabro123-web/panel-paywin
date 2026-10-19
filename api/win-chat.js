@@ -33,6 +33,7 @@ Cuando te pida algo ESPECÍFICO Y CLARO de estas acciones, usa la herramienta co
 - subir algo a la comunidad que no es una apuesta (testimonio, anuncio, flyer, "buenos días", publicidad) -> abrir_formulario_contenido. La imagen ahí es OPCIONAL -- si el dueño dice que quiere mandar solo texto, sin imagen, respeta eso y no insistas en que suba una foto.
 - que le recuerdes algo más adelante (una cita, una entrega, una tarea) -> crear_recordatorio
 - mandar el "regalito del día" a los clientes que tiene marcados como pendientes -> mandar_regalito
+- mandar ya mismo el protocolo fijo de la mañana (lo mismo que se manda solo todos los días a las 8am a las comunidades gratis, más el "buenos días" al VIP) -> mandar_protocolo_manana. Si ya se mandó hoy (a mano o automático), el panel mismo avisa que no lo repite -- tú no tienes que verificar eso.
 - registrar un movimiento de dinero en el Cuadre Financiero (un ingreso o un egreso en una cuenta/caja) -> registrar_cuadre. Ej: "registra un ingreso de 20 dólares en Banco Pichincha" -> cuenta:"Banco Pichincha", tipo:"ingreso", monto:20.
 - crear una nueva sección/fecha para vender stakes -> crear_seccion_stake. Ej: "crea una nueva sección de stakes para el 20 de octubre" -> fecha:"2026-10-20".
 - registrar que alguien compró un stake -> registrar_venta_stake. Ej: "registra una compra de Juan Pérez" -> nombre:"Juan Pérez". Esta NUNCA la decides tú sola si el nombre no quedó claro -- si lo entendiste bien, actívala siempre (el panel ya se encarga de avisar si ese comprador no está registrado, tú no tienes que verificarlo).
@@ -86,6 +87,11 @@ const TOOLS = [
   {
     name: 'mandar_regalito',
     description: 'Manda el "regalito del día" a todos los clientes marcados como pendientes de regalito.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'mandar_protocolo_manana',
+    description: 'Manda ya mismo todo el protocolo fijo de la mañana (buenos días + publicidades de siempre) a las comunidades gratis, y el "buenos días" también al VIP -- lo mismo que se manda solo todos los días a las 8am. Si ya se mandó hoy, no hace nada (el panel avisa que no lo repite).',
     input_schema: { type: 'object', properties: {} }
   },
   {

@@ -2333,6 +2333,22 @@ function findWinTemplateByName(nombre){
   return match || null;
 }
 
+// Dispara el protocolo fijo de la mañana (ver api/win-protocolo-manana.js) ya mismo, en vez de
+// esperar a las 8am -- el mismo endpoint que corre solo con Vercel Cron todos los días. Si ya se
+// mandó hoy (a mano o automático), el propio endpoint avisa que no lo repite.
+async function handleMandarProtocoloManana(){
+  try{
+    const res = await fetch('/api/win-protocolo-manana', { method: 'POST' });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data.ok) throw new Error(data.error || 'No se pudo mandar.');
+    if(data.skipped) winSpeak('El protocolo de hoy ya se había mandado -- no lo repito.');
+    else winSpeak('Listo, jefe. Mandé el protocolo completo de la mañana.');
+  }catch(e){
+    console.error(e);
+    winSpeak('No se pudo mandar el protocolo. Revisa la conexión e intenta de nuevo.');
+  }
+}
+
 async function handleMandarPublicidadGuardada(input){
   const nombre = (input.nombre || '').trim();
   const tpl = findWinTemplateByName(nombre);
@@ -2813,6 +2829,7 @@ const WIN_TOOL_ACK = {
   abrir_formulario_contenido: 'Va, sube la imagen.',
   crear_recordatorio: 'Listo, te lo anoto.',
   mandar_regalito: 'Dale, vamos con el regalito del día.',
+  mandar_protocolo_manana: 'Dale, mando el protocolo completo.',
   mandar_publicidad_guardada: 'Va, la mando a la bandeja.'
 };
 
@@ -2896,6 +2913,7 @@ function dispatchWinTool(tool){
   else if(tool.name === 'abrir_formulario_contenido') openWinContentForm(input.nota || '', input.destino || '');
   else if(tool.name === 'crear_recordatorio') openWinReminderForm(input.texto || '', input.fecha || '', input.hora || '');
   else if(tool.name === 'mandar_regalito') openWinGiftFlow();
+  else if(tool.name === 'mandar_protocolo_manana') handleMandarProtocoloManana();
   else if(tool.name === 'mandar_publicidad_guardada') handleMandarPublicidadGuardada(input);
   else if(tool.name === 'registrar_cuadre') handleRegistrarCuadre(input);
   else if(tool.name === 'crear_seccion_stake') handleCrearSeccionStake(input);
