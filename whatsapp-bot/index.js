@@ -27,6 +27,8 @@ if (typeof global.crypto === 'undefined') {
   global.crypto = require('node:crypto').webcrypto;
 }
 
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const {
   default: makeWASocket,
@@ -184,15 +186,26 @@ app.get('/grupos', requireApiKey, async (req, res) => {
   }
 });
 
-// Línea separadora que se manda sola, como mensaje aparte, justo después de cada publicación
-// a un grupo -- para que en el feed del chat quede claro dónde termina una publicidad/aviso y
-// empieza lo que sigue, en vez de que todo se vea mezclado. Es "mejor esfuerzo": si falla, no
-// tumba el envío principal (ver mandarSeparador).
-const SEPARADOR_TEXTO = '━━━━━━━━━━━━━━━━━━━━';
+// Sticker separador (en vez de la línea de texto de antes) que se manda solo, como mensaje
+// aparte, justo después de cada publicación a un grupo -- para que en el feed del chat quede
+// claro dónde termina una publicidad/aviso y empieza lo que sigue. Es siempre el mismo sticker
+// fijo (logo "PayWin", generado una sola vez como assets/separador.webp -- ver ese archivo si
+// hay que rediseñarlo). Es "mejor esfuerzo": si falla, no tumba el envío principal.
+const SEPARADOR_STICKER_PATH = path.join(__dirname, 'assets', 'separador.webp');
+let separadorStickerBuffer = null;
+try {
+  separadorStickerBuffer = fs.readFileSync(SEPARADOR_STICKER_PATH);
+} catch (e) {
+  console.error('No se encontró el sticker separador en', SEPARADOR_STICKER_PATH, '-- se usará una línea de texto de respaldo.', e.message);
+}
 async function mandarSeparador(grupoId) {
   try {
     await pausaHumana();
-    await sock.sendMessage(grupoId, { text: SEPARADOR_TEXTO });
+    if (separadorStickerBuffer) {
+      await sock.sendMessage(grupoId, { sticker: separadorStickerBuffer });
+    } else {
+      await sock.sendMessage(grupoId, { text: '━━━━━━━━━━━━━━━━━━━━' });
+    }
   } catch (e) {
     console.error('No se pudo mandar el separador:', e.message);
   }
