@@ -202,12 +202,18 @@ async function mandarSeparador(grupoId) {
   try {
     await pausaHumana();
     if (separadorStickerBuffer) {
-      await sock.sendMessage(grupoId, { sticker: separadorStickerBuffer });
-    } else {
-      await sock.sendMessage(grupoId, { text: '━━━━━━━━━━━━━━━━━━━━' });
+      try {
+        await sock.sendMessage(grupoId, { sticker: separadorStickerBuffer, mimetype: 'image/webp' });
+        return;
+      } catch (e) {
+        // Si el sticker falla, se avisa en los logs con el detalle y se manda la línea de
+        // texto de respaldo para que igual quede marcado dónde termina la publicación.
+        console.error('No se pudo mandar el sticker separador a', grupoId, '--', e && (e.stack || e.message || e));
+      }
     }
+    await sock.sendMessage(grupoId, { text: '━━━━━━━━━━━━━━━━━━━━' });
   } catch (e) {
-    console.error('No se pudo mandar el separador:', e.message);
+    console.error('No se pudo mandar el separador:', e && (e.stack || e.message || e));
   }
 }
 
