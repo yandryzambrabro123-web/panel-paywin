@@ -229,10 +229,28 @@ module.exports = async function handler(req, res) {
     }
 
     // El historial llega como [{role:'user'|'assistant', content:'texto'}], tal cual lo pide la API.
-    const cleanMessages = messages
+    // Anthropic EXIGE que los roles se alternen (user, assistant, user, assistant...) y que el
+    // primer mensaje sea de "user" -- si dos mensajes seguidos quedan del mismo lado (ej: si una
+    // llamada anterior falló a medio camino y no se guardó la respuesta de Win), la API devuelve
+    // un 400 "invalid_request_error" y la conversación se queda trabada para siempre, repitiendo
+    // el mismo error en cada intento. Por eso acá se fusionan los mensajes seguidos del mismo rol
+    // (con salto de línea entre ellos) y se descarta cualquier mensaje de "assistant" que quede
+    // primero, antes de mandarlo a la API.
+    const rawMessages = messages
       .filter(m => m && m.content && typeof m.content === 'string')
       .slice(-20)
       .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+    const cleanMessages = [];
+    for (const m of rawMessages) {
+      const last = cleanMessages[cleanMessages.length - 1];
+      if (last && last.role === m.role) last.content += `\n${m.content}`;
+      else cleanMessages.push({ role: m.role, content: m.content });
+    }
+    while (cleanMessages.length && cleanMessages[0].role !== 'user') cleanMessages.shift();
+    if (!cleanMessages.length) {
+      res.status(400).json({ error: 'No llegó ninguna conversación válida.' });
+      return;
+    }
 
     const memoryLines = Array.isArray(memory) ? memory.filter(x => typeof x === 'string').slice(-80) : [];
     const templateNames = Array.isArray(publicidades) ? publicidades.filter(x => typeof x === 'string').slice(-60) : [];
