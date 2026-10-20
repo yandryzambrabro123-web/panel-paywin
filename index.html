@@ -681,7 +681,11 @@ function coerceRow(key, row){
     return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]') };
   }
   if(key === 'stakeSales'){
-    return { id:String(row.id||''), sectionId:String(row.sectionId||''), day:row.day||'', name:row.name||'', phone:row.phone||'', amount:Number(row.amount)||0, status:row.status||'paid' };
+    // name/phone forzados a String: si en la hoja alguien quedó con el nombre o el teléfono
+    // guardado como número (ej. un nombre que es puro dígitos), JSON.parse los trae como number,
+    // no como string -- y un .trim() más adelante (ver getKnownBuyers) tronaba con "no es una
+    // función" sobre ese valor, dejando sin cargar a TODOS los compradores, no solo a ese.
+    return { id:String(row.id||''), sectionId:String(row.sectionId||''), day:row.day||'', name:String(row.name||''), phone:String(row.phone||''), amount:Number(row.amount)||0, status:row.status||'paid' };
   }
   if(key === 'stakeSections'){
     return { id:String(row.id||''), day:row.day||'', title:row.title||'Stake', price:Number(row.price)||0 };
@@ -1617,8 +1621,12 @@ function openStakeSectionForm(editId){
 function getKnownBuyers(){
   const map = new Map();
   state.stakeSales.forEach(s=>{
-    if(!s.name) return;
-    map.set(s.name.trim().toLowerCase(), { name: s.name.trim(), phone: s.phone||'' });
+    // String(...) por si acaso -- si algún registro viejo quedó con el nombre o teléfono como
+    // número en vez de texto, un .trim() directo sobre eso tronaba y dejaba sin cargar a nadie.
+    const name = String(s.name||'').trim();
+    const phone = String(s.phone||'').trim();
+    if(!name) return;
+    map.set(name.toLowerCase(), { name, phone });
   });
   return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name));
 }
@@ -2842,7 +2850,7 @@ async function cargarContactosDeVentaStakes(){
     openWinDifusionModal();
   }catch(e){
     console.error(e);
-    alert('No se pudo cargar los contactos. Intenta de nuevo.');
+    alert(`No se pudo cargar los contactos: ${e && e.message ? e.message : e}`);
     if(btn){ btn.disabled = false; btn.textContent = 'Cargar de Venta de Stakes'; }
   }
 }
