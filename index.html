@@ -3632,6 +3632,7 @@ const WIN_TOOL_ACK = {
   subir_testimonio: 'Claro, jefe. Sube la captura.',
   mandar_stake_pago: 'Dale, sube la foto del stake.',
   mandar_partidos_dia: 'Dale, sube las fotos de los partidos.',
+  mandar_collage: 'Dale, sube las capturas para el collage.',
   abrir_difusion: 'Va, te abro las listas de difusión.'
 };
 
@@ -3724,6 +3725,7 @@ function dispatchWinTool(tool){
   else if(tool.name === 'subir_testimonio') openTestimonioUploadModal();
   else if(tool.name === 'mandar_stake_pago') openStakePagoUploadModal();
   else if(tool.name === 'mandar_partidos_dia') openPartidosDiaModal();
+  else if(tool.name === 'mandar_collage') openCollageUploadModal();
   else if(tool.name === 'abrir_difusion') handleAbrirDifusion(input);
 }
 
@@ -3941,6 +3943,135 @@ async function submitTestimonio(){
   }catch(e){
     console.error(e);
     alert('No se pudo procesar el testimonio. Intenta de nuevo.');
+    closeModal();
+    renderWin();
+  }
+}
+
+// ---------- Collage de comprobantes (varios testimonios en una sola imagen) ----------
+// Igual que un testimonio normal, pero con varias capturas a la vez: cada una se lee y se tapa
+// por separado (mismo buildRedactedImage de arriba -- solo queda visible el monto de cada una),
+// y recién al final se acomodan todas juntas en una sola imagen tipo collage para publicar.
+let winCollageFiles = [];
+
+function openCollageUploadModal(){
+  winCollageFiles = [];
+  openModal(`
+    <h3>Collage de comprobantes</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube las capturas de recarga/transferencia de hoy (2 a 10). Win tapa con negro todo menos el monto en CADA una, antes de armarlas juntas en una sola imagen -- revisa bien el resultado antes de publicar.</div>
+    <input id="winCollageInput" type="file" accept="image/*" multiple style="display:none;">
+    <button class="btn secondary" id="winCollageAddBtn" type="button" style="width:100%; margin-bottom:10px;">📎 Elegir capturas</button>
+    <div id="winCollagePreview" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
+    <div class="field"><label>¿A qué grupo va?</label>${winGroupPickerHTML('f-collageGroups', ['Gratis 1', 'Gratis 2', 'Gratis 3'])}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="winCollageGenerateBtn">Procesar y armar collage</button>
+    </div>
+  `);
+  const input = document.getElementById('winCollageInput');
+  document.getElementById('winCollageAddBtn').onclick = ()=>input.click();
+  input.onchange = ()=>{
+    const espacio = Math.max(0, 10 - winCollageFiles.length);
+    [...input.files].slice(0, espacio).forEach(f=>winCollageFiles.push(f));
+    renderWinCollagePreview();
+    input.value = '';
+  };
+  document.getElementById('winCollageGenerateBtn').onclick = submitCollage;
+  renderWinCollagePreview();
+}
+
+function renderWinCollagePreview(){
+  const wrap = document.getElementById('winCollagePreview');
+  if(!wrap) return;
+  wrap.innerHTML = winCollageFiles.map((f, i)=>`
+    <div style="position:relative; width:72px; height:72px;">
+      <img data-win-collage-thumb="${i}" style="width:72px; height:72px; object-fit:cover; border-radius:8px; display:block;">
+      <button data-win-collage-remove="${i}" type="button" style="position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; border:none; background:#c0392b; color:#fff; font-size:11px; line-height:1; cursor:pointer;">✕</button>
+    </div>`).join('') + (winCollageFiles.length >= 10 ? `<div style="font-size:11px; color:var(--muted); align-self:center;">Máximo 10</div>` : '');
+  winCollageFiles.forEach((f, i)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{ const img = wrap.querySelector(`[data-win-collage-thumb="${i}"]`); if(img) img.src = reader.result; };
+    reader.readAsDataURL(f);
+  });
+  wrap.querySelectorAll('[data-win-collage-remove]').forEach(btn=>{
+    btn.onclick = ()=>{ winCollageFiles.splice(Number(btn.dataset.winCollageRemove), 1); renderWinCollagePreview(); };
+  });
+}
+
+// Acomoda varios canvases ya censurados en una sola imagen tipo cuadrícula, cada uno dentro de
+// su propia celda cuadrada (sin recortarlo -- lo que no entra queda con fondo oscuro alrededor,
+// igual que el fondo del panel, para que no se note como un "parche").
+function buildCollageImage(canvases){
+  const n = canvases.length;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const gap = 10;
+  const targetW = 1200;
+  const cell = Math.max(160, Math.floor((targetW - gap * (cols + 1)) / cols));
+  const totalW = cols * cell + (cols + 1) * gap;
+  const totalH = rows * cell + (rows + 1) * gap;
+  const out = document.createElement('canvas');
+  out.width = totalW; out.height = totalH;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#0D1117';
+  ctx.fillRect(0, 0, totalW, totalH);
+  canvases.forEach((c, i)=>{
+    const col = i % cols, row = Math.floor(i / cols);
+    const cx = gap + col * (cell + gap);
+    const cy = gap + row * (cell + gap);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(cx, cy, cell, cell);
+    const scale = Math.min(cell / c.width, cell / c.height);
+    const dw = c.width * scale, dh = c.height * scale;
+    ctx.drawImage(c, cx + (cell - dw) / 2, cy + (cell - dh) / 2, dw, dh);
+  });
+  return out;
+}
+
+async function submitCollage(){
+  const grupos = getCheckedWinGroups('f-collageGroups');
+  if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
+  if(winCollageFiles.length < 2){ alert('Sube al menos 2 capturas para armar el collage.'); return; }
+  openModal(`<h3>Procesando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Leyendo cada comprobante y tapando los datos. Esto toma unos segundos.</div>`);
+  try{
+    const resultados = await Promise.all(winCollageFiles.map(async (file)=>{
+      try{
+        const { base64, mediaType } = await fileToCompressedImage(file);
+        const res = await withTimeout(fetch('/api/leer-testimonio', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: base64, mediaType })
+        }), 25000);
+        const result = await res.json().catch(()=>({}));
+        if(!res.ok || !result.montos || !result.montos.length) return null;
+        return await buildRedactedImage(file, result.montos);
+      }catch(e){ console.error('No se pudo procesar una de las capturas del collage:', e); return null; }
+    }));
+    const canvases = resultados.filter(Boolean);
+    if(!canvases.length){
+      alert('No pude identificar el monto con seguridad en ninguna de las capturas, así que no voy a arriesgarme a publicarlas. Intenta con fotos más claras.');
+      closeModal();
+      renderWin();
+      return;
+    }
+    const collageCanvas = buildCollageImage(canvases);
+    const compressed = canvasToCompressed(collageCanvas);
+    const thumb = canvasToThumbnail(collageCanvas);
+    let caption = `🙌 ${canvases.length} clientes confiaron en nosotros hoy. 🔥`;
+    try{
+      const res2 = await withTimeout(fetch('/api/win-redactar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'collage', destino: grupos.join(', ') })
+      }), 20000);
+      const data2 = await res2.json().catch(()=>({}));
+      if(data2 && data2.caption) caption = data2.caption;
+    }catch(e){ console.error('No se pudo redactar el texto del collage, se usa uno por defecto:', e); }
+
+    const faltantes = winCollageFiles.length - canvases.length;
+    openWinCaptionConfirm('contenido', grupos, caption, thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType });
+    if(faltantes) setTimeout(()=>alert(`Ojo: ${faltantes} de las ${winCollageFiles.length} capturas no se pudieron leer bien y se quedaron FUERA del collage (por seguridad, no se publican si no se detecta el monto con claridad).`), 300);
+  }catch(e){
+    console.error(e);
+    alert('No se pudo armar el collage. Intenta de nuevo.');
     closeModal();
     renderWin();
   }

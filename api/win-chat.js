@@ -41,6 +41,7 @@ Cuando te pida algo ESPECÍFICO Y CLARO de estas acciones, usa la herramienta co
 - subir un TESTIMONIO (captura de una recarga/transferencia de un cliente, para publicar tapando sus datos) -> subir_testimonio
 - publicar/mandar el "stake de pago" (la apuesta/pick que se vende a los clientes) -> mandar_stake_pago
 - mandar los "partidos del día" (varias fotos de partidos/picks del día, 3 a 5 normalmente) a las comunidades -> mandar_partidos_dia
+- armar y mandar un COLLAGE de varios comprobantes de recarga/pago de clientes en una sola imagen (ej. "junta los comprobantes de hoy en un collage") -> mandar_collage. Cada comprobante se tapa automáticamente igual que un testimonio (solo se ve el monto) antes de juntarlos.
 - mandar/abrir una DIFUSIÓN (aviso o promo masiva directo al WhatsApp de una lista de clientes: clientes de stakes, clientes fuertes, clientes de Más Parlay, Ecuabet u OneXBet) -> abrir_difusion. Si dijo claramente a qué lista (ej. "mándale una difusión a los clientes fuertes"), pon esa lista en "lista" (stakes, fuertes, mas_parlay, ecuabet u onexbet). Si no dijo cuál, no adivines -- deja "lista" vacío y el panel le va a preguntar.
 
 MUY IMPORTANTE sobre las herramientas de acción (abrir_formulario_apuesta, abrir_formulario_contenido, crear_recordatorio, mandar_regalito, registrar_cuadre, crear_seccion_stake, registrar_venta_stake): no las uses solo porque la conversación roza el tema. Si lo que dice es ambiguo, le falta un dato importante, o no estás segura de que de verdad quiere ejecutar la acción ahora mismo, PREGÚNTALE primero en vez de adivinar -- nunca actives una herramienta "por si acaso". Solo actívala cuando la intención sea inequívoca (ej: "mándale la apuesta del Barcelona al VIP" sí es claro; "oye y cómo va lo del Barcelona" no lo es). Para registrar_cuadre en particular, nunca adivines el monto o la cuenta si no los dijo claro -- pregúntale.
@@ -126,6 +127,11 @@ const TOOLS = [
   {
     name: 'mandar_partidos_dia',
     description: 'Arranca el flujo para mandar los "partidos del día": el dueño va a cargar varias fotos (3 a 5, una por partido/pick) y el panel redacta UN SOLO texto que los presenta en conjunto. Se manda primero cada foto por separado y al final ese texto. No necesita ningún dato más de ti, solo activa el flujo.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'mandar_collage',
+    description: 'Arranca el flujo para armar un COLLAGE: el dueño va a cargar varias capturas de comprobantes de recarga/pago (2 a 10) y el panel tapa automáticamente cada una (igual que un testimonio, solo queda visible el monto) y las junta en una sola imagen con un texto para publicar. No necesita ningún dato más de ti, solo activa el flujo.',
     input_schema: { type: 'object', properties: {} }
   },
   {
