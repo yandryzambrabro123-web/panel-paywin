@@ -2985,28 +2985,66 @@ function openWinDifusionComposeModal(listaId){
   openModal(`
     <h3>Mandar difusión -- ${winDifusionListaNombre(listaId)}</h3>
     <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">${contactos.length} contacto${contactos.length===1?'':'s'} con teléfono. Se manda directo a cada uno, uno por minuto, con varias versiones distintas del mismo mensaje para que no se vea todo igual -- sin revisión manual, como pediste.</div>
-    <div class="field"><label>¿Qué quieres avisar?</label><textarea id="f-winDifMensaje" placeholder="Ej: tenemos una promo de recarga con bono doble hoy hasta las 9pm"></textarea></div>
+    <div class="field"><label>¿Qué quieres avisar?</label><textarea id="f-winDifNota" placeholder="Ej: tenemos una promo de recarga con bono doble hoy hasta las 9pm"></textarea></div>
+    <div style="display:flex; gap:8px; margin:-4px 0 14px;">
+      <button class="btn secondary" type="button" id="winDifMicBtn" style="flex:1; font-size:12.5px;">🎤 Dictar</button>
+      <button class="btn" type="button" id="winDifGenerarBtn" style="flex:1; font-size:12.5px;" ${contactos.length ? '' : 'disabled'}>✨ Generar texto</button>
+    </div>
+    <div id="winDifPreviewWrap"></div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" id="winDifSendBtn" ${contactos.length ? '' : 'disabled'}>Mandar a los ${contactos.length}</button>
     </div>
   `);
-  document.getElementById('winDifSendBtn').onclick = ()=>submitWinDifusion(listaId, contactos);
+  document.getElementById('winDifMicBtn').onclick = ()=>winDictarEnCampo('f-winDifNota', document.getElementById('winDifMicBtn'));
+  document.getElementById('winDifGenerarBtn').onclick = ()=>generarPreviewDifusion(listaId, contactos);
+}
+
+// Paso 1: Win redacta UNA versión base (asertiva, directa -- el mismo tono que pediste para las
+// publicaciones) a partir de la nota/dictado del dueño. La puede revisar, pedir otra versión
+// (🔄) o dictarle/escribirle un ajuste (🎤) antes de mandar -- igual que en apuestas/contenido.
+async function generarPreviewDifusion(listaId, contactos){
+  const nota = document.getElementById('f-winDifNota').value.trim();
+  if(!nota){ alert('Escribe o dicta qué quieres avisar.'); return; }
+  const btn = document.getElementById('winDifGenerarBtn');
+  btn.disabled = true; btn.textContent = 'Generando...';
+  try{
+    const destino = winDifusionListaNombre(listaId);
+    const res = await withTimeout(fetch('/api/win-redactar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'difusion_preview', destino, code: nota })
+    }), 20000);
+    const data = await res.json().catch(()=>({}));
+    const caption = (data && data.caption) || nota;
+    const wrap = document.getElementById('winDifPreviewWrap');
+    wrap.innerHTML = `
+      <div class="field"><label>Así quedó (puedes editarlo antes de mandar)</label><textarea id="f-winCaptionConfirm" style="min-height:100px;">${escapeForTextarea(caption)}</textarea></div>
+      ${winCaptionToolsHTML()}
+      <button class="btn" id="winDifSendBtn" style="width:100%; margin-bottom:8px;">Mandar a los ${contactos.length}</button>
+    `;
+    wireWinCaptionTools({ kind: 'difusion_preview', destino, code: nota });
+    document.getElementById('winDifSendBtn').onclick = ()=>submitWinDifusion(listaId, contactos);
+  }catch(e){
+    console.error(e);
+    alert('No se pudo generar el texto. Intenta de nuevo.');
+  }finally{
+    btn.disabled = false; btn.textContent = '✨ Generar texto';
+  }
 }
 
 async function submitWinDifusion(listaId, contactos){
-  const instruccion = document.getElementById('f-winDifMensaje').value.trim();
-  if(!instruccion){ alert('Escribe qué quieres avisar.'); return; }
+  const box = document.getElementById('f-winCaptionConfirm');
+  const base = box ? box.value.trim() : '';
+  if(!base){ alert('Genera o escribe el texto primero.'); return; }
   if(!contactos.length){ alert('No hay contactos con teléfono en esta lista.'); return; }
   const btn = document.getElementById('winDifSendBtn');
   btn.disabled = true; btn.textContent = 'Mandando...';
   try{
     const cantidad = Math.max(1, Math.min(6, contactos.length));
-    let variantes = [instruccion];
+    let variantes = [base];
     try{
       const res = await withTimeout(fetch('/api/win-redactar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modo: 'difusion', instruccion, cantidad })
+        body: JSON.stringify({ modo: 'difusion', instruccion: base, cantidad })
       }), 20000);
       const data = await res.json().catch(()=>({}));
       if(res.ok && Array.isArray(data.variantes) && data.variantes.length) variantes = data.variantes;
@@ -4433,11 +4471,11 @@ async function winRegenerateCaption(redactCtx, ajuste){
 }
 
 // Graba un audio cortito con un stream propio (no toca el micrófono principal de Win/el orbe),
-// lo manda a transcribir (mismo /api/win-transcribir que usa el dictado por voz normal) y pide
-// un texto nuevo con esa instrucción como "ajuste". Toca una vez para grabar, otra vez para
-// mandar -- igual que "mantén para hablar", pero sin mantener tocado.
-async function winCaptionAjusteToggleMic(redactCtx){
-  const btn = document.getElementById('winCaptionMicBtn');
+// lo manda a transcribir (mismo /api/win-transcribir que usa el dictado por voz normal) y pasa
+// el texto resultante a "onTranscribed". Toca una vez para grabar, otra vez para mandar -- igual
+// que "mantén para hablar", pero sin mantener tocado. Reusable: lo usan tanto el micrófono de
+// "dictar" (solo llena un campo) como el de "decirle cómo ajustar" (dispara una regeneración).
+async function winToggleMicRecording(btn, onTranscribed){
   if(winAjusteRecording){
     if(winAjusteRecorder) try{ winAjusteRecorder.stop(); }catch(e){}
     return;
@@ -4446,20 +4484,21 @@ async function winCaptionAjusteToggleMic(redactCtx){
   try{
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   }catch(e){
-    alert('No se pudo acceder al micrófono. Dale permiso del navegador, o escribe el ajuste directo en el texto.');
+    alert('No se pudo acceder al micrófono. Dale permiso del navegador, o escríbelo directo en el texto.');
     return;
   }
   winAjusteStream = stream;
   const mimeType = winPTTPickMimeType();
   winAjusteRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
   winAjusteChunks = [];
+  const textoOriginal = btn ? btn.textContent : '';
   winAjusteRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) winAjusteChunks.push(e.data); };
   winAjusteRecorder.onstop = async ()=>{
     winAjusteRecording = false;
     try{ winAjusteStream.getTracks().forEach(t=>t.stop()); }catch(e){}
     if(btn){ btn.disabled = true; btn.textContent = 'Escuchando...'; }
     if(!winAjusteChunks.length){
-      if(btn){ btn.disabled = false; btn.textContent = '🎤 Decirle cómo'; }
+      if(btn){ btn.disabled = false; btn.textContent = textoOriginal; }
       return;
     }
     const blob = new Blob(winAjusteChunks, { type: winAjusteRecorder.mimeType || mimeType || 'audio/mp4' });
@@ -4477,18 +4516,36 @@ async function winCaptionAjusteToggleMic(redactCtx){
       }), 20000);
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.text) throw new Error((data && data.error) || 'No se pudo transcribir.');
-      if(btn) btn.textContent = 'Generando...';
-      await winRegenerateCaption(redactCtx, data.text.trim());
+      await onTranscribed(data.text.trim());
     }catch(e){
-      console.error('Error transcribiendo el ajuste:', e);
-      alert('No te escuché bien. Intenta de nuevo o escribe el ajuste directo en el texto.');
+      console.error('Error transcribiendo:', e);
+      alert('No te escuché bien. Intenta de nuevo o escríbelo directo en el texto.');
     }finally{
-      if(btn){ btn.disabled = false; btn.textContent = '🎤 Decirle cómo'; }
+      if(btn){ btn.disabled = false; btn.textContent = textoOriginal; }
     }
   };
   winAjusteRecorder.start();
   winAjusteRecording = true;
   if(btn) btn.textContent = '⏹ Grabando... toca para mandar';
+}
+
+function winCaptionAjusteToggleMic(redactCtx){
+  const btn = document.getElementById('winCaptionMicBtn');
+  winToggleMicRecording(btn, async (texto)=>{
+    if(btn) btn.textContent = 'Generando...';
+    await winRegenerateCaption(redactCtx, texto);
+  });
+}
+
+// Dicta DIRECTO dentro de un campo de texto (sin pasar por la IA) -- se usa, por ejemplo, para
+// contarle a Win qué quieres avisar en una difusión, en vez de escribirlo a mano.
+function winDictarEnCampo(targetId, btn){
+  winToggleMicRecording(btn, async (texto)=>{
+    const el = document.getElementById(targetId);
+    if(!el) return;
+    const actual = el.value.trim();
+    el.value = actual ? `${actual} ${texto}` : texto;
+  });
 }
 
 // Paso final: Win ya redactó el texto solo (sin que el jefe tenga que escribir nada), y aquí se
