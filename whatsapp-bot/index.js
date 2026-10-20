@@ -360,6 +360,25 @@ app.get('/probar', requireApiKey, async (req, res) => {
   }
 });
 
+// Para cambiar de número dedicado (ej: si WhatsApp bloqueó el actual) sin tener que entrar a
+// Railway a borrar archivos a mano: borra la sesión guardada (AUTH_DIR) y vuelve a conectar
+// desde cero, lo que genera un QR nuevo en /qr para escanear con el número nuevo. Ojo: esto
+// desvincula el número actual -- solo úsalo cuando de verdad quieras cambiar de número.
+app.post('/reset-session', requireApiKey, async (req, res) => {
+  try {
+    if (sock) { try { sock.end(undefined); } catch (e) {} }
+    connected = false;
+    lastQR = null;
+    sock = null;
+    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+    await iniciarConexion();
+    res.json({ ok: true, mensaje: 'Sesión borrada. Entra a /qr en unos segundos para escanear el código nuevo.' });
+  } catch (e) {
+    console.error('Error reseteando la sesión:', e);
+    res.status(500).json({ error: 'No se pudo resetear la sesión: ' + e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor del bot de WhatsApp escuchando en el puerto ${PORT}.`);
 });
