@@ -650,6 +650,16 @@ let state = {
 };
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+// Si Google Sheets (o el bot) se queda sin responder, esto evita que un botón se quede pegado
+// en "Cargando..." para siempre -- a los `ms` milisegundos, rechaza con un mensaje claro en vez
+// de dejar al jefe esperando sin saber si pasó algo o no.
+function withTimeout(promise, ms, msg){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(()=>reject(new Error(msg || `Tardó más de ${Math.round(ms/1000)} segundos -- puede que la hoja de cálculo no esté respondiendo.`)), ms))
+  ]);
+}
 function fmtMoney(n){ return '$' + (Number(n)||0).toFixed(2); }
 // Quién está registrando el movimiento ahora mismo — se guarda junto con cada movimiento de
 // Cuadre Financiero para saber a qué hora se metió (ya solo entra el admin).
@@ -2845,7 +2855,7 @@ async function cargarContactosDeVentaStakes(){
         agregados++;
       }
     });
-    await persist('winDifusion');
+    await withTimeout(persist('winDifusion'), 20000);
     alert(`Listo -- ${agregados} contactos nuevos agregados a "Clientes de Stakes"${actualizados ? ` y ${actualizados} que ya estaban se agregaron a esta lista` : ''}. En total hay ${getDifusionContactos('stakes').length}.`);
     openWinDifusionModal();
   }catch(e){
@@ -2933,9 +2943,17 @@ async function submitWinDifusionContacto(){
   if(!telefono){ alert('Pon el teléfono.'); return; }
   if(!listas.length){ alert('Marca a qué lista va.'); return; }
   state.winDifusion.push({ id: uid(), nombre, telefono, listas: listas.join(','), createdAt: new Date().toISOString() });
-  await persist('winDifusion');
-  closeModal();
-  openWinDifusionModal();
+  const btn = document.getElementById('winDifSaveBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Guardando...'; }
+  try{
+    await withTimeout(persist('winDifusion'), 20000);
+    closeModal();
+    openWinDifusionModal();
+  }catch(e){
+    console.error(e);
+    alert(`No se pudo guardar: ${e && e.message ? e.message : e}`);
+    if(btn){ btn.disabled = false; btn.textContent = 'Guardar'; }
+  }
 }
 
 // Arranca el flujo de difusión por voz -- si Win entendió a qué lista se refería, va directo
@@ -2970,19 +2988,19 @@ async function submitWinDifusion(listaId, contactos){
     const cantidad = Math.max(1, Math.min(6, contactos.length));
     let variantes = [instruccion];
     try{
-      const res = await fetch('/api/win-redactar', {
+      const res = await withTimeout(fetch('/api/win-redactar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modo: 'difusion', instruccion, cantidad })
-      });
+      }), 20000);
       const data = await res.json().catch(()=>({}));
       if(res.ok && Array.isArray(data.variantes) && data.variantes.length) variantes = data.variantes;
     }catch(e){ console.error('No se pudo redactar variantes, se manda el mensaje tal cual:', e); }
 
     const mensajes = contactos.map((c, i) => ({ grupoId: phoneToJid(c.telefono), texto: variantes[i % variantes.length] })).filter(m=>m.grupoId);
-    const colaRes = await fetch('/api/win-enviar', {
+    const colaRes = await withTimeout(fetch('/api/win-enviar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ modo: 'cola', mensajes, intervaloMs: 60000 })
-    });
+    }), 20000, 'El bot de WhatsApp tardó demasiado en responder -- puede que esté caído o reiniciando.');
     const colaInfo = await colaRes.json().catch(()=>({}));
     if(!colaRes.ok || !colaInfo.ok) throw new Error(colaInfo.error || 'No se pudo encolar la difusión.');
     closeModal();
