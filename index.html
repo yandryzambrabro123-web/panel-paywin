@@ -2894,9 +2894,11 @@ function openWinDifusionModal(){
         </div>
         ${l.id === 'stakes' ? `<button class="btn secondary small" id="winDifCargarStakesBtn">Cargar de Venta de Stakes</button>` : ''}
         <button class="btn secondary small" data-win-dif-ver="${l.id}">Ver</button>
-        <button class="btn small" data-win-dif-mandar="${l.id}">Mandar</button>
+        <button class="btn secondary small" data-win-dif-manual="${l.id}" title="Abre WhatsApp para que mandes tú mismo, uno por uno -- no pasa por el bot, cero riesgo de bloqueo">💬 Manual</button>
+        <button class="btn small" data-win-dif-mandar="${l.id}">Mandar (bot)</button>
       </div>`;
     }).join('')}
+    <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">"Manual" te arma un mensaje distinto para cada contacto y te abre WhatsApp con el chat ya listo para que lo mandes tú -- no usa el bot, así que no arriesga que vuelvan a bloquear el número. "Mandar (bot)" es el envío automático de siempre.</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cerrar</button>
       <button class="btn" id="winDifAddBtn">+ Agregar cliente</button>
@@ -2906,7 +2908,8 @@ function openWinDifusionModal(){
   const cargarBtn = document.getElementById('winDifCargarStakesBtn');
   if(cargarBtn) cargarBtn.onclick = cargarContactosDeVentaStakes;
   document.querySelectorAll('[data-win-dif-ver]').forEach(b=>b.onclick=()=>openWinDifusionListaModal(b.dataset.winDifVer));
-  document.querySelectorAll('[data-win-dif-mandar]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifMandar));
+  document.querySelectorAll('[data-win-dif-mandar]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifMandar, 'bot'));
+  document.querySelectorAll('[data-win-dif-manual]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifManual, 'manual'));
 }
 
 function openWinDifusionListaModal(listaId){
@@ -2980,11 +2983,15 @@ function handleAbrirDifusion(input){
   else openWinDifusionModal();
 }
 
-function openWinDifusionComposeModal(listaId){
+function openWinDifusionComposeModal(listaId, modo){
+  modo = modo === 'manual' ? 'manual' : 'bot';
   const contactos = getDifusionContactos(listaId);
+  const explicacion = modo === 'manual'
+    ? `${contactos.length} contacto${contactos.length===1?'':'s'} con teléfono. Te voy a armar un mensaje distinto para cada uno y abrirte WhatsApp con el chat listo -- tú revisas y le das enviar, uno por uno, desde tu propio WhatsApp. No pasa por el bot.`
+    : `${contactos.length} contacto${contactos.length===1?'':'s'} con teléfono. Se manda directo a cada uno, uno por minuto, con varias versiones distintas del mismo mensaje para que no se vea todo igual -- sin revisión manual.`;
   openModal(`
-    <h3>Mandar difusión -- ${winDifusionListaNombre(listaId)}</h3>
-    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">${contactos.length} contacto${contactos.length===1?'':'s'} con teléfono. Se manda directo a cada uno, uno por minuto, con varias versiones distintas del mismo mensaje para que no se vea todo igual -- sin revisión manual, como pediste.</div>
+    <h3>${modo === 'manual' ? 'Mandar manual' : 'Mandar difusión'} -- ${winDifusionListaNombre(listaId)}</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">${explicacion}</div>
     <div class="field"><label>¿Qué quieres avisar?</label><textarea id="f-winDifNota" placeholder="Ej: tenemos una promo de recarga con bono doble hoy hasta las 9pm"></textarea></div>
     <div style="display:flex; gap:8px; margin:-4px 0 14px;">
       <button class="btn secondary" type="button" id="winDifMicBtn" style="flex:1; font-size:12.5px;">🎤 Dictar</button>
@@ -2996,13 +3003,17 @@ function openWinDifusionComposeModal(listaId){
     </div>
   `);
   document.getElementById('winDifMicBtn').onclick = ()=>winDictarEnCampo('f-winDifNota', document.getElementById('winDifMicBtn'));
-  document.getElementById('winDifGenerarBtn').onclick = ()=>generarPreviewDifusion(listaId, contactos);
+  document.getElementById('winDifGenerarBtn').onclick = ()=>generarPreviewDifusion(listaId, contactos, modo);
 }
 
 // Paso 1: Win redacta UNA versión base (asertiva, directa -- el mismo tono que pediste para las
 // publicaciones) a partir de la nota/dictado del dueño. La puede revisar, pedir otra versión
 // (🔄) o dictarle/escribirle un ajuste (🎤) antes de mandar -- igual que en apuestas/contenido.
-async function generarPreviewDifusion(listaId, contactos){
+// "modo" decide qué pasa al final: 'bot' manda automático por el bot de WhatsApp (como antes);
+// 'manual' arma un link de WhatsApp por contacto para que el dueño mande él mismo, a mano, sin
+// usar el bot -- así evita que vuelvan a bloquear el número por mandar difusión masiva.
+async function generarPreviewDifusion(listaId, contactos, modo){
+  modo = modo === 'manual' ? 'manual' : 'bot';
   const nota = document.getElementById('f-winDifNota').value.trim();
   if(!nota){ alert('Escribe o dicta qué quieres avisar.'); return; }
   const btn = document.getElementById('winDifGenerarBtn');
@@ -3019,15 +3030,85 @@ async function generarPreviewDifusion(listaId, contactos){
     wrap.innerHTML = `
       <div class="field"><label>Así quedó (puedes editarlo antes de mandar)</label><textarea id="f-winCaptionConfirm" style="min-height:100px;">${escapeForTextarea(caption)}</textarea></div>
       ${winCaptionToolsHTML()}
-      <button class="btn" id="winDifSendBtn" style="width:100%; margin-bottom:8px;">Mandar a los ${contactos.length}</button>
+      <button class="btn" id="winDifSendBtn" style="width:100%; margin-bottom:8px;">${modo === 'manual' ? `Armar mensajes para los ${contactos.length}` : `Mandar a los ${contactos.length}`}</button>
     `;
     wireWinCaptionTools({ kind: 'difusion_preview', destino, code: nota });
-    document.getElementById('winDifSendBtn').onclick = ()=>submitWinDifusion(listaId, contactos);
+    document.getElementById('winDifSendBtn').onclick = ()=> modo === 'manual' ? submitWinDifusionManual(listaId, contactos) : submitWinDifusion(listaId, contactos);
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
   }finally{
     btn.disabled = false; btn.textContent = '✨ Generar texto';
+  }
+}
+
+// Modo manual: en vez de mandar por el bot, arma un link wa.me (con el texto ya escrito, listo
+// para revisar y enviar) por cada contacto, y lo deja en una lista para que el dueño vaya
+// tocando uno por uno desde SU WhatsApp -- el envío real lo hace él, a mano, así que nunca pasa
+// por el bot y no suma al riesgo de que WhatsApp lo vuelva a bloquear por patrón de bot.
+function waNumberFromPhone(phoneRaw){
+  let p = String(phoneRaw || '').replace(/[^\d]/g, '');
+  if(!p) return '';
+  if(p.startsWith('593')) { /* ya trae código de país */ }
+  else if(p.startsWith('0')) p = '593' + p.slice(1);
+  else p = '593' + p;
+  return p;
+}
+async function submitWinDifusionManual(listaId, contactos){
+  const box = document.getElementById('f-winCaptionConfirm');
+  const base = box ? box.value.trim() : '';
+  if(!base){ alert('Genera o escribe el texto primero.'); return; }
+  if(!contactos.length){ alert('No hay contactos con teléfono en esta lista.'); return; }
+  const btn = document.getElementById('winDifSendBtn');
+  btn.disabled = true; btn.textContent = 'Armando mensajes...';
+  try{
+    const cantidad = Math.max(1, Math.min(contactos.length, 8));
+    let variantes = [base];
+    try{
+      const res = await withTimeout(fetch('/api/win-redactar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modo: 'difusion', instruccion: base, cantidad })
+      }), 20000);
+      const data = await res.json().catch(()=>({}));
+      if(res.ok && Array.isArray(data.variantes) && data.variantes.length) variantes = data.variantes;
+    }catch(e){ console.error('No se pudo redactar variantes, se usa el mismo mensaje para todos:', e); }
+
+    const filas = contactos.map((c, i) => {
+      const num = waNumberFromPhone(c.telefono);
+      const texto = variantes[i % variantes.length];
+      const link = num ? `https://wa.me/${num}?text=${encodeURIComponent(texto)}` : '';
+      return { c, texto, link };
+    });
+
+    openModal(`
+      <h3>Manual -- ${winDifusionListaNombre(listaId)}</h3>
+      <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Toca cada uno para abrir WhatsApp con el mensaje ya escrito -- revísalo y dale enviar tú mismo. Puedes ir marcándolos como "Enviado" para no perder el hilo.</div>
+      ${filas.map((f, i) => `<div id="winDifManualRow-${i}" style="display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--border);">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13.5px; font-weight:600;">${f.c.nombre || '(sin nombre)'}</div>
+          <div style="font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${f.c.telefono}</div>
+        </div>
+        ${f.link ? `<a href="${f.link}" target="_blank" rel="noopener" class="btn small">Abrir chat →</a>
+        <button class="btn secondary small" data-win-dif-manual-done="${i}">✓ Enviado</button>` : `<span style="font-size:12px; color:var(--muted);">Sin teléfono válido</span>`}
+      </div>`).join('')}
+      <div class="modal-actions">
+        <button class="btn secondary" onclick="closeModal()">Listo, cerrar</button>
+      </div>
+    `);
+    filas.forEach((f, i) => {
+      const doneBtn = document.querySelector(`[data-win-dif-manual-done="${i}"]`);
+      if(doneBtn) doneBtn.onclick = () => {
+        const row = document.getElementById(`winDifManualRow-${i}`);
+        if(row) row.style.opacity = '0.4';
+        doneBtn.textContent = 'Enviado ✓';
+        doneBtn.disabled = true;
+      };
+    });
+  }catch(e){
+    console.error(e);
+    alert(`No se pudieron armar los mensajes: ${e.message}`);
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = `Armar mensajes para los ${contactos.length}`; }
   }
 }
 
