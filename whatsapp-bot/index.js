@@ -371,7 +371,13 @@ async function resetSessionHandler(req, res) {
     connected = false;
     lastQR = null;
     sock = null;
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+    // AUTH_DIR es un volumen montado de Railway: la carpeta en sí no se puede borrar (EBUSY),
+    // así que se borra solo lo que hay adentro.
+    if (fs.existsSync(AUTH_DIR)) {
+      for (const f of fs.readdirSync(AUTH_DIR)) {
+        fs.rmSync(path.join(AUTH_DIR, f), { recursive: true, force: true });
+      }
+    }
     await iniciarConexion();
     res.json({ ok: true, mensaje: 'Sesión borrada. Entra a /qr en unos segundos para escanear el código nuevo.' });
   } catch (e) {
