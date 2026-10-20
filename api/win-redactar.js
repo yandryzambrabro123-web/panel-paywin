@@ -18,13 +18,17 @@
 // La API key vive SOLO aquí, como variable de entorno en Vercel (ANTHROPIC_API_KEY) —
 // nunca se expone en el index.html ni llega al navegador.
 
+// Regla de brevedad que se repite en TODOS los prompts -- el dueño pidió explícitamente que los
+// textos sean cortos, nada de párrafos largos para pegar en WhatsApp.
+const BREVEDAD = ` Sé BREVE: máximo 2-3 líneas cortas en total (sin contar emojis), nunca un párrafo largo -- si algo no es esencial, no lo escribas.`;
+
 const PROMPTS = {
-  nueva_apuesta: `Vas a redactar el texto para anunciar una apuesta/pick NUEVO a una comunidad de pronósticos deportivos llamada PayWin. Usa el código/texto que te dieron y, si hay una imagen, apóyate en lo que muestra (pick, cuota, stake). Tono: emocionante, directo, con 1-2 emojis relevantes, pocas líneas, fácil de leer en WhatsApp. No inventes datos (cuota, monto) que no te hayan dado o no veas claro en la imagen.`,
-  ganada: `Vas a redactar el texto para anunciar una apuesta GANADA a una comunidad de pronósticos deportivos llamada PayWin. Si hay una imagen, apóyate en lo que muestra (pick, cuota, monto ganado). Tono: celebración, corto, con emojis de fuego/dinero, para generar confianza y ganas de unirse al VIP. No inventes montos que no veas claro.`,
-  contenido: `Vas a redactar el texto para publicar algo en una comunidad de pronósticos deportivos llamada PayWin (puede ser un testimonio, un anuncio, un "buenos días", publicidad de recargas/retiros o del VIP, etc.). Usa la nota/instrucción que te dieron y, si hay una imagen, describe o apóyate en lo que muestra sin inventar datos que no se vean claros. Tono: cercano, profesional, con algún emoji si calza, pocas líneas.`,
-  regalito: `Vas a redactar el texto para mandar el "regalito del día" — una apuesta de regalo/cortesía — a un cliente VIP de PayWin como agradecimiento por su recarga. Tono: cálido, de agradecimiento, breve, con 1-2 emojis. Si hay una imagen, apóyate en lo que muestra (pick, cuota).`,
-  partidos_dia: `Vas a redactar el texto para presentar los "PARTIDOS DEL DÍA" a una comunidad de pronósticos deportivos llamada PayWin. Te van a llegar VARIAS imágenes, una por cada partido/pick del día (cada una puede mostrar equipos, cuota, hora). Mira todas las imágenes y escribe UN SOLO texto corto que las presente en conjunto como el resumen de partidos del día -- no describas cada imagen en detalle, es solo el texto que acompaña a las fotos (que se mandan por separado, antes que este texto). Tono: emocionante, directo, con 1-2 emojis de fútbol/fuego. No inventes datos (equipos, cuotas, horas) que no veas claros en las imágenes.`,
-  collage: `Vas a redactar el texto para publicar un COLLAGE de varios comprobantes de recarga/pago de clientes (ya censurados, solo se ven los montos) en una comunidad de pronósticos deportivos llamada PayWin -- el mensaje de hoy es "mira cuántos clientes confiaron en nosotros hoy". No sabes los montos exactos ni cuántos son, así que no inventes números. Tono: celebración, confianza, orgullo, corto, con 1-2 emojis (🙌🔥💵), para generar ganas de unirse. No menciones nombres ni datos de nadie.`
+  nueva_apuesta: `Vas a redactar el texto para anunciar una apuesta/pick NUEVO a una comunidad de pronósticos deportivos llamada PayWin. Usa el código/texto que te dieron y, si hay una imagen, apóyate SOLO en lo que se ve con claridad (pick, cuota, stake) -- si la imagen no es clara o no muestra esos datos, no los inventes, quédate con lo que te dieron en texto. Tono: emocionante, directo, con 1-2 emojis relevantes, fácil de leer en WhatsApp.${BREVEDAD}`,
+  ganada: `Vas a redactar el texto para anunciar una apuesta GANADA a una comunidad de pronósticos deportivos llamada PayWin. Si hay una imagen, apóyate SOLO en lo que se ve con claridad (pick, cuota, monto ganado) -- si no se ve claro, no lo inventes. Tono: celebración, con emojis de fuego/dinero, para generar confianza y ganas de unirse al VIP.${BREVEDAD}`,
+  contenido: `Vas a redactar el texto para publicar algo en una comunidad de pronósticos deportivos llamada PayWin (puede ser un testimonio, un anuncio, un "buenos días", publicidad de recargas/retiros o del VIP, etc.). Usa la nota/instrucción que te dieron como la fuente principal de qué decir -- si hay una imagen, apóyate en ella SOLO como apoyo visual, nunca inventes datos que no se vean con claridad en ella ni le des más peso que a la nota/instrucción. Tono: cercano, profesional, con algún emoji si calza.${BREVEDAD}`,
+  regalito: `Vas a redactar el texto para mandar el "regalito del día" — una apuesta de regalo/cortesía — a un cliente VIP de PayWin como agradecimiento por su recarga. Tono: cálido, de agradecimiento, con 1-2 emojis. Si hay una imagen, apóyate SOLO en lo que se ve con claridad (pick, cuota).${BREVEDAD}`,
+  partidos_dia: `Vas a redactar el texto para presentar los "PARTIDOS DEL DÍA" a una comunidad de pronósticos deportivos llamada PayWin. Te van a llegar VARIAS imágenes, una por cada partido/pick del día (cada una puede mostrar equipos, cuota, hora). Mira todas las imágenes y escribe UN SOLO texto que las presente en conjunto como el resumen de partidos del día -- no describas cada imagen en detalle, es solo el texto que acompaña a las fotos (que se mandan por separado, antes que este texto). Tono: emocionante, directo, con 1-2 emojis de fútbol/fuego. No inventes datos (equipos, cuotas, horas) que no veas claros en las imágenes.${BREVEDAD}`,
+  collage: `Vas a redactar el texto para publicar un COLLAGE de varios comprobantes de recarga/pago de clientes (ya censurados, solo se ven los montos) en una comunidad de pronósticos deportivos llamada PayWin -- el mensaje de hoy es "mira cuántos clientes confiaron en nosotros hoy". No sabes los montos exactos ni cuántos son, así que no inventes números. Tono: celebración, confianza, orgullo, con 1-2 emojis (🙌🔥💵), para generar ganas de unirse. No menciones nombres ni datos de nadie.${BREVEDAD}`
 };
 
 function extractText(text) {
@@ -107,8 +111,12 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
   }
 
   // Modo por defecto: redactar un texto (apuesta, contenido, regalito, partidos del día, etc.)
+  // "anterior" (el texto que ya se había generado) y "ajuste" (lo que el dueño pidió cambiar,
+  // escrito o dictado por voz) son opcionales -- los manda el botón "Generar otro texto" / el
+  // micrófono "Decirle cómo" del panel, para pedir una versión distinta o corregir algo que
+  // salió sin sentido, sin tener que volver a subir la imagen ni reescribir todo a mano.
   try {
-    const { kind, destino, code, imageBase64, mediaType, images } = body;
+    const { kind, destino, code, imageBase64, mediaType, images, anterior, ajuste } = body;
     const systemPrompt = PROMPTS[kind] || PROMPTS.contenido;
 
     const userContent = [];
@@ -123,10 +131,16 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
     }
     let instructionText = `Destino: ${destino || 'comunidad'}.`;
     if (code) instructionText += ` Instrucción/código/nota del dueño: ${code}`;
+    if (ajuste) {
+      instructionText += ` El dueño ya vio una versión anterior y pidió este AJUSTE -- es lo más importante, síguelo al pie de la letra: "${ajuste}"`;
+      if (anterior) instructionText += ` (el texto anterior, antes del ajuste, era: "${anterior}")`;
+    } else if (anterior) {
+      instructionText += ` Ya generaste esta versión antes: "${anterior}" -- el dueño quiere OTRA versión distinta (mismo contenido/tono, pero redactada diferente, no la repitas casi igual).`;
+    }
     instructionText += ' Responde ÚNICAMENTE con el texto final listo para pegar en WhatsApp, sin explicaciones, sin comillas envolventes, sin markdown.';
     userContent.push({ type: 'text', text: instructionText });
 
-    const text = await llamarAnthropic(apiKey, { system: systemPrompt, messages: [{ role: 'user', content: userContent }], max_tokens: 400 });
+    const text = await llamarAnthropic(apiKey, { system: systemPrompt, messages: [{ role: 'user', content: userContent }], max_tokens: 220 });
     if (text === null) {
       res.status(502).json({ error: 'No se pudo redactar el texto (servicio de IA).', caption: code || '' });
       return;

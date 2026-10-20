@@ -86,11 +86,11 @@ async function fetchTemplatesByName() {
   return map;
 }
 
-async function enviarAlBot(botUrl, botKey, grupoId, texto, imagenBase64, mediaType) {
+async function enviarAlBot(botUrl, botKey, grupoId, texto, imagenBase64, imagenUrl, mediaType) {
   const res = await fetch(`${botUrl.replace(/\/$/, '')}/enviar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
-    body: JSON.stringify({ grupoId, texto, imagenBase64, mediaType })
+    body: JSON.stringify({ grupoId, texto, imagenBase64, imagenUrl, mediaType })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || 'El bot de WhatsApp no pudo mandar el mensaje.');
@@ -99,8 +99,10 @@ async function enviarAlBot(botUrl, botKey, grupoId, texto, imagenBase64, mediaTy
 async function enviarPaso(step, templates, botUrl, botKey) {
   const tpl = templates.get(norm(step.nombre));
   if (!tpl) return false; // todavía no se guardó esa publicidad -- se salta sin tumbar el resto
+  // "imageUrl" es la foto en buena calidad guardada en Vercel Blob (publicidades nuevas);
+  // "base64" queda de respaldo solo para publicidades guardadas ANTES de este cambio.
   for (const jid of step.destinos) {
-    await enviarAlBot(botUrl, botKey, jid, tpl.texto || '', tpl.base64 || '', tpl.mediaType || 'image/jpeg');
+    await enviarAlBot(botUrl, botKey, jid, tpl.texto || '', tpl.imageUrl ? '' : (tpl.base64 || ''), tpl.imageUrl || '', tpl.mediaType || 'image/jpeg');
   }
   return true;
 }

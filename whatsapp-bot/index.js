@@ -213,18 +213,22 @@ async function mandarSeparador(grupoId) {
 
 // Manda un texto (y, opcionalmente, una imagen con ese texto como descripción/caption)
 // directo a un grupo, y después manda la línea separadora. "grupoId" es el id real
-// (ver /grupos), no el nombre.
+// (ver /grupos), no el nombre. La imagen puede venir como base64 (fotos subidas de nuevo) o
+// como imagenUrl (publicidades guardadas en Vercel Blob, en su calidad real -- Baileys la
+// descarga solo, no hace falta mandarla por el panel); si llegan las dos, gana imagenUrl.
 app.post('/enviar', requireApiKey, async (req, res) => {
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
   }
-  const { grupoId, texto, imagenBase64, mediaType } = req.body || {};
+  const { grupoId, texto, imagenBase64, imagenUrl, mediaType } = req.body || {};
   if (!grupoId || !texto) {
     return res.status(400).json({ error: 'Falta grupoId o texto.' });
   }
   try {
     await pausaHumana();
-    if (imagenBase64) {
+    if (imagenUrl) {
+      await sock.sendMessage(grupoId, { image: { url: imagenUrl }, caption: texto });
+    } else if (imagenBase64) {
       const buffer = Buffer.from(imagenBase64, 'base64');
       await sock.sendMessage(grupoId, { image: buffer, mimetype: mediaType || 'image/jpeg', caption: texto });
     } else {

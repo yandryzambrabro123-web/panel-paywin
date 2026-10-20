@@ -1,0 +1,8 @@
+{
+  "name": "panel-paywin",
+  "private": true,
+  "description": "Panel PayWin -- las funciones serverless de /api viven aquí. Este package.json es solo para que Vercel instale las dependencias que usan esas funciones (ej. @vercel/blob para guardar las publicidades/imágenes guardadas en buena calidad, fuera de las celdas de Google Sheets). El bot de WhatsApp (whatsapp-bot/) tiene su propio package.json aparte, para Railway.",
+  "dependencies": {
+    "@vercel/blob": "^1.0.1"
+  }
+}

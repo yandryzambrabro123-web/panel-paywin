@@ -716,9 +716,13 @@ function coerceRow(key, row){
     return { id:String(row.id||''), text:row.text||'', createdAt:row.createdAt||'' };
   }
   if(key === 'winTemplates'){
+    // "imageUrl" es la foto en buena calidad guardada en Vercel Blob (ver api/win-imagen.js) --
+    // "base64" queda solo por compatibilidad con publicidades guardadas ANTES de este cambio
+    // (esas sí quedaron comprimidas dentro de la celda; si el jefe quiere mejor calidad en
+    // alguna vieja, tiene que volver a subirla).
     return {
       id:String(row.id||''), nombre:row.nombre||'', texto:row.texto||'',
-      base64:row.base64||'', mediaType:row.mediaType||'image/jpeg', thumb:row.thumb||'',
+      base64:row.base64||'', mediaType:row.mediaType||'image/jpeg', imageUrl:row.imageUrl||'', thumb:row.thumb||'',
       createdAt:row.createdAt||''
     };
   }
@@ -2771,15 +2775,23 @@ async function submitWinTemplate(){
   const btn = document.getElementById('winSaveTemplateBtn');
   btn.disabled = true; btn.textContent = 'Guardando...';
   try{
-    const { base64, mediaType } = await fileToStorableImage(winPendingFile);
+    // Se guarda en buena calidad en Vercel Blob (ver api/win-imagen.js) -- la celda de Sheets
+    // solo guarda la URL (texto cortito), no la imagen comprimida como antes.
+    const { base64, mediaType } = await fileToCompressedImage(winPendingFile);
     const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
-    state.winTemplates.push({ id: uid(), nombre, texto, base64, mediaType, thumb, createdAt: new Date().toISOString() });
+    const uploadRes = await withTimeout(fetch('/api/win-imagen', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64, mediaType, nombre })
+    }), 25000);
+    const uploadData = await uploadRes.json().catch(()=>({}));
+    if(!uploadRes.ok || !uploadData.url) throw new Error(uploadData.error || 'No se pudo guardar la imagen.');
+    state.winTemplates.push({ id: uid(), nombre, texto, imageUrl: uploadData.url, mediaType, thumb, createdAt: new Date().toISOString() });
     await persist('winTemplates');
     closeModal();
     openWinTemplatesModal();
   }catch(e){
     console.error(e);
-    alert('No se pudo guardar. Intenta de nuevo.');
+    alert(`No se pudo guardar: ${e.message || e}`);
     btn.disabled = false; btn.textContent = 'Guardar publicidad';
   }
 }
@@ -3070,7 +3082,10 @@ async function handleMandarPublicidadGuardada(input){
     return;
   }
   const destinoDicho = (input.destino || '').trim();
-  const tplSendImage = tpl.base64 ? { base64: tpl.base64, mediaType: tpl.mediaType || 'image/jpeg' } : null;
+  // "imageUrl" es la foto en buena calidad guardada en Vercel Blob (publicidades nuevas);
+  // "base64" queda de respaldo solo para publicidades guardadas ANTES de este cambio.
+  const tplSendImage = tpl.imageUrl ? { url: tpl.imageUrl, mediaType: tpl.mediaType || 'image/jpeg' }
+    : (tpl.base64 ? { base64: tpl.base64, mediaType: tpl.mediaType || 'image/jpeg' } : null);
   // Puede haber mencionado más de un grupo a la vez (ej. "los tres gratis").
   const matched = WIN_GROUPS.filter(g => destinoDicho && destinoDicho.toLowerCase().includes(g.nombre.toLowerCase()));
   if(matched.length){
@@ -3939,7 +3954,7 @@ async function submitTestimonio(){
     const outCanvas = await buildRedactedImage(file, result.montos);
     const compressed = canvasToCompressed(outCanvas);
     const thumb = canvasToThumbnail(outCanvas);
-    openWinCaptionConfirm('contenido', grupos, result.texto || 'Testimonio de nuestro cliente. 🙌', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType });
+    openWinCaptionConfirm('contenido', grupos, result.texto || 'Testimonio de nuestro cliente. 🙌', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'contenido', destino: grupos.join(', '), code: 'Es un testimonio de un cliente (captura de recarga/transferencia ya tapada -- solo se ve el monto, no inventes un monto nuevo si pides un ajuste).' });
   }catch(e){
     console.error(e);
     alert('No se pudo procesar el testimonio. Intenta de nuevo.');
@@ -4067,7 +4082,7 @@ async function submitCollage(){
     }catch(e){ console.error('No se pudo redactar el texto del collage, se usa uno por defecto:', e); }
 
     const faltantes = winCollageFiles.length - canvases.length;
-    openWinCaptionConfirm('contenido', grupos, caption, thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType });
+    openWinCaptionConfirm('collage', grupos, caption, thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'collage', destino: grupos.join(', ') });
     if(faltantes) setTimeout(()=>alert(`Ojo: ${faltantes} de las ${winCollageFiles.length} capturas no se pudieron leer bien y se quedaron FUERA del collage (por seguridad, no se publican si no se detecta el monto con claridad).`), 300);
   }catch(e){
     console.error(e);
@@ -4254,7 +4269,7 @@ async function submitPartidosDia(){
     });
     const result = await res.json().catch(()=>({}));
     const caption = (result && result.caption) || 'Estos son los partidos de hoy. 🔥⚽';
-    openWinPartidosConfirm(grupos, caption, thumbs, images);
+    openWinPartidosConfirm(grupos, caption, thumbs, images, { kind: 'partidos_dia', destino: grupos.join(', '), images });
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
@@ -4263,7 +4278,7 @@ async function submitPartidosDia(){
   }
 }
 
-function openWinPartidosConfirm(grupos, caption, thumbs, images){
+function openWinPartidosConfirm(grupos, caption, thumbs, images, redactCtx){
   const groupButtonsHTML = grupos.map((g, i) => {
     const jid = winGroupJid(g);
     const link = winGroupLink(g);
@@ -4276,6 +4291,7 @@ function openWinPartidosConfirm(grupos, caption, thumbs, images){
     <h3>Así quedó el texto de los partidos del día</h3>
     <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">${thumbs.filter(Boolean).map(t=>`<img src="${t}" style="width:60px; height:60px; object-fit:cover; border-radius:8px;">`).join('')}</div>
     <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:120px;">${escapeForTextarea(caption)}</textarea></div>
+    ${redactCtx ? winCaptionToolsHTML() : ''}
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Se manda primero cada foto por separado y al final este texto, con una línea separadora después para no mezclarse con lo que siga.</div>
     ${groupButtonsHTML}
     <div class="modal-actions">
@@ -4283,6 +4299,7 @@ function openWinPartidosConfirm(grupos, caption, thumbs, images){
     </div>
   `);
   document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
+  wireWinCaptionTools(redactCtx);
 
   document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
     const grupo = decodeURIComponent(btn.dataset.winSendGroup);
@@ -4345,7 +4362,7 @@ async function submitWinBet(kind){
     });
     const result = await res.json();
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
-    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType });
+    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType }, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType });
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
@@ -4359,6 +4376,117 @@ function escapeForTextarea(text){
   return (text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ---------- "Generar otro texto" / "Decirle cómo" (regenerar la redacción de Win) ----------
+// Se usa en las pantallas de revisión de texto (openWinCaptionConfirm / openWinPartidosConfirm)
+// cuando el texto vino de la IA (win-redactar) -- un botón pide OTRA versión distinta, y el
+// micrófono deja dictar (o escribir) qué corregir si la IA generó algo que no tiene nada que
+// ver. "redactCtx" trae lo mínimo para volver a pedirle el texto a Win: { kind, destino, code,
+// imageBase64?, mediaType?, images? }. El textarea objetivo es siempre #f-winCaptionConfirm.
+let winAjusteRecorder = null;
+let winAjusteChunks = [];
+let winAjusteStream = null;
+let winAjusteRecording = false;
+
+function winCaptionToolsHTML(){
+  return `
+    <div style="display:flex; gap:8px; margin:-6px 0 14px;">
+      <button class="btn secondary" type="button" id="winCaptionRegenBtn" style="flex:1; font-size:12.5px;">🔄 Generar otro texto</button>
+      <button class="btn secondary" type="button" id="winCaptionMicBtn" style="flex:1; font-size:12.5px;">🎤 Decirle cómo</button>
+    </div>`;
+}
+
+function wireWinCaptionTools(redactCtx){
+  if(!redactCtx) return;
+  const regenBtn = document.getElementById('winCaptionRegenBtn');
+  const micBtn = document.getElementById('winCaptionMicBtn');
+  if(regenBtn) regenBtn.onclick = ()=>winRegenerateCaption(redactCtx);
+  if(micBtn) micBtn.onclick = ()=>winCaptionAjusteToggleMic(redactCtx);
+}
+
+async function winRegenerateCaption(redactCtx, ajuste){
+  const box = document.getElementById('f-winCaptionConfirm');
+  const anterior = box ? box.value.trim() : '';
+  const btn = document.getElementById('winCaptionRegenBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Generando...'; }
+  try{
+    const bodyReq = { kind: redactCtx.kind, destino: redactCtx.destino, code: redactCtx.code, anterior };
+    if(ajuste) bodyReq.ajuste = ajuste;
+    if(redactCtx.images) bodyReq.images = redactCtx.images;
+    else if(redactCtx.imageBase64) { bodyReq.imageBase64 = redactCtx.imageBase64; bodyReq.mediaType = redactCtx.mediaType; }
+    const res = await withTimeout(fetch('/api/win-redactar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bodyReq)
+    }), 20000);
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data.caption) throw new Error((data && data.error) || 'No se pudo generar el texto.');
+    if(box) box.value = data.caption;
+  }catch(e){
+    console.error(e);
+    alert('No se pudo generar otro texto. Intenta de nuevo.');
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '🔄 Generar otro texto'; }
+  }
+}
+
+// Graba un audio cortito con un stream propio (no toca el micrófono principal de Win/el orbe),
+// lo manda a transcribir (mismo /api/win-transcribir que usa el dictado por voz normal) y pide
+// un texto nuevo con esa instrucción como "ajuste". Toca una vez para grabar, otra vez para
+// mandar -- igual que "mantén para hablar", pero sin mantener tocado.
+async function winCaptionAjusteToggleMic(redactCtx){
+  const btn = document.getElementById('winCaptionMicBtn');
+  if(winAjusteRecording){
+    if(winAjusteRecorder) try{ winAjusteRecorder.stop(); }catch(e){}
+    return;
+  }
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  }catch(e){
+    alert('No se pudo acceder al micrófono. Dale permiso del navegador, o escribe el ajuste directo en el texto.');
+    return;
+  }
+  winAjusteStream = stream;
+  const mimeType = winPTTPickMimeType();
+  winAjusteRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  winAjusteChunks = [];
+  winAjusteRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) winAjusteChunks.push(e.data); };
+  winAjusteRecorder.onstop = async ()=>{
+    winAjusteRecording = false;
+    try{ winAjusteStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    if(btn){ btn.disabled = true; btn.textContent = 'Escuchando...'; }
+    if(!winAjusteChunks.length){
+      if(btn){ btn.disabled = false; btn.textContent = '🎤 Decirle cómo'; }
+      return;
+    }
+    const blob = new Blob(winAjusteChunks, { type: winAjusteRecorder.mimeType || mimeType || 'audio/mp4' });
+    winAjusteChunks = [];
+    try{
+      const audioBase64 = await new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>resolve(String(reader.result).split(',')[1] || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const res = await withTimeout(fetch('/api/win-transcribir', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioBase64, mimeType: blob.type })
+      }), 20000);
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || !data.text) throw new Error((data && data.error) || 'No se pudo transcribir.');
+      if(btn) btn.textContent = 'Generando...';
+      await winRegenerateCaption(redactCtx, data.text.trim());
+    }catch(e){
+      console.error('Error transcribiendo el ajuste:', e);
+      alert('No te escuché bien. Intenta de nuevo o escribe el ajuste directo en el texto.');
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = '🎤 Decirle cómo'; }
+    }
+  };
+  winAjusteRecorder.start();
+  winAjusteRecording = true;
+  if(btn) btn.textContent = '⏹ Grabando... toca para mandar';
+}
+
 // Paso final: Win ya redactó el texto solo (sin que el jefe tenga que escribir nada), y aquí se
 // lo muestra listo para revisar/editar. Si el grupo ya tiene "jid" (el bot de WhatsApp dedicado
 // ya está conectado y metido en ese grupo -- ver /whatsapp-bot/README.md), el botón manda el
@@ -4366,7 +4494,7 @@ function escapeForTextarea(text){
 // + abrir el grupo). "sendImage" es {base64, mediaType} de la imagen en buena calidad para el
 // envío automático (puede ser null si es solo texto) -- separado de "thumb", que es la versión
 // chiquita que se guarda en el historial de la bandeja.
-function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage){
+function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCtx){
   const groupButtonsHTML = grupos.map((g, i) => {
     const jid = winGroupJid(g);
     const link = winGroupLink(g);
@@ -4379,6 +4507,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage){
     <h3>Así quedó el texto</h3>
     ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
     <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:130px;">${escapeForTextarea(caption)}</textarea></div>
+    ${redactCtx ? winCaptionToolsHTML() : ''}
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Los grupos con bot conectado se mandan solos en un toque. Los demás copian el texto y abren el chat para pegar y enviar.</div>
     ${groupButtonsHTML}
     <div class="modal-actions">
@@ -4386,6 +4515,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage){
     </div>
   `);
   document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
+  wireWinCaptionTools(redactCtx);
 
   document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
     const grupo = decodeURIComponent(btn.dataset.winSendGroup);
@@ -4416,7 +4546,9 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage){
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             modo: 'directo', grupoId: jid, texto: finalCaption,
-            imagenBase64: sendImage ? sendImage.base64 : '', mediaType: sendImage ? sendImage.mediaType : ''
+            imagenBase64: sendImage && !sendImage.url ? sendImage.base64 : '',
+            imagenUrl: sendImage && sendImage.url ? sendImage.url : '',
+            mediaType: sendImage ? sendImage.mediaType : ''
           })
         });
         const result = await res.json().catch(()=>({}));
@@ -4475,7 +4607,9 @@ async function submitWinContent(){
     });
     const result = await res.json();
     const caption = (result && result.caption) || nota || 'Nuevo contenido.';
-    openWinCaptionConfirm('contenido', grupos, caption, thumb || previewUrl, base64 ? { base64, mediaType } : null);
+    const redactCtx = { kind: 'contenido', destino: grupos.join(', '), code: nota };
+    if(base64){ redactCtx.imageBase64 = base64; redactCtx.mediaType = mediaType; }
+    openWinCaptionConfirm('contenido', grupos, caption, thumb || previewUrl, base64 ? { base64, mediaType } : null, redactCtx);
     return;
   }catch(e){
     console.error(e);

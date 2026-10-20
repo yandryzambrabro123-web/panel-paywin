@@ -8,8 +8,11 @@
 // plan de Vercel que usa este proyecto tiene un límite de 12 funciones por despliegue, y entre
 // todos los endpoints de Win ya se había pasado ese límite -- los despliegues quedaban en
 // "Error" sin avisar claro por qué. Body: { modo, ...}, donde modo es uno de:
-//   "directo"   (por defecto) -- un mensaje (+ imagen opcional) directo a un grupo/chat.
-//                { grupoId, texto, imagenBase64?, mediaType? }
+//   "directo"   (por defecto) -- un mensaje (+ imagen opcional) directo a un grupo/chat. La
+//                imagen puede venir como base64 (fotos nuevas, comprimidas en el navegador) o
+//                como imagenUrl (publicidades guardadas en Vercel Blob, en su calidad real --
+//                ver api/win-imagen.js); si llegan las dos, gana imagenUrl.
+//                { grupoId, texto, imagenBase64?, imagenUrl?, mediaType? }
 //   "multiple"  -- varias fotos + un texto final (ej. "partidos del día").
 //                { grupoId, imagenes: [{base64, mediaType}], texto }
 //   "cola"      -- lista de mensajes espaciados, uno por minuto (ej. avisos de stake de pago,
@@ -79,7 +82,7 @@ module.exports = async function handler(req, res) {
     }
 
     // modo "directo" (por defecto)
-    const { grupoId, texto, imagenBase64, mediaType } = body;
+    const { grupoId, texto, imagenBase64, imagenUrl, mediaType } = body;
     if (!grupoId || !texto) {
       res.status(400).json({ error: 'Falta grupoId o texto.' });
       return;
@@ -87,7 +90,7 @@ module.exports = async function handler(req, res) {
     const botRes = await fetch(`${base}/enviar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
-      body: JSON.stringify({ grupoId, texto, imagenBase64, mediaType })
+      body: JSON.stringify({ grupoId, texto, imagenBase64, imagenUrl, mediaType })
     });
     const data = await botRes.json().catch(() => ({}));
     if (!botRes.ok) {
