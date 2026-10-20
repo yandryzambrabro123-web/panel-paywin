@@ -237,26 +237,38 @@ module.exports = async function handler(req, res) {
     const memoryLines = Array.isArray(memory) ? memory.filter(x => typeof x === 'string').slice(-80) : [];
     const templateNames = Array.isArray(publicidades) ? publicidades.filter(x => typeof x === 'string').slice(-60) : [];
 
-    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-5',
-        max_tokens: 500,
-        system: buildSystemPrompt(memoryLines, templateNames),
-        tools: TOOLS,
-        messages: cleanMessages
-      })
-    });
+    // A veces Anthropic devuelve un error pasajero (529 "overloaded", 429 por límite de
+    // velocidad, o un 500/502/503 suyo) que se resuelve solo si se reintenta una vez -- antes
+    // esto tumbaba la conversación con "No se pudo conectar con Win" aunque fuera cosa de un
+    // segundo. Se reintenta UNA vez después de una pausa corta antes de darlo por fallido.
+    async function llamarClaude() {
+      return fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-5',
+          max_tokens: 500,
+          system: buildSystemPrompt(memoryLines, templateNames),
+          tools: TOOLS,
+          messages: cleanMessages
+        })
+      });
+    }
+
+    let apiRes = await llamarClaude();
+    if (!apiRes.ok && [429, 500, 502, 503, 529].includes(apiRes.status)) {
+      await new Promise(r => setTimeout(r, 1200));
+      apiRes = await llamarClaude();
+    }
 
     if (!apiRes.ok) {
       const errText = await apiRes.text();
       console.error('Error de Anthropic:', apiRes.status, errText);
-      res.status(502).json({ error: 'No se pudo conectar con Win (servicio de IA).' });
+      res.status(502).json({ error: 'No se pudo conectar con Win (servicio de IA).', detalle: `${apiRes.status}: ${errText}`.slice(0, 300) });
       return;
     }
 

@@ -3710,6 +3710,7 @@ async function processWinVoiceCommand(texto){
     });
     const result = await res.json();
     if(!res.ok){
+      console.error('Error de win-chat:', result);
       applyWinOrbState('listening', result.error || 'No se pudo entender. Intenta de nuevo.');
       return;
     }
