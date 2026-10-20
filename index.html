@@ -729,7 +729,11 @@ function coerceRow(key, row){
   if(key === 'winDifusion'){
     // "listas" es un string con los ids de lista separados por coma (ej: "fuertes,ecuabet") --
     // un mismo contacto puede estar en varias listas de difusión a la vez.
-    return { id:String(row.id||''), nombre:row.nombre||'', telefono:row.telefono||'', listas:row.listas||'', createdAt:row.createdAt||'' };
+    // String(...) a la fuerza en nombre/telefono/listas -- un teléfono guardado sin el "0" de
+    // adelante (ej: "991234567") puede volver de Sheets como NÚMERO en vez de texto, y un
+    // .trim() más adelante (ver getDifusionContactos) tronaba con "no es una función", dejando
+    // sin cargar la lista COMPLETA de difusión, no solo ese contacto.
+    return { id:String(row.id||''), nombre:String(row.nombre||''), telefono:String(row.telefono||''), listas:String(row.listas||''), createdAt:row.createdAt||'' };
   }
   return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
 }
@@ -2833,9 +2837,9 @@ function getDifusionContactos(listaId){
   const vistos = new Set();
   const out = [];
   state.winDifusion.forEach(c=>{
-    const listas = (c.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const listas = String(c.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
     if(!listas.includes(listaId)) return;
-    const tel = (c.telefono||'').trim();
+    const tel = String(c.telefono||'').trim();
     if(!tel || vistos.has(tel)) return;
     vistos.add(tel);
     out.push({ nombre: c.nombre || '', telefono: tel });
@@ -2851,14 +2855,14 @@ async function cargarContactosDeVentaStakes(){
   if(btn){ btn.disabled = true; btn.textContent = 'Cargando...'; }
   try{
     const compradores = getKnownBuyers().filter(b=>b.phone);
-    const existentes = new Map(state.winDifusion.map(c=>[(c.telefono||'').trim(), c]));
+    const existentes = new Map(state.winDifusion.map(c=>[String(c.telefono||'').trim(), c]));
     let agregados = 0, actualizados = 0;
     compradores.forEach(b=>{
       const tel = (b.phone||'').trim();
       if(!tel) return;
       const existente = existentes.get(tel);
       if(existente){
-        const listas = (existente.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
+        const listas = String(existente.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
         if(!listas.includes('stakes')){ listas.push('stakes'); existente.listas = listas.join(','); actualizados++; }
       } else {
         const nuevo = { id: uid(), nombre: b.name || '', telefono: tel, listas: 'stakes', createdAt: new Date().toISOString() };
@@ -2906,7 +2910,7 @@ function openWinDifusionModal(){
 }
 
 function openWinDifusionListaModal(listaId){
-  const contactos = state.winDifusion.filter(c=>(c.listas||'').split(',').map(s=>s.trim()).includes(listaId));
+  const contactos = state.winDifusion.filter(c=>String(c.listas||'').split(',').map(s=>s.trim()).includes(listaId));
   openModal(`
     <h3>${winDifusionListaNombre(listaId)}</h3>
     ${contactos.length ? contactos.map(c=>`<div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);">
@@ -2921,7 +2925,7 @@ function openWinDifusionListaModal(listaId){
     b.onclick = async ()=>{
       const c = state.winDifusion.find(x=>x.id===b.dataset.winDifQuitar);
       if(!c) return;
-      const listas = (c.listas||'').split(',').map(s=>s.trim()).filter(l=>l && l!==b.dataset.winDifLista);
+      const listas = String(c.listas||'').split(',').map(s=>s.trim()).filter(l=>l && l!==b.dataset.winDifLista);
       c.listas = listas.join(',');
       if(!listas.length){ state.winDifusion = state.winDifusion.filter(x=>x.id!==c.id); await persist('winDifusion', { deletedIds:[c.id] }); }
       else await persist('winDifusion');
@@ -4110,7 +4114,7 @@ function buildStakePagoDM(name, cuota, hora, valor){
 // Número local guardado (ej: "0991234567") -> jid de WhatsApp para mandar un DM directo.
 // Si ya viene con código de país (593...) se respeta tal cual.
 function phoneToJid(phoneRaw){
-  let p = (phoneRaw || '').replace(/[^\d]/g, '');
+  let p = String(phoneRaw || '').replace(/[^\d]/g, '');
   if(!p) return '';
   if(p.startsWith('593')) { /* ya trae código de país */ }
   else if(p.startsWith('0')) p = '593' + p.slice(1);
