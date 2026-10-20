@@ -4545,8 +4545,33 @@ async function submitWinGift(tagged){
   if(!winPendingFile){ alert('Sube la imagen del regalito primero.'); return; }
   openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
   try{
-    const { base64, mediaType, previewUrl } = await fileToCompressedImage(winPendingFile);
-    const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    // Igual que un testimonio: se intenta tapar todo menos el monto (por si la imagen trae
+    // algún dato de transferencia/recarga). Pero un regalito normalmente es solo la captura del
+    // pick/cuota de la apuesta de regalo -- sin ningún monto que detectar -- así que si no se
+    // encuentra ninguno, se manda la imagen tal cual (no hay nada sensible que tapar ahí).
+    let base64, mediaType, previewUrl, thumb;
+    try{
+      const comp = await fileToCompressedImage(winPendingFile);
+      const lecturaRes = await withTimeout(fetch('/api/leer-testimonio', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: comp.base64, mediaType: comp.mediaType })
+      }), 20000);
+      const lectura = await lecturaRes.json().catch(()=>({}));
+      if(lecturaRes.ok && lectura.montos && lectura.montos.length){
+        const outCanvas = await buildRedactedImage(winPendingFile, lectura.montos);
+        const compressed = canvasToCompressed(outCanvas);
+        base64 = compressed.base64; mediaType = compressed.mediaType; previewUrl = compressed.previewUrl;
+        thumb = canvasToThumbnail(outCanvas);
+      } else {
+        base64 = comp.base64; mediaType = comp.mediaType; previewUrl = comp.previewUrl;
+        thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+      }
+    }catch(e){
+      console.error('No se pudo revisar si el regalito tenía datos para tapar, se manda la imagen tal cual:', e);
+      const comp = await fileToCompressedImage(winPendingFile);
+      base64 = comp.base64; mediaType = comp.mediaType; previewUrl = comp.previewUrl;
+      thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    }
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind: 'regalito', destino: 'Regalito del día', code: nota, imageBase64: base64, mediaType })
