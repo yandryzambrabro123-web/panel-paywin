@@ -393,6 +393,46 @@ async function resetSessionHandler(req, res) {
   }
 }
 
+const soloDigitosJid = (x) => String(x || '').split('@')[0].split(':')[0].replace(/\D/g, '');
+// Devuelve los participantes del grupo y si se puede confirmar quién está: WhatsApp a veces guarda
+// a algunos con un id interno "@lid" sin número. Si hay de esos, "no lo encontré" NO prueba que
+// la persona no esté (verificable=false) y el panel no debe darla por fuera.
+async function leerGrupo(grupoId) {
+  const meta = await sock.groupMetadata(grupoId);
+  const parts = meta.participants || [];
+  const tieneNumero = (p) => [p.id, p.phoneNumber, p.jid].some(x => /@s\.whatsapp\.net$/.test(String(x || '')));
+  const sinNumero = parts.filter(p => !tieneNumero(p)).length;
+  return { parts, verificable: sinNumero === 0, sinNumero, total: parts.length };
+}
+
+// Revisa, SIN sacar a nadie, en cuáles grupos está cada número. Body: { numeros: [...], grupoIds: [...] }
+// Devuelve { grupos: {grupoId: {verificable, sinNumero, total}}, presentes: { numero: [grupoIds] } }
+app.post('/revisar-miembros', requireApiKey, async (req, res) => {
+  if (!connected) {
+    return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
+  }
+  const { numeros, grupoIds } = req.body || {};
+  if (!Array.isArray(numeros) || !Array.isArray(grupoIds) || !grupoIds.length) {
+    return res.status(400).json({ error: 'Falta numeros o grupoIds.' });
+  }
+  try {
+    const grupos = {};
+    const presentes = {};
+    numeros.forEach(n => { presentes[String(n).replace(/\D/g, '')] = []; });
+    for (const grupoId of grupoIds) {
+      const { parts, verificable, sinNumero, total } = await leerGrupo(grupoId);
+      grupos[grupoId] = { verificable, sinNumero, total };
+      const enGrupo = new Set();
+      parts.forEach(p => [p.id, p.phoneNumber, p.jid].forEach(x => { const d = soloDigitosJid(x); if (d) enGrupo.add(d); }));
+      Object.keys(presentes).forEach(n => { if (enGrupo.has(n)) presentes[n].push(grupoId); });
+    }
+    res.json({ ok: true, grupos, presentes });
+  } catch (e) {
+    console.error('Error revisando miembros:', e);
+    res.status(500).json({ error: 'No se pudo revisar los grupos: ' + e.message });
+  }
+});
+
 // Saca a una persona de uno o varios grupos (ej: membresía VIP vencida). El número del bot tiene
 // que ser ADMIN de cada grupo, si no WhatsApp rechaza la acción. Body: { numero, grupoIds: [...] }
 // donde numero va con código de país y solo dígitos (ej: 593991234567). Devuelve el resultado
@@ -412,13 +452,14 @@ app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {
     try {
       // Se busca a la persona DENTRO del grupo (WhatsApp a veces la guarda con un id interno
       // "@lid" en vez del número, y entonces borrar por número no hace nada).
-      const meta = await sock.groupMetadata(grupoId);
-      const parts = meta.participants || [];
+      const { parts, verificable } = await leerGrupo(grupoId);
       const objetivo = parts.find(p => [p.id, p.phoneNumber, p.jid].some(x => soloDigitos(x) === digitos));
       const yo = parts.find(p => [p.id, p.lid, p.phoneNumber, p.jid].some(x => x && (soloDigitos(x) === soloDigitos(sock.user && sock.user.id) || soloDigitos(x) === soloDigitos(sock.user && sock.user.lid))));
       const botEsAdmin = !!(yo && (yo.admin === 'admin' || yo.admin === 'superadmin'));
       if (!objetivo) {
-        resultados.push({ grupoId, ok: true, encontrado: false, botEsAdmin, status: 'no-estaba' });
+        resultados.push(verificable
+          ? { grupoId, ok: true, encontrado: false, botEsAdmin, status: 'no-estaba' }
+          : { grupoId, ok: false, encontrado: false, botEsAdmin, status: 'no-confirmado', error: 'No lo encontré, pero este grupo tiene miembros sin número visible, así que no puedo confirmar si está.' });
         continue;
       }
       if (!botEsAdmin) {

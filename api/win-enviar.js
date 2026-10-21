@@ -41,6 +41,26 @@ module.exports = async function handler(req, res) {
   const base = botUrl.replace(/\/$/, '');
 
   try {
+    if (modo === 'revisar') {
+      const { numeros, grupoIds } = body;
+      if (!Array.isArray(numeros) || !Array.isArray(grupoIds) || !grupoIds.length) {
+        res.status(400).json({ error: 'Faltan los números o los grupos.' });
+        return;
+      }
+      const botRes = await fetch(`${base}/revisar-miembros`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
+        body: JSON.stringify({ numeros, grupoIds })
+      });
+      const data = await botRes.json().catch(() => ({}));
+      if (!botRes.ok) {
+        res.status(502).json({ error: data.error || 'El bot no pudo revisar los grupos.' });
+        return;
+      }
+      res.status(200).json(data);
+      return;
+    }
+
     if (modo === 'sacar') {
       const { numero, grupoIds } = body;
       if (!numero || !Array.isArray(grupoIds) || !grupoIds.length) {
