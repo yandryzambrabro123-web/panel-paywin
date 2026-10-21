@@ -226,7 +226,7 @@ app.post('/enviar', requireApiKey, async (req, res) => {
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
   }
-  const { grupoId, texto, imagenBase64, imagenUrl, mediaType } = req.body || {};
+  const { grupoId, texto, imagenBase64, imagenUrl, mediaType, sinSeparador } = req.body || {};
   if (!grupoId || !texto) {
     return res.status(400).json({ error: 'Falta grupoId o texto.' });
   }
@@ -240,7 +240,7 @@ app.post('/enviar', requireApiKey, async (req, res) => {
     } else {
       await sock.sendMessage(grupoId, { text: texto });
     }
-    await mandarSeparador(grupoId);
+    if (!sinSeparador) await mandarSeparador(grupoId);
     res.json({ ok: true });
   } catch (e) {
     console.error('Error mandando mensaje:', e);
@@ -391,6 +391,36 @@ async function resetSessionHandler(req, res) {
     res.status(500).json({ error: 'No se pudo resetear la sesión: ' + e.message });
   }
 }
+
+// Saca a una persona de uno o varios grupos (ej: membresía VIP vencida). El número del bot tiene
+// que ser ADMIN de cada grupo, si no WhatsApp rechaza la acción. Body: { numero, grupoIds: [...] }
+// donde numero va con código de país y solo dígitos (ej: 593991234567). Devuelve el resultado
+// por grupo, así un grupo que falle no tumba al otro.
+app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {
+  if (!connected) {
+    return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
+  }
+  const { numero, grupoIds } = req.body || {};
+  const digitos = String(numero || '').replace(/\D/g, '');
+  if (digitos.length < 8 || !Array.isArray(grupoIds) || !grupoIds.length) {
+    return res.status(400).json({ error: 'Falta numero o grupoIds.' });
+  }
+  const jid = `${digitos}@s.whatsapp.net`;
+  const resultados = [];
+  for (const grupoId of grupoIds) {
+    try {
+      const r = await sock.groupParticipantsUpdate(grupoId, [jid], 'remove');
+      const status = r && r[0] && String(r[0].status);
+      // 200 = sacado; 404 = ya no estaba en el grupo (también cuenta como resuelto)
+      resultados.push({ grupoId, ok: !status || status === '200' || status === '404', status: status || '200' });
+    } catch (e) {
+      console.error('Error sacando del grupo:', grupoId, e);
+      resultados.push({ grupoId, ok: false, error: e.message });
+    }
+  }
+  res.json({ ok: resultados.every(r => r.ok), resultados });
+});
+
 app.get('/reset-session', requireApiKey, resetSessionHandler);
 app.post('/reset-session', requireApiKey, resetSessionHandler);
 

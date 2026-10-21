@@ -685,7 +685,7 @@ function resultLabel(r){ return r==='won'?'Ganada':r==='lost'?'Perdida':'Pendien
 
 function coerceRow(key, row){
   if(key === 'vips'){
-    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true' };
+    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true', removidoVip: String(row.removidoVip||'') };
   }
   if(key === 'freeBets' || key === 'vipBets' || key === 'liveBets'){
     return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]') };
@@ -2565,6 +2565,7 @@ function renderWin(){
         <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti">&#129504;${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winTemplatesBtn" title="Imágenes guardadas">&#128444;${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winDifusionBtn" title="Listas de difusión">&#128226;</button>
+        <button class="win-icon-btn" id="winReconsumosBtn" title="Reconsumos VIP">&#128276;${winReconsumosLista().vencidos.length ? `<span class="win-icon-badge">${winReconsumosLista().vencidos.length}</span>` : ''}</button>
       </div>
       <div class="win-brand"><span id="winBrandDot" class="win-brand-dot win-brand-dot-idle"></span>WIN</div>
       <div class="win-aura-wrap" id="winAuraWrap">
@@ -2627,6 +2628,8 @@ function renderWin(){
   document.getElementById('winMemoryBtn').onclick = openWinMemoryModal;
   document.getElementById('winTemplatesBtn').onclick = openWinTemplatesModal;
   document.getElementById('winDifusionBtn').onclick = openWinDifusionModal;
+  document.getElementById('winReconsumosBtn').onclick = openWinReconsumosModal;
+  winNotificarReconsumos();
 
   const orb = document.getElementById('winOrb');
   orb.style.opacity = ''; orb.style.cursor = '';
@@ -2900,6 +2903,113 @@ async function cargarContactosDeVentaStakes(reabrir){
     alert(`No se pudo actualizar la lista: ${e && e.message ? e.message : e}`);
     if(btn){ btn.disabled = false; btn.textContent = textoBtn; }
   }
+}
+
+
+/* ---------- WIN: RECONSUMOS VIP (membresías vencidas) ---------- */
+const WIN_VIP_JIDS = ['120363411532196622@g.us', '120363411657541281@g.us']; // VIP y VIP Más Parley
+// removidoVip guarda la fecha de ingreso (joinDate) que tenía cuando lo sacaron: si después renueva
+// (cambia joinDate), deja de contar como sacado y vuelve a seguirse normal.
+const winRemovido = v => !!v.joinDate && String(v.removidoVip) === String(v.joinDate);
+function winDiasVip(v){
+  const exp = computeExpiration(v, 'vips');
+  if(!exp) return null;
+  const today = new Date().toISOString().slice(0,10);
+  return Math.ceil((new Date(exp) - new Date(today)) / 86400000);
+}
+function winReconsumosLista(){
+  const vencidos = [], porVencer = [];
+  (state.vips || []).forEach(v=>{
+    if(winRemovido(v)) return;
+    const d = winDiasVip(v);
+    if(d === null) return;
+    if(d < 0) vencidos.push({ v, d });
+    else if(d <= 3) porVencer.push({ v, d });
+  });
+  vencidos.sort((a,b)=>a.d-b.d); porVencer.sort((a,b)=>a.d-b.d);
+  return { vencidos, porVencer };
+}
+// Aviso del navegador (computadora, y celular si el panel está instalado/abierto): una vez al día.
+function winNotificarReconsumos(){
+  try{
+    const { vencidos } = winReconsumosLista();
+    if(!vencidos.length || !('Notification' in window)) return;
+    const hoy = new Date().toISOString().slice(0,10);
+    if(localStorage.getItem('winReconsumoNotif') === hoy) return;
+    const mostrar = ()=>{
+      new Notification('Win · Reconsumos VIP', { body: `${vencidos.length} miembro${vencidos.length>1?'s':''} con la membresía vencida.` });
+      localStorage.setItem('winReconsumoNotif', hoy);
+    };
+    if(Notification.permission === 'granted') mostrar();
+    else if(Notification.permission === 'default') Notification.requestPermission().then(p=>{ if(p==='granted') mostrar(); });
+  }catch(e){}
+}
+function winMensajeReconsumo(v){
+  const primer = (v.name || '').trim().split(/\s+/)[0] || '';
+  return `Hola${primer ? ' ' + primer : ''} 👋 Te escribo de Pay Win: tu membresía VIP ya se terminó. Si quieres seguir recibiendo los picks VIP, renueva tu membresía y te dejo de nuevo en el grupo. ¿Te la renuevo?`;
+}
+function openWinReconsumosModal(){
+  const { vencidos, porVencer } = winReconsumosLista();
+  const fila = ({ v, d }, vencido)=>{
+    const num = waNumberFromPhone(v.contact || '');
+    const link = num ? `https://wa.me/${num}?text=${encodeURIComponent(winMensajeReconsumo(v))}` : '';
+    return `<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+        <strong>${v.name || 'Sin nombre'}</strong>
+        <span class="badge ${vencido ? 'inactive' : 'pending'}">${vencido ? `Vencida hace ${-d}d` : (d===0 ? 'Vence hoy' : `Vence en ${d}d`)}</span>
+      </div>
+      <div class="mono" style="font-size:12.5px; color:var(--muted); margin:4px 0 8px;">${v.contact || 'sin teléfono'} · plan ${v.plan || 'mensual'}</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${link ? `<a class="btn secondary small" href="${link}" target="_blank" rel="noopener">💬 Escribirle</a>` : '<span style="color:var(--muted); font-size:12px;">Sin número válido</span>'}
+        ${vencido ? `<button class="btn danger small" data-win-sacar="${v.id}" ${num ? '' : 'disabled'}>Sacar del VIP</button>` : ''}
+        ${vencido ? `<button class="btn secondary small" data-win-yarenovo="${v.id}">Ya renovó</button>` : ''}
+      </div>
+    </div>`;
+  };
+  openModal(`
+    <h3 style="margin-bottom:4px;">🔔 Reconsumos VIP</h3>
+    <p style="color:var(--muted); font-size:13px; margin-bottom:14px;">Sacar quita a la persona de VIP y VIP Más Parley (el bot tiene que ser admin). "Escribirle" abre tu WhatsApp con el mensaje listo.</p>
+    <h4 style="margin:6px 0;">Vencidos (${vencidos.length})</h4>
+    ${vencidos.length ? vencidos.map(x=>fila(x,true)).join('') : '<div class="empty">Nadie con la membresía vencida 🎉</div>'}
+    <h4 style="margin:14px 0 6px;">Por vencer en 3 días (${porVencer.length})</h4>
+    ${porVencer.length ? porVencer.map(x=>fila(x,false)).join('') : '<div class="empty">Nadie por vencer.</div>'}
+    <div style="display:flex; justify-content:flex-end; margin-top:12px;"><button class="btn secondary" id="winReconCerrar">Cerrar</button></div>
+  `);
+  document.getElementById('winReconCerrar').onclick = closeModal;
+  document.querySelectorAll('[data-win-sacar]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const v = state.vips.find(x=>x.id === btn.dataset.winSacar);
+      if(!v) return;
+      const num = waNumberFromPhone(v.contact || '');
+      if(!confirm(`¿Sacar a ${v.name} (+${num}) de los grupos VIP?`)) return;
+      btn.disabled = true; btn.textContent = 'Sacando…';
+      try{
+        const r = await withTimeout(fetch('/api/win-enviar', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ modo:'sacar', numero:num, grupoIds:WIN_VIP_JIDS })
+        }), 45000);
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(data.error || 'No se pudo sacar.');
+        const fallos = (data.resultados || []).filter(x=>!x.ok);
+        if(fallos.length){
+          alert('No se pudo sacar de ' + fallos.length + ' grupo(s). Revisa que el bot sea admin de los grupos VIP. ' + (fallos[0].error || ''));
+          btn.disabled = false; btn.textContent = 'Sacar del VIP';
+          return;
+        }
+        v.removidoVip = String(v.joinDate);
+        v.status = 'inactive';
+        await persist('vips');
+        openWinReconsumosModal();
+        render();
+      }catch(e){
+        alert('Error: ' + e.message);
+        btn.disabled = false; btn.textContent = 'Sacar del VIP';
+      }
+    };
+  });
+  document.querySelectorAll('[data-win-yarenovo]').forEach(btn=>{
+    btn.onclick = ()=>{ closeModal(); alert('Para renovar, ve a Miembros VIP → Editar y actualiza la fecha de ingreso.'); };
+  });
 }
 
 function openWinDifusionModal(){

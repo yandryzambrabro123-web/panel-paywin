@@ -41,6 +41,26 @@ module.exports = async function handler(req, res) {
   const base = botUrl.replace(/\/$/, '');
 
   try {
+    if (modo === 'sacar') {
+      const { numero, grupoIds } = body;
+      if (!numero || !Array.isArray(grupoIds) || !grupoIds.length) {
+        res.status(400).json({ error: 'Falta el número o los grupos.' });
+        return;
+      }
+      const botRes = await fetch(`${base}/sacar-del-grupo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
+        body: JSON.stringify({ numero, grupoIds })
+      });
+      const data = await botRes.json().catch(() => ({}));
+      if (!botRes.ok) {
+        res.status(502).json({ error: data.error || 'El bot no pudo sacar a la persona del grupo.' });
+        return;
+      }
+      res.status(200).json(data);
+      return;
+    }
+
     if (modo === 'cola') {
       const { mensajes, intervaloMs } = body;
       if (!Array.isArray(mensajes) || !mensajes.length) {
