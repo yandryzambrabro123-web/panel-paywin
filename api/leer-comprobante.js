@@ -10,6 +10,7 @@ Cuentas posibles del negocio "PayWin" (usa exactamente este "id"):
 - pichincha  -> Banco Pichincha (banco)
 - guayaquil  -> Banco Guayaquil (banco)
 - pacifico   -> Banco Pacífico (banco)
+- produbanco -> ProduBanco (banco)
 - ecuabet    -> Caja Ecuabet (caja interna de la casa de apuestas Ecuabet)
 - onexbet    -> Caja OneXBet (caja interna de la casa de apuestas OneXBet)
 - masparley  -> Caja Más Parley (caja interna de la casa de apuestas Más Parley)
@@ -18,7 +19,7 @@ Cuentas posibles del negocio "PayWin" (usa exactamente este "id"):
 const SYSTEM_PROMPT = `Eres un lector de comprobantes financieros para "PayWin", un negocio ecuatoriano de pronósticos deportivos y apuestas.
 
 Vas a recibir una captura de pantalla que normalmente es una de estas dos cosas:
-(a) Un comprobante o notificación de transferencia/depósito bancario (Banco Pichincha, Banco Guayaquil o Banco Pacífico) donde ENTRA dinero a esa cuenta.
+(a) Un comprobante o notificación de transferencia/depósito bancario (Banco Pichincha, Banco Guayaquil, Banco Pacífico o ProduBanco) donde ENTRA dinero a esa cuenta.
 (b) Una captura del panel o saldo de una casa de apuestas (Ecuabet, OneXBet o Más Parley) mostrando un retiro o salida de dinero de su caja interna (por ejemplo, para efectivizar una recarga).
 
 ${ACCOUNTS_INFO}
@@ -31,7 +32,7 @@ Reglas para decidir "type":
 Además, busca con cuidado un NÚMERO DE COMPROBANTE, REFERENCIA, NÚMERO DE TRANSACCIÓN o similar que identifique este movimiento de forma única (suele decir "N. comprobante", "Nro. de transacción", "Referencia", "Transferencia No.", etc.). Cópialo exactamente como aparece (puede tener letras y números). Si no hay ninguno visible, pon null — no inventes uno.
 
 Responde ÚNICAMENTE con un JSON válido, sin texto antes ni después, sin bloques de código markdown (sin \`\`\`), con EXACTAMENTE estos campos:
-{"accountId": "pichincha|guayaquil|pacifico|ecuabet|onexbet|masparley|null (sin comillas si es null)", "type": "in|out|null", "amount": numero_o_null, "comprobanteNumero": "numero_o_referencia_tal_cual_aparece_o_null", "confidence": "alta|media|baja", "detectedText": "texto breve clave que leíste (banco, monto, referencia)", "reason": "explicación breve de por qué leíste esto"}`;
+{"accountId": "pichincha|guayaquil|pacifico|produbanco|ecuabet|onexbet|masparley|null (sin comillas si es null)", "type": "in|out|null", "amount": numero_o_null, "comprobanteNumero": "numero_o_referencia_tal_cual_aparece_o_null", "confidence": "alta|media|baja", "detectedText": "texto breve clave que leíste (banco, monto, referencia)", "reason": "explicación breve de por qué leíste esto"}`;
 
 function extractJson(text) {
   if (!text) return null;

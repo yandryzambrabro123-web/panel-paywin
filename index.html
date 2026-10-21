@@ -623,10 +623,11 @@ const FINANCE_ACCOUNTS = [
   { id:'pichincha', name:'Banco Pichincha', type:'banco' },
   { id:'guayaquil', name:'Banco Guayaquil', type:'banco' },
   { id:'pacifico', name:'Banco Pacífico', type:'banco' },
-  { id:'produbanco', name:'ProduBanco', type:'banco' },
+  { id:'produbanco', name:'ProduBanco', type:'banco', alias:['produbanco','prudobanco','produ banco','produ','prodobanco'] },
   { id:'ecuabet', name:'Caja Ecuabet', type:'caja' },
   { id:'onexbet', name:'Caja OneXBet', type:'caja' },
-  { id:'masparley', name:'Caja Más Parley', type:'caja' }
+  { id:'masparley', name:'Caja Más Parley', type:'caja' },
+  { id:'jugadormasparley', name:'Cuenta Jugador Más Parley', type:'caja', alias:['cuenta jugador mas parley','jugador mas parley','cuenta del jugador','jugador parley','cuenta jugador'] }
 ];
 // Prefijo de la nota que marca un "saldo inicial del día" (la base financiera que mandas
 // cada mañana por WhatsApp). Se usa desde el botón "Actualizar saldo del día" en Cuadre
@@ -3590,9 +3591,15 @@ function winNormalizeText(s){
 function findFinanceAccountByName(nombreDicho){
   const q = winNormalizeText(nombreDicho);
   if(!q) return null;
-  let acc = FINANCE_ACCOUNTS.find(a => winNormalizeText(a.name) === q);
+  const nombre = a => winNormalizeText(a.name);
+  const alias = a => (a.alias || []).map(winNormalizeText);
+  // 1) nombre exacto o alias exacto
+  let acc = FINANCE_ACCOUNTS.find(a => nombre(a) === q || alias(a).includes(q));
   if(acc) return acc;
-  acc = FINANCE_ACCOUNTS.find(a => winNormalizeText(a.name).includes(q) || q.includes(winNormalizeText(a.name)));
+  // 2) la "cuenta jugador" va antes que la "caja más parley" para no confundirlas
+  if(q.includes('jugador')) return FINANCE_ACCOUNTS.find(a => a.id === 'jugadormasparley');
+  // 3) coincidencia parcial por nombre o alias
+  acc = FINANCE_ACCOUNTS.find(a => nombre(a).includes(q) || q.includes(nombre(a)) || alias(a).some(x => q.includes(x)));
   return acc || null;
 }
 
