@@ -4692,7 +4692,7 @@ function openWinPartidosConfirm(grupos, caption, thumbs, images, redactCtx){
 
   document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
     const grupo = decodeURIComponent(btn.dataset.winSendGroup);
-    btn.onclick = ()=>{
+    btn.onclick = async ()=>{
       const box = document.getElementById('f-winCaptionConfirm');
       const finalCaption = (box && box.value.trim()) || caption;
       const link = winGroupLink(grupo);
@@ -4902,7 +4902,40 @@ function winDictarEnCampo(targetId, btn){
 // + abrir el grupo). "sendImage" es {base64, mediaType} de la imagen en buena calidad para el
 // envío automático (puede ser null si es solo texto) -- separado de "thumb", que es la versión
 // chiquita que se guarda en el historial de la bandeja.
+// ---------- Registrar lo que mandas como apuesta VIP / gratis / regalito / stake ----------
+// Al mandar un texto desde Win, se puede registrar también en las hojas del panel (con la fecha de
+// hoy de Ecuador). Eso es lo que el recordatorio de Telegram cuenta para saber qué ya subiste hoy.
+// Queda un registro básico (el texto como "pick", cuota 0): se completa después en su sección.
+const WIN_REGISTRO_TIPOS = [
+  { key:'', label:'No registrar' },
+  { key:'vipBets', label:'Apuesta VIP' },
+  { key:'freeBets', label:'Apuesta gratis' },
+  { key:'gifts', label:'Regalito del día' },
+  { key:'stakes', label:'Stake del día' }
+];
+function winRegistroDefault(kind, grupos){
+  if(kind !== 'nueva_apuesta') return '';
+  const g = (grupos || []).map(x=>String(x).toLowerCase());
+  if(g.some(x=>x.includes('vip'))) return 'vipBets';
+  if(g.some(x=>x.includes('gratis'))) return 'freeBets';
+  return '';
+}
+async function winRegistrarEnPanel(key, texto){
+  if(!key) return false;
+  const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
+  const pick = String(texto || '').replace(/\s+/g,' ').trim().slice(0,200) || 'Registrado desde Win';
+  let row;
+  if(key === 'vipBets' || key === 'freeBets') row = { id:uid(), sport:'', event:'', betType:'simple', pick, odds:0, stake:0, date:hoy, result:'pending', lines:'[]' };
+  else if(key === 'gifts') row = { id:uid(), sport:'', pick, odds:0, stake:0, recipient:'', date:hoy, result:'pending' };
+  else if(key === 'stakes') row = { id:uid(), description:pick, amount:0, date:hoy, result:'pending' };
+  else return false;
+  state[key].push(row);
+  await persist(key);
+  return true;
+}
+
 function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCtx){
+  let winRegistrado = false; // se registra una sola vez por pantalla, aunque mandes a varios grupos
   const groupButtonsHTML = grupos.map((g, i) => {
     const jid = winGroupJid(g);
     const link = winGroupLink(g);
@@ -4916,6 +4949,10 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
     <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:130px;">${escapeForTextarea(caption)}</textarea></div>
     ${redactCtx ? winCaptionToolsHTML() : ''}
+    <div class="field"><label>Registrar en el panel como</label>
+      <select id="f-winRegistrar">${WIN_REGISTRO_TIPOS.map(t=>`<option value="${t.key}" ${t.key===winRegistroDefault(kind, grupos)?'selected':''}>${t.label}</option>`).join('')}</select>
+      <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se registra al mandar, y el recordatorio de Telegram lo cuenta como hecho hoy.</div>
+    </div>
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Los grupos con bot conectado se mandan solos en un toque. Los demás copian el texto y abren el chat para pegar y enviar.</div>
     ${groupButtonsHTML}
     <div class="modal-actions">
@@ -4924,6 +4961,13 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   `);
   document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
   wireWinCaptionTools(redactCtx);
+  const winRegistrarSiToca = async (texto)=>{
+    if(winRegistrado) return;
+    const sel = document.getElementById('f-winRegistrar');
+    if(!sel || !sel.value) return;
+    try{ winRegistrado = await winRegistrarEnPanel(sel.value, texto); }catch(e){ console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
+    if(winRegistrado){ sel.disabled = true; }
+  };
 
   document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
     const grupo = decodeURIComponent(btn.dataset.winSendGroup);
@@ -4935,6 +4979,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       if(link) window.open(link, '_blank');
       else alert(`Todavía no tengo el link de "${grupo}". El texto ya quedó copiado -- mándalo a mano por esta vez.`);
       pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado').then(()=>persist('winOutbox'));
+      winRegistrarSiToca(finalCaption);
       btn.textContent = link ? 'Copiado y grupo abierto ✓' : 'Texto copiado ✓';
       btn.disabled = true;
       btn.classList.add('secondary');
@@ -4963,6 +5008,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
         if(!res.ok || !result.ok) throw new Error(result.error || 'No se pudo mandar.');
         await pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado');
         await persist('winOutbox');
+        await winRegistrarSiToca(finalCaption);
         btn.textContent = `Mandado a "${grupo}" ✓`;
         btn.classList.add('secondary');
       }catch(e){
