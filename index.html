@@ -2840,51 +2840,72 @@ function getDifusionContactos(listaId){
     const listas = String(c.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
     if(!listas.includes(listaId)) return;
     const tel = String(c.telefono||'').trim();
-    if(!tel || vistos.has(tel)) return;
-    vistos.add(tel);
+    const clave = waNumberFromPhone(tel);
+    if(!tel || !clave || vistos.has(clave)) return;
+    vistos.add(clave);
     out.push({ nombre: c.nombre || '', telefono: tel });
   });
   return out;
 }
 
-// Copia (una sola vez, a pedido) todos los compradores conocidos de Venta de Stakes que tengan
-// teléfono guardado hacia la lista manual "stakes" de WinDifusion -- no pisa ni duplica a los
-// que ya estén ahí (combina por teléfono).
-async function cargarContactosDeVentaStakes(){
-  const btn = document.getElementById('winDifCargarStakesBtn');
-  if(btn){ btn.disabled = true; btn.textContent = 'Cargando...'; }
+// Etiqueta interna que se guarda en la columna "listas" de un contacto cuando el dueño lo quita de
+// "Clientes de Stakes" a propósito: así el botón de actualizar compradores NO lo vuelve a meter
+// (sin esto, cualquier persona quitada reaparecería en la siguiente actualización).
+const WIN_DIF_EXCLUIDO_STAKES = 'no_stakes';
+
+// Pone al día la lista "Clientes de Stakes" con todos los compradores conocidos de Venta de
+// Stakes que tengan teléfono: agrega los nuevos, y no duplica ni pisa a los que ya estén
+// (combina por número normalizado, así "0991234567" y "593991234567" cuentan como el mismo).
+// Los que fueron quitados a propósito (etiqueta no_stakes) se respetan y no vuelven.
+function sincronizarCompradoresStakes(){
+  const compradores = getKnownBuyers().filter(b=>b.phone);
+  const existentes = new Map();
+  state.winDifusion.forEach(c=>{ const k = waNumberFromPhone(c.telefono); if(k && !existentes.has(k)) existentes.set(k, c); });
+  let agregados = 0, actualizados = 0, omitidos = 0;
+  compradores.forEach(b=>{
+    const tel = String(b.phone||'').trim();
+    const clave = waNumberFromPhone(tel);
+    if(!tel || !clave) return;
+    const existente = existentes.get(clave);
+    if(existente){
+      const listas = String(existente.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
+      if(listas.includes(WIN_DIF_EXCLUIDO_STAKES)){ omitidos++; return; }
+      if(!listas.includes('stakes')){ listas.push('stakes'); existente.listas = listas.join(','); actualizados++; }
+    } else {
+      const nuevo = { id: uid(), nombre: b.name || '', telefono: tel, listas: 'stakes', createdAt: new Date().toISOString() };
+      state.winDifusion.push(nuevo);
+      existentes.set(clave, nuevo);
+      agregados++;
+    }
+  });
+  return { agregados, actualizados, omitidos };
+}
+
+// Botón "🔄 Actualizar compradores": corre la sincronización y guarda. "reabrir" (opcional) es la
+// pantalla que se vuelve a abrir después, para ver el conteo nuevo sin perder el lugar.
+async function cargarContactosDeVentaStakes(reabrir){
+  const btn = document.getElementById('winDifCargarStakesBtn') || document.getElementById('winDifRefreshBtn');
+  const textoBtn = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Actualizando...'; }
   try{
-    const compradores = getKnownBuyers().filter(b=>b.phone);
-    const existentes = new Map(state.winDifusion.map(c=>[String(c.telefono||'').trim(), c]));
-    let agregados = 0, actualizados = 0;
-    compradores.forEach(b=>{
-      const tel = (b.phone||'').trim();
-      if(!tel) return;
-      const existente = existentes.get(tel);
-      if(existente){
-        const listas = String(existente.listas||'').split(',').map(s=>s.trim()).filter(Boolean);
-        if(!listas.includes('stakes')){ listas.push('stakes'); existente.listas = listas.join(','); actualizados++; }
-      } else {
-        const nuevo = { id: uid(), nombre: b.name || '', telefono: tel, listas: 'stakes', createdAt: new Date().toISOString() };
-        state.winDifusion.push(nuevo);
-        existentes.set(tel, nuevo);
-        agregados++;
-      }
-    });
-    await withTimeout(persist('winDifusion'), 20000);
-    alert(`Listo -- ${agregados} contactos nuevos agregados a "Clientes de Stakes"${actualizados ? ` y ${actualizados} que ya estaban se agregaron a esta lista` : ''}. En total hay ${getDifusionContactos('stakes').length}.`);
-    openWinDifusionModal();
+    const r = sincronizarCompradoresStakes();
+    if(r.agregados || r.actualizados) await withTimeout(persist('winDifusion'), 20000);
+    const total = getDifusionContactos('stakes').length;
+    alert(r.agregados || r.actualizados
+      ? `Listo -- ${r.agregados} comprador${r.agregados===1?'':'es'} nuevo${r.agregados===1?'':'s'} agregado${r.agregados===1?'':'s'} a "Clientes de Stakes"${r.actualizados ? ` y ${r.actualizados} que ya estaban se sumaron a esta lista` : ''}. En total hay ${total}.`
+      : `La lista ya estaba al día. Hay ${total} compradores.`);
+    if(typeof reabrir === 'function') reabrir(); else openWinDifusionModal();
   }catch(e){
     console.error(e);
-    alert(`No se pudo cargar los contactos: ${e && e.message ? e.message : e}`);
-    if(btn){ btn.disabled = false; btn.textContent = 'Cargar de Venta de Stakes'; }
+    alert(`No se pudo actualizar la lista: ${e && e.message ? e.message : e}`);
+    if(btn){ btn.disabled = false; btn.textContent = textoBtn; }
   }
 }
 
 function openWinDifusionModal(){
   openModal(`
     <h3>Listas de difusión</h3>
-    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Mandan avisos/promos por WhatsApp directo a cada cliente, uno por minuto y con textos distintos entre sí. Todas son manuales: agregas contactos uno por uno, o en "Clientes de Stakes" puedes cargar de una vez a todos los que ya están en Venta de Stakes.</div>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:14px;">Mandan avisos/promos por WhatsApp directo a cada cliente, uno por minuto y con textos distintos entre sí. Todas son manuales: agregas contactos uno por uno, o en "Clientes de Stakes" usa "🔄 Actualizar compradores" para traer de una vez a todos los que ya están en Venta de Stakes (cada vez que haya compradores nuevos).</div>
     ${WIN_DIFUSION_LISTAS.map(l=>{
       const n = getDifusionContactos(l.id).length;
       return `<div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--border); flex-wrap:wrap;">
@@ -2892,7 +2913,7 @@ function openWinDifusionModal(){
           <div style="font-size:13.5px; font-weight:700;">${l.nombre}</div>
           <div style="font-size:12px; color:var(--muted);">${n} contacto${n===1?'':'s'} con teléfono</div>
         </div>
-        ${l.id === 'stakes' ? `<button class="btn secondary small" id="winDifCargarStakesBtn">Cargar de Venta de Stakes</button>` : ''}
+        ${l.id === 'stakes' ? `<button class="btn secondary small" id="winDifCargarStakesBtn">🔄 Actualizar compradores</button>` : ''}
         <button class="btn secondary small" data-win-dif-ver="${l.id}">Ver</button>
         <button class="btn secondary small" data-win-dif-manual="${l.id}" title="Abre WhatsApp para que mandes tú mismo, uno por uno -- no pasa por el bot, cero riesgo de bloqueo">💬 Manual</button>
         <button class="btn small" data-win-dif-mandar="${l.id}">Mandar (bot)</button>
@@ -2906,7 +2927,7 @@ function openWinDifusionModal(){
   `);
   document.getElementById('winDifAddBtn').onclick = openWinDifusionAddForm;
   const cargarBtn = document.getElementById('winDifCargarStakesBtn');
-  if(cargarBtn) cargarBtn.onclick = cargarContactosDeVentaStakes;
+  if(cargarBtn) cargarBtn.onclick = ()=>cargarContactosDeVentaStakes();
   document.querySelectorAll('[data-win-dif-ver]').forEach(b=>b.onclick=()=>openWinDifusionListaModal(b.dataset.winDifVer));
   document.querySelectorAll('[data-win-dif-mandar]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifMandar, 'bot'));
   document.querySelectorAll('[data-win-dif-manual]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifManual, 'manual'));
@@ -2929,6 +2950,9 @@ function openWinDifusionListaModal(listaId){
       const c = state.winDifusion.find(x=>x.id===b.dataset.winDifQuitar);
       if(!c) return;
       const listas = String(c.listas||'').split(',').map(s=>s.trim()).filter(l=>l && l!==b.dataset.winDifLista);
+      // Al quitar a alguien de "Clientes de Stakes" se deja la etiqueta no_stakes, para que
+      // "🔄 Actualizar compradores" no lo vuelva a agregar solo desde Venta de Stakes.
+      if(b.dataset.winDifLista === 'stakes' && !listas.includes(WIN_DIF_EXCLUIDO_STAKES)) listas.push(WIN_DIF_EXCLUIDO_STAKES);
       c.listas = listas.join(',');
       if(!listas.length){ state.winDifusion = state.winDifusion.filter(x=>x.id!==c.id); await persist('winDifusion', { deletedIds:[c.id] }); }
       else await persist('winDifusion');
@@ -2983,8 +3007,14 @@ function handleAbrirDifusion(input){
   else openWinDifusionModal();
 }
 
+// Foto opcional del modo manual: se sube ANTES de generar el texto (Win la mira para redactar) y
+// después se muestra en la lista para guardarla/compartirla. WhatsApp no deja adjuntar una foto
+// con un link wa.me (solo texto), por eso se guarda aparte y se adjunta a mano en cada chat.
+let winDifFoto = null;
+
 function openWinDifusionComposeModal(listaId, modo){
   modo = modo === 'manual' ? 'manual' : 'bot';
+  winDifFoto = null;
   const contactos = getDifusionContactos(listaId);
   const explicacion = modo === 'manual'
     ? `${contactos.length} contacto${contactos.length===1?'':'s'} con teléfono. Te voy a armar un mensaje distinto para cada uno y abrirte WhatsApp con el chat listo -- tú revisas y le das enviar, uno por uno, desde tu propio WhatsApp. No pasa por el bot.`
@@ -2992,6 +3022,13 @@ function openWinDifusionComposeModal(listaId, modo){
   openModal(`
     <h3>${modo === 'manual' ? 'Mandar manual' : 'Mandar difusión'} -- ${winDifusionListaNombre(listaId)}</h3>
     <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">${explicacion}</div>
+    ${listaId === 'stakes' ? `<button class="btn secondary" type="button" id="winDifRefreshBtn" style="width:100%; margin-bottom:12px; font-size:12.5px;">🔄 Actualizar lista de compradores</button>` : ''}
+    ${modo === 'manual' ? `<div class="field"><label>Foto (opcional)</label>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="btn secondary" type="button" id="winDifFotoBtn" style="font-size:12.5px;">📎 Agregar foto</button>
+        <input id="winDifFotoInput" type="file" accept="image/*" style="display:none;">
+        <div id="winDifFotoPreview" style="display:flex; align-items:center; gap:8px;"></div>
+      </div></div>` : ''}
     <div class="field"><label>¿Qué quieres avisar?</label><textarea id="f-winDifNota" placeholder="Ej: tenemos una promo de recarga con bono doble hoy hasta las 9pm"></textarea></div>
     <div style="display:flex; gap:8px; margin:-4px 0 14px;">
       <button class="btn secondary" type="button" id="winDifMicBtn" style="flex:1; font-size:12.5px;">🎤 Dictar</button>
@@ -3004,6 +3041,31 @@ function openWinDifusionComposeModal(listaId, modo){
   `);
   document.getElementById('winDifMicBtn').onclick = ()=>winDictarEnCampo('f-winDifNota', document.getElementById('winDifMicBtn'));
   document.getElementById('winDifGenerarBtn').onclick = ()=>generarPreviewDifusion(listaId, contactos, modo);
+  const refreshBtn = document.getElementById('winDifRefreshBtn');
+  if(refreshBtn) refreshBtn.onclick = ()=>cargarContactosDeVentaStakes(()=>openWinDifusionComposeModal(listaId, modo));
+  const fotoBtn = document.getElementById('winDifFotoBtn');
+  const fotoInput = document.getElementById('winDifFotoInput');
+  if(fotoBtn && fotoInput){
+    fotoBtn.onclick = ()=>fotoInput.click();
+    fotoInput.onchange = async ()=>{
+      const file = fotoInput.files && fotoInput.files[0];
+      if(!file) return;
+      const prev = document.getElementById('winDifFotoPreview');
+      fotoBtn.disabled = true; fotoBtn.textContent = 'Cargando...';
+      try{
+        winDifFoto = await withTimeout(fileToCompressedImage(file), 15000, 'No se pudo leer la foto.');
+        prev.innerHTML = `<img src="${winDifFoto.previewUrl}" style="width:48px; height:48px; object-fit:cover; border-radius:8px;"><button class="btn secondary small" type="button" id="winDifFotoQuitar">Quitar</button>`;
+        document.getElementById('winDifFotoQuitar').onclick = ()=>{ winDifFoto = null; prev.innerHTML = ''; fotoInput.value = ''; fotoBtn.textContent = '📎 Agregar foto'; };
+        fotoBtn.textContent = '📎 Cambiar foto';
+      }catch(e){
+        console.error(e);
+        alert(`No se pudo cargar la foto: ${e && e.message ? e.message : e}`);
+        fotoBtn.textContent = '📎 Agregar foto';
+      }finally{
+        fotoBtn.disabled = false;
+      }
+    };
+  }
 }
 
 // Paso 1: Win redacta UNA versión base (asertiva, directa -- el mismo tono que pediste para las
@@ -3020,10 +3082,12 @@ async function generarPreviewDifusion(listaId, contactos, modo){
   btn.disabled = true; btn.textContent = 'Generando...';
   try{
     const destino = winDifusionListaNombre(listaId);
+    const foto = modo === 'manual' ? winDifFoto : null;
+    const ctxFoto = foto ? { imageBase64: foto.base64, mediaType: foto.mediaType } : {};
     const res = await withTimeout(fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'difusion_preview', destino, code: nota })
-    }), 20000);
+      body: JSON.stringify({ kind: 'difusion_preview', destino, code: nota, ...ctxFoto })
+    }), 25000);
     const data = await res.json().catch(()=>({}));
     const caption = (data && data.caption) || nota;
     const wrap = document.getElementById('winDifPreviewWrap');
@@ -3032,7 +3096,7 @@ async function generarPreviewDifusion(listaId, contactos, modo){
       ${winCaptionToolsHTML()}
       <button class="btn" id="winDifSendBtn" style="width:100%; margin-bottom:8px;">${modo === 'manual' ? `Armar mensajes para los ${contactos.length}` : `Mandar a los ${contactos.length}`}</button>
     `;
-    wireWinCaptionTools({ kind: 'difusion_preview', destino, code: nota });
+    wireWinCaptionTools({ kind: 'difusion_preview', destino, code: nota, ...ctxFoto });
     document.getElementById('winDifSendBtn').onclick = ()=> modo === 'manual' ? submitWinDifusionManual(listaId, contactos) : submitWinDifusion(listaId, contactos);
   }catch(e){
     console.error(e);
@@ -3080,15 +3144,29 @@ async function submitWinDifusionManual(listaId, contactos){
       return { c, texto, link };
     });
 
+    const foto = winDifFoto;
+    let fotoFile = null;
+    if(foto){
+      try{ const blob = await (await fetch(foto.previewUrl)).blob(); fotoFile = new File([blob], 'publicidad.jpg', { type: blob.type || 'image/jpeg' }); }catch(e){ console.error(e); }
+    }
+    const puedeCompartir = !!(fotoFile && navigator.canShare && navigator.canShare({ files: [fotoFile] }));
+    const bloqueFoto = foto ? `<div style="display:flex; align-items:center; gap:12px; padding:10px; margin-bottom:12px; border:1px solid var(--border); border-radius:10px;">
+        <img src="${foto.previewUrl}" style="width:56px; height:56px; object-fit:cover; border-radius:8px;">
+        <div style="flex:1; font-size:12px; color:var(--muted);">WhatsApp no deja adjuntar la foto por el link. Guárdala una vez y adjúntala desde tu galería en cada chat${puedeCompartir ? ', o usa "📤 Foto + texto" en cada contacto (ahí eliges tú el chat)' : ''}.</div>
+        <a class="btn secondary small" href="${foto.previewUrl}" download="publicidad.jpg">💾 Guardar foto</a>
+      </div>` : '';
+
     openModal(`
       <h3>Manual -- ${winDifusionListaNombre(listaId)}</h3>
       <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Toca cada uno para abrir WhatsApp con el mensaje ya escrito -- revísalo y dale enviar tú mismo. Puedes ir marcándolos como "Enviado" para no perder el hilo.</div>
+      ${bloqueFoto}
       ${filas.map((f, i) => `<div id="winDifManualRow-${i}" style="display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--border);">
         <div style="flex:1; min-width:0;">
           <div style="font-size:13.5px; font-weight:600;">${f.c.nombre || '(sin nombre)'}</div>
           <div style="font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${f.c.telefono}</div>
         </div>
         ${f.link ? `<a href="${f.link}" target="_blank" rel="noopener" class="btn small">Abrir chat →</a>
+        ${puedeCompartir ? `<button class="btn secondary small" data-win-dif-share="${i}" title="Comparte la foto con este texto -- tú eliges el chat">📤 Foto + texto</button>` : ''}
         <button class="btn secondary small" data-win-dif-manual-done="${i}">✓ Enviado</button>` : `<span style="font-size:12px; color:var(--muted);">Sin teléfono válido</span>`}
       </div>`).join('')}
       <div class="modal-actions">
@@ -3096,6 +3174,8 @@ async function submitWinDifusionManual(listaId, contactos){
       </div>
     `);
     filas.forEach((f, i) => {
+      const shareBtn = document.querySelector(`[data-win-dif-share="${i}"]`);
+      if(shareBtn) shareBtn.onclick = ()=>{ navigator.share({ files: [fotoFile], text: f.texto }).catch(()=>{}); };
       const doneBtn = document.querySelector(`[data-win-dif-manual-done="${i}"]`);
       if(doneBtn) doneBtn.onclick = () => {
         const row = document.getElementById(`winDifManualRow-${i}`);
