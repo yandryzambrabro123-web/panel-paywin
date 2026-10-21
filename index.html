@@ -1094,6 +1094,7 @@ function renderVipGroup(key, title){
       </div>
       ${dateFilterHTML(key)}
       <div style="display:flex; gap:10px;">
+        ${inactiveTotal > 0 ? `<button class="btn danger" id="archivarInactivosBtn">🗄️ Archivar inactivos (${inactiveTotal})</button>` : ''}
         <button class="btn secondary" id="exportVipBtn">Exportar CSV</button>
         <button class="btn" id="addVipBtn">+ Nuevo miembro</button>
       </div>
@@ -1149,6 +1150,18 @@ function renderVipGroup(key, title){
   document.querySelectorAll('[data-reconsumo-vip]').forEach(b=>b.onclick=()=>toggleReconsumo(key, b.dataset.reconsumoVip, rerender));
   document.querySelectorAll('[data-gift-vip]').forEach(b=>b.onclick=()=>toggleGiftPending(key, b.dataset.giftVip, rerender));
   document.querySelectorAll('[data-del-vip]').forEach(b=>b.onclick=()=>delItem(key, b.dataset.delVip, rerender));
+  const archBtn = document.getElementById('archivarInactivosBtn');
+  if(archBtn) archBtn.onclick = async ()=>{
+    const ids = state[key].filter(v=>effectiveStatus(v, key)==='inactive').map(v=>v.id);
+    if(!ids.length) return;
+    if(!confirm(`Voy a quitar del panel a los ${ids.length} miembros inactivos. Siguen guardados en el Excel, en la hoja VIPsArchivo. ¿Seguimos?`)) return;
+    archBtn.disabled = true; archBtn.textContent = 'Archivando…';
+    try{
+      const r = await archivarMiembrosVip(ids);
+      alert(`Listo: ${r.archivados} miembros quitados del panel y guardados en el Excel (VIPsArchivo).`);
+    }catch(e){ alert(e.message); }
+    rerender();
+  };
   updateNavBadges();
 }
 async function toggleGiftPending(key, id, rerender){
@@ -1227,7 +1240,49 @@ async function toggleReconsumo(key, id, rerender){
   rerender();
   await persist(key);
 }
+// ---------- Archivar miembros (se quitan del panel, pero quedan guardados en el Excel) ----------
+// Los miembros que se "eliminan" ya no se borran del Excel: se copian a la hoja "VIPsArchivo"
+// (con la fecha en que se archivaron) y SOLO DESPUÉS de comprobar que quedaron ahí se quitan de
+// la hoja "VIPs", que es la que lee el panel.
+const SHEET_VIPS_ARCHIVO = 'VIPsArchivo';
+async function archivarMiembrosVip(ids){
+  const lista = (state.vips || []).filter(v=>ids.includes(v.id));
+  if(!lista.length) return { archivados: 0 };
+  const ahora = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
+  // 1) leer lo que ya hay en el archivo (para no pisarlo) y mezclar
+  let previo = [];
+  try{
+    const r = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_VIPS_ARCHIVO}`);
+    const j = await r.json();
+    previo = (j.data || []);
+  }catch(e){ throw new Error('No pude leer el archivo del Excel. No se borró nada.'); }
+  const mapa = new Map();
+  previo.forEach(x=>{ if(x && x.id) mapa.set(String(x.id), x); });
+  lista.forEach(v=>mapa.set(String(v.id), { ...v, archivedAt: ahora }));
+  await fetch(SHEETS_API_URL, {
+    method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ sheet: SHEET_VIPS_ARCHIVO, data: Array.from(mapa.values()) })
+  });
+  // 2) comprobar que de verdad quedaron guardados antes de quitarlos del panel
+  await new Promise(ok=>setTimeout(ok, 2500));
+  const chk = await (await fetch(`${SHEETS_API_URL}?sheet=${SHEET_VIPS_ARCHIVO}&t=${Date.now()}`)).json();
+  const guardados = new Set((chk.data || []).map(x=>String(x.id)));
+  const seguros = lista.filter(v=>guardados.has(String(v.id)));
+  if(seguros.length !== lista.length) throw new Error(`Solo ${seguros.length} de ${lista.length} quedaron guardados en el Excel. No quité a nadie del panel.`);
+  // 3) quitarlos del panel
+  const idsOk = seguros.map(v=>v.id);
+  state.vips = state.vips.filter(v=>!idsOk.includes(v.id));
+  await persist('vips', { deletedIds: idsOk });
+  return { archivados: idsOk.length };
+}
+
 async function delItem(key, id, rerenderFn){
+  if(key === 'vips'){
+    if(!confirm('¿Quitar a este miembro del panel? Sigue guardado en el Excel (hoja VIPsArchivo).')) return;
+    try{ await archivarMiembrosVip([id]); }catch(e){ alert(e.message); return; }
+    rerenderFn ? rerenderFn() : render();
+    return;
+  }
   if(!confirm('¿Eliminar este registro?')) return;
   state[key] = state[key].filter(x=>x.id!==id);
   rerenderFn ? rerenderFn() : render();
