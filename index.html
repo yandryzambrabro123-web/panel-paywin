@@ -688,7 +688,7 @@ function coerceRow(key, row){
     return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true', removidoVip: String(row.removidoVip||'') };
   }
   if(key === 'freeBets' || key === 'vipBets' || key === 'liveBets'){
-    return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]') };
+    return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]'), imageUrl:String(row.imageUrl||''), returned:Number(row.returned)||0, ganancia:Number(row.ganancia)||0 };
   }
   if(key === 'stakeSales'){
     // name/phone forzados a String: si en la hoja alguien quedó con el nombre o el teléfono
@@ -701,7 +701,7 @@ function coerceRow(key, row){
     return { id:String(row.id||''), day:row.day||'', title:row.title||'Stake', price:Number(row.price)||0 };
   }
   if(key === 'stakes'){
-    return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending' };
+    return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending', imageUrl:String(row.imageUrl||'') };
   }
   if(key === 'financeMovements'){
     return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'', comprobanteNumero:row.comprobanteNumero||'', receiptImage:row.receiptImage||'', createdAt:row.createdAt||'', createdBy:row.createdBy||'' };
@@ -735,7 +735,7 @@ function coerceRow(key, row){
     // sin cargar la lista COMPLETA de difusión, no solo ese contacto.
     return { id:String(row.id||''), nombre:String(row.nombre||''), telefono:String(row.telefono||''), listas:String(row.listas||''), createdAt:row.createdAt||'' };
   }
-  return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending' };
+  return { id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending', imageUrl:String(row.imageUrl||'') };
 }
 
 async function fetchSheetKey(key){
@@ -1267,6 +1267,8 @@ function renderPicks(key, title){
               <option value="won" ${b.result==='won'?'selected':''}>Ganada</option>
               <option value="lost" ${b.result==='lost'?'selected':''}>Perdida</option>
             </select>
+            ${b.result==='won' && b.ganancia>0 ? `<div class="mono" style="font-size:12px; color:var(--win,#7bd88f); margin-top:4px;">Ganancia +${fmtMoney(b.ganancia)}</div>` : ''}
+            ${b.imageUrl ? `<div style="margin-top:4px;"><a href="${b.imageUrl}" target="_blank" rel="noopener" style="font-size:12px;">📷 Ver foto</a></div>` : ''}
           </td>
           <td class="mono">${fmtDate(b.date)}</td>
           <td class="row-actions">
@@ -4920,7 +4922,7 @@ function winRegistroDefault(kind, grupos){
   if(g.some(x=>x.includes('gratis'))) return 'freeBets';
   return '';
 }
-async function winRegistrarEnPanel(key, texto){
+async function winRegistrarEnPanel(key, texto, sendImage){
   if(!key) return false;
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
   const pick = String(texto || '').replace(/\s+/g,' ').trim().slice(0,200) || 'Registrado desde Win';
@@ -4929,7 +4931,45 @@ async function winRegistrarEnPanel(key, texto){
   else if(key === 'gifts') row = { id:uid(), sport:'', pick, odds:0, stake:0, recipient:'', date:hoy, result:'pending' };
   else if(key === 'stakes') row = { id:uid(), description:pick, amount:0, date:hoy, result:'pending' };
   else return false;
+  // La foto se guarda en Vercel Blob (en su calidad real) y en la hoja solo queda el link.
+  try{
+    if(sendImage && sendImage.url) row.imageUrl = sendImage.url;
+    else if(sendImage && sendImage.base64){
+      const up = await withTimeout(fetch('/api/win-imagen', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ base64: sendImage.base64, mediaType: sendImage.mediaType, nombre: key }) }), 30000);
+      const d = await up.json().catch(()=>({}));
+      if(up.ok && d.url) row.imageUrl = d.url;
+    }
+  }catch(e){ console.error('No se pudo guardar la foto del registro:', e); }
   state[key].push(row);
+  await persist(key);
+  return true;
+}
+
+// Apuestas pendientes (VIP y gratis) a las que se les puede marcar "ganada" desde Win.
+function winApuestasPendientes(){
+  const todas = [
+    ...(state.vipBets||[]).map(b=>({ ...b, _key:'vipBets', _tag:'VIP' })),
+    ...(state.freeBets||[]).map(b=>({ ...b, _key:'freeBets', _tag:'Gratis' }))
+  ].filter(b=>b.result==='pending');
+  return todas.sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,25);
+}
+// Marca la apuesta como ganada y calcula la ganancia (cobrado - invertido).
+async function winMarcarGanada(key, id, invertido, cobrado, sendImage){
+  const b = (state[key]||[]).find(x=>x.id===id);
+  if(!b) return false;
+  b.result = 'won';
+  if(invertido > 0) b.stake = invertido;
+  if(cobrado > 0){
+    b.returned = cobrado;
+    if(invertido > 0){ b.ganancia = Math.round((cobrado - invertido)*100)/100; b.odds = Math.round((cobrado/invertido)*100)/100; }
+  }
+  if(!b.imageUrl && sendImage && sendImage.base64){
+    try{
+      const up = await withTimeout(fetch('/api/win-imagen', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ base64: sendImage.base64, mediaType: sendImage.mediaType, nombre: key + '-ganada' }) }), 30000);
+      const d = await up.json().catch(()=>({}));
+      if(up.ok && d.url) b.imageUrl = d.url;
+    }catch(e){ console.error(e); }
+  }
   await persist(key);
   return true;
 }
@@ -4949,10 +4989,17 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
     <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:130px;">${escapeForTextarea(caption)}</textarea></div>
     ${redactCtx ? winCaptionToolsHTML() : ''}
-    <div class="field"><label>Registrar en el panel como</label>
+    ${kind === 'ganada' ? `<div class="field"><label>Marcar como ganada la apuesta</label>
+      <select id="f-winGanadaBet"><option value="">(no marcar ninguna)</option>${winApuestasPendientes().map(b=>`<option value="${b._key}|${b.id}">[${b._tag}] ${String(b.pick||'').slice(0,60)} · ${fmtDate(b.date)}</option>`).join('')}</select>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <input type="number" step="0.01" id="f-winGanadaInv" placeholder="Invertido $" style="flex:1;">
+        <input type="number" step="0.01" id="f-winGanadaCob" placeholder="Cobrado $ (total)" style="flex:1;">
+      </div>
+      <div id="winGanadaLeyendo" style="font-size:11.5px; color:var(--muted); margin-top:4px;">${sendImage && sendImage.base64 ? 'Leyendo la captura para sugerir la apuesta y los montos…' : 'Sube captura para que Win lea los montos, o escríbelos.'}</div>
+    </div>` : `<div class="field"><label>Registrar en el panel como</label>
       <select id="f-winRegistrar">${WIN_REGISTRO_TIPOS.map(t=>`<option value="${t.key}" ${t.key===winRegistroDefault(kind, grupos)?'selected':''}>${t.label}</option>`).join('')}</select>
-      <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se registra al mandar, y el recordatorio de Telegram lo cuenta como hecho hoy.</div>
-    </div>
+      <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se registra al mandar con la foto, y el recordatorio de Telegram lo cuenta como hecho hoy.</div>
+    </div>`}
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Los grupos con bot conectado se mandan solos en un toque. Los demás copian el texto y abren el chat para pegar y enviar.</div>
     ${groupButtonsHTML}
     <div class="modal-actions">
@@ -4961,11 +5008,45 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   `);
   document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
   wireWinCaptionTools(redactCtx);
+  if(kind === 'ganada' && sendImage && sendImage.base64){
+    (async ()=>{
+      const nota = document.getElementById('winGanadaLeyendo');
+      try{
+        const r = await withTimeout(fetch('/api/leer-apuesta', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ imageBase64: sendImage.base64, mediaType: sendImage.mediaType }) }), 40000);
+        const d = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(d.error || 'No se pudo leer.');
+        const inv = document.getElementById('f-winGanadaInv'), cob = document.getElementById('f-winGanadaCob'), sel = document.getElementById('f-winGanadaBet');
+        if(!inv) return;
+        if(d.invested) inv.value = d.invested;
+        if(d.returned) cob.value = d.returned;
+        // sugiere la apuesta pendiente que más se parezca al pick leído; si no hay parecida, la más reciente
+        const palabras = String(d.pick||'').toLowerCase().split(/[^a-záéíóúñ0-9]+/).filter(w=>w.length>3);
+        let mejor = null, puntos = 0;
+        winApuestasPendientes().forEach(b=>{
+          const t = String(b.pick||'').toLowerCase();
+          const sc = palabras.filter(w=>t.includes(w)).length;
+          if(sc > puntos){ puntos = sc; mejor = b; }
+        });
+        if(mejor) sel.value = `${mejor._key}|${mejor.id}`;
+        if(nota) nota.textContent = mejor ? 'Win sugirió la apuesta y los montos: revísalos antes de mandar.' : 'Leí los montos, pero no encontré cuál apuesta es: elígela tú.';
+      }catch(e){ if(nota) nota.textContent = 'No pude leer la captura: elige la apuesta y escribe los montos.'; }
+    })();
+  }
   const winRegistrarSiToca = async (texto)=>{
     if(winRegistrado) return;
+    const gan = document.getElementById('f-winGanadaBet');
+    if(gan){
+      if(!gan.value) return;
+      const [k, id] = gan.value.split('|');
+      try{
+        winRegistrado = await winMarcarGanada(k, id, Number(document.getElementById('f-winGanadaInv').value)||0, Number(document.getElementById('f-winGanadaCob').value)||0, sendImage);
+      }catch(e){ console.error(e); alert('Se mandó, pero no pude marcarla como ganada en el panel. Márcala a mano.'); }
+      if(winRegistrado) gan.disabled = true;
+      return;
+    }
     const sel = document.getElementById('f-winRegistrar');
     if(!sel || !sel.value) return;
-    try{ winRegistrado = await winRegistrarEnPanel(sel.value, texto); }catch(e){ console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
+    try{ winRegistrado = await winRegistrarEnPanel(sel.value, texto, sendImage); }catch(e){ console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
     if(winRegistrado){ sel.disabled = true; }
   };
 
