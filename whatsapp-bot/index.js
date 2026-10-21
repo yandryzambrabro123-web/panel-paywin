@@ -154,7 +154,8 @@ app.get('/qr', async (req, res) => {
 });
 
 app.get('/estado', requireApiKey, (req, res) => {
-  res.json({ conectado: connected });
+  const idBot = connected && sock && sock.user ? String(sock.user.id || '').split('@')[0].split(':')[0] : null;
+  res.json({ conectado: connected, numero: idBot ? '+' + idBot : null });
 });
 
 // Lista los grupos en los que ya está metido el número dedicado, con su "id" real de
