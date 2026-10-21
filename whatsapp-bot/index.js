@@ -483,3 +483,73 @@ app.post('/reset-session', requireApiKey, resetSessionHandler);
 app.listen(PORT, () => {
   console.log(`Servidor del bot de WhatsApp escuchando en el puerto ${PORT}.`);
 });
+
+// ---------------------------------------------------------------------------------------------
+// Recordatorios diarios por Telegram: lo que hay que subir todos los días hasta las 7pm (hora de
+// Ecuador): 3 apuestas VIP, 1 apuesta gratis, 1 regalito y 1 stake. Se vigila SOLO, mirando las
+// hojas del panel: apenas registras la apuesta/regalito/stake en el panel (con la fecha de hoy),
+// cuenta como hecho. Cada rato revisa qué falta y te escribe SOLO si falta algo; cuando todo está
+// listo, deja de insistir. Vive aquí (y no en Vercel) porque Vercel gratis solo deja correr tareas
+// una vez al día, y esto necesita revisar varias veces.
+//
+// Variables en Railway: TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID (las mismas que en Vercel).
+// ---------------------------------------------------------------------------------------------
+const SHEETS_API_URL_RECORD = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhbzMCcoJ5jDjp1lgsaGjLMkGI47SVAfemVMuMnggWd_k-ubqzmBEMlA/exec';
+const METAS_DIARIAS = [
+  { hoja: 'ApuestasVIP', campo: 'date', meta: 3, nombre: 'apuestas VIP' },
+  { hoja: 'ApuestasGratis', campo: 'date', meta: 1, nombre: 'apuesta gratis' },
+  { hoja: 'Regalitos', campo: 'date', meta: 1, nombre: 'regalito del día' },
+  { hoja: 'Stakes', campo: 'date', meta: 1, nombre: 'stake del día', alt: { hoja: 'SeccionesStakes', campo: 'day' } } // cuenta si registras el stake o creas su sección de venta de hoy
+];
+// Minutos desde la medianoche (hora Ecuador) en que se revisa y se avisa si falta algo.
+const HORAS_AVISO = [10 * 60, 12 * 60, 14 * 60, 16 * 60, 17 * 60 + 30, 18 * 60 + 15, 18 * 60 + 45, 19 * 60];
+const avisosHechos = new Set(); // "YYYY-MM-DD|minuto"
+
+function ecuadorAhora() {
+  const d = new Date(Date.now() - 5 * 60 * 60 * 1000);
+  return { fecha: d.toISOString().slice(0, 10), minutos: d.getUTCHours() * 60 + d.getUTCMinutes() };
+}
+
+async function contarHoy(hoja, campo, hoy) {
+  const r = await fetch(`${SHEETS_API_URL_RECORD}?sheet=${hoja}`);
+  const json = await r.json();
+  return (json.data || []).filter(x => String(x[campo] || '').slice(0, 10) === hoy).length;
+}
+
+async function revisarPendientesDiarios() {
+  const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
+  const chatId = String(process.env.TELEGRAM_CHAT_ID || '').trim();
+  if (!token || !chatId) return;
+  const { fecha, minutos } = ecuadorAhora();
+  // el aviso toca si ya pasó la hora marcada y no han pasado más de 10 minutos (así un reinicio
+  // del bot tarde en el día no dispara una ráfaga de avisos viejos)
+  const toca = HORAS_AVISO.find(h => minutos >= h && minutos < h + 10 && !avisosHechos.has(`${fecha}|${h}`));
+  if (toca === undefined) return;
+  avisosHechos.add(`${fecha}|${toca}`);
+  try {
+    const faltan = [];
+    for (const m of METAS_DIARIAS) {
+      let n = await contarHoy(m.hoja, m.campo, fecha);
+      if (m.alt) n = Math.max(n, await contarHoy(m.alt.hoja, m.alt.campo, fecha));
+      if (n < m.meta) faltan.push(m.meta > 1 ? `• ${m.nombre}: llevas ${n} de ${m.meta}` : `• ${m.nombre}: falta`);
+    }
+    if (!faltan.length) return; // todo listo, no molesta
+    const restan = 19 * 60 - minutos;
+    let encabezado;
+    if (toca >= 19 * 60) encabezado = '🚨 Son las 7pm y NO se subió todo:';
+    else if (toca >= 18 * 60) encabezado = `🔥 Quedan ${restan} min para las 7pm y falta:`;
+    else if (toca >= 16 * 60) encabezado = '⏰ Ya va cayendo la tarde, todavía falta subir:';
+    else encabezado = '📋 Pendientes de hoy para el VIP:';
+    const texto = `${encabezado}\n${faltan.join('\n')}\n\nCuando lo registres en el panel (con la fecha de hoy), deja de salir aquí.`;
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: texto, reply_markup: { inline_keyboard: [[{ text: 'Abrir el panel', url: 'https://panel-paywin.vercel.app' }]] } })
+    });
+    if (!r.ok) console.error('Telegram rechazó el recordatorio:', await r.text().catch(() => ''));
+  } catch (e) {
+    console.error('Error en recordatorios diarios:', e.message);
+    avisosHechos.delete(`${fecha}|${toca}`); // si falló, se reintenta en el próximo minuto
+  }
+}
+setInterval(revisarPendientesDiarios, 60 * 1000);
