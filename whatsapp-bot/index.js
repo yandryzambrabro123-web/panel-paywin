@@ -405,14 +405,28 @@ app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {
   if (digitos.length < 8 || !Array.isArray(grupoIds) || !grupoIds.length) {
     return res.status(400).json({ error: 'Falta numero o grupoIds.' });
   }
-  const jid = `${digitos}@s.whatsapp.net`;
+  const soloDigitos = (x) => String(x || '').split('@')[0].split(':')[0].replace(/\D/g, '');
   const resultados = [];
   for (const grupoId of grupoIds) {
     try {
-      const r = await sock.groupParticipantsUpdate(grupoId, [jid], 'remove');
+      // Se busca a la persona DENTRO del grupo (WhatsApp a veces la guarda con un id interno
+      // "@lid" en vez del número, y entonces borrar por número no hace nada).
+      const meta = await sock.groupMetadata(grupoId);
+      const parts = meta.participants || [];
+      const objetivo = parts.find(p => [p.id, p.phoneNumber, p.jid].some(x => soloDigitos(x) === digitos));
+      const yo = parts.find(p => [p.id, p.lid, p.phoneNumber, p.jid].some(x => x && (soloDigitos(x) === soloDigitos(sock.user && sock.user.id) || soloDigitos(x) === soloDigitos(sock.user && sock.user.lid))));
+      const botEsAdmin = !!(yo && (yo.admin === 'admin' || yo.admin === 'superadmin'));
+      if (!objetivo) {
+        resultados.push({ grupoId, ok: true, encontrado: false, botEsAdmin, status: 'no-estaba' });
+        continue;
+      }
+      if (!botEsAdmin) {
+        resultados.push({ grupoId, ok: false, encontrado: true, botEsAdmin, error: 'El número del bot NO es administrador de este grupo.' });
+        continue;
+      }
+      const r = await sock.groupParticipantsUpdate(grupoId, [objetivo.id], 'remove');
       const status = r && r[0] && String(r[0].status);
-      // 200 = sacado; 404 = ya no estaba en el grupo (también cuenta como resuelto)
-      resultados.push({ grupoId, ok: !status || status === '200' || status === '404', status: status || '200' });
+      resultados.push({ grupoId, ok: status === '200', encontrado: true, botEsAdmin, status: status || 'sin-respuesta', error: status === '200' ? undefined : `WhatsApp respondió ${status || 'nada'}` });
     } catch (e) {
       console.error('Error sacando del grupo:', grupoId, e);
       resultados.push({ grupoId, ok: false, error: e.message });

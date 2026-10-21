@@ -2990,12 +2990,15 @@ function openWinReconsumosModal(){
         }), 45000);
         const data = await r.json().catch(()=>({}));
         if(!r.ok) throw new Error(data.error || 'No se pudo sacar.');
+        const nombreGrupo = id => (id === WIN_VIP_JIDS[0] ? 'VIP' : 'VIP Más Parley');
+        const detalle = (data.resultados || []).map(x=>`• ${nombreGrupo(x.grupoId)}: ${x.status === 'no-estaba' ? 'no estaba en el grupo' : (x.ok ? 'sacado ✅' : 'NO se pudo — ' + (x.error || x.status))}`).join('\n');
         const fallos = (data.resultados || []).filter(x=>!x.ok);
         if(fallos.length){
-          alert('No se pudo sacar de ' + fallos.length + ' grupo(s). Revisa que el bot sea admin de los grupos VIP. ' + (fallos[0].error || ''));
+          alert('No se pudo sacar a ' + v.name + ':\n' + detalle);
           btn.disabled = false; btn.textContent = 'Sacar del VIP';
           return;
         }
+        alert('Resultado para ' + v.name + ':\n' + detalle);
         v.removidoVip = String(v.joinDate);
         v.status = 'inactive';
         await persist('vips');
