@@ -2969,6 +2969,7 @@ function openWinReconsumosModal(){
   openModal(`
     <h3 style="margin-bottom:4px;">🔔 Reconsumos VIP</h3>
     <p style="color:var(--muted); font-size:13px; margin-bottom:14px;">Sacar quita a la persona de VIP y VIP Más Parley (el bot tiene que ser admin). "Escribirle" abre tu WhatsApp con el mensaje listo.</p>
+    ${vencidos.length ? `<button class="btn danger small" id="winReconSacarTodos" style="margin:0 8px 10px 0;">⛔ Sacar a TODOS los vencidos del grupo (${vencidos.length})</button>` : ''}
     ${vencidos.length ? `<button class="btn secondary small" id="winReconLimpiar" style="margin-bottom:10px;">🧹 Quitar de la lista a los que ya no están en el grupo</button>` : ''}
     <h4 style="margin:6px 0;">Vencidos (${vencidos.length})</h4>
     ${vencidos.length ? vencidos.map(x=>fila(x,true)).join('') : '<div class="empty">Nadie con la membresía vencida 🎉</div>'}
@@ -2977,6 +2978,43 @@ function openWinReconsumosModal(){
     <div style="display:flex; justify-content:flex-end; margin-top:12px;"><button class="btn secondary" id="winReconCerrar">Cerrar</button></div>
   `);
   document.getElementById('winReconCerrar').onclick = closeModal;
+  const sacarTodos = document.getElementById('winReconSacarTodos');
+  if(sacarTodos) sacarTodos.onclick = async ()=>{
+    const lista = vencidos.map(x=>({ v:x.v, num:waNumberFromPhone(x.v.contact || '') })).filter(x=>x.num);
+    if(!confirm(`Voy a sacar de VIP y VIP Más Parley a los ${lista.length} miembros vencidos que sigan en el grupo, uno por uno con unos segundos de pausa (tarda unos ${Math.ceil(lista.length*5/60)} min). Siguen guardados en Miembros VIP como inactivos. No cierres esta ventana mientras corre. ¿Los saco a todos?`)) return;
+    sacarTodos.disabled = true;
+    let sacados = 0, noEstaban = 0, fallos = [];
+    for(let i=0; i<lista.length; i++){
+      const { v, num } = lista[i];
+      sacarTodos.textContent = `Sacando ${i+1} de ${lista.length}…`;
+      try{
+        const r = await withTimeout(fetch('/api/win-enviar', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ modo:'sacar', numero:num, grupoIds:WIN_VIP_JIDS })
+        }), 45000);
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(data.error || 'No se pudo sacar.');
+        const res = data.resultados || [];
+        const malos = res.filter(x=>!x.ok);
+        if(malos.length){
+          fallos.push(`${v.name}: ${malos[0].error || malos[0].status}`);
+          // si el bot no es admin en algún grupo, no tiene caso seguir con los demás
+          if(malos.some(x=>/administrador/i.test(x.error || ''))) break;
+          continue;
+        }
+        if(res.every(x=>x.status === 'no-estaba')) noEstaban++; else sacados++;
+        v.removidoVip = String(v.joinDate); v.status = 'inactive';
+      }catch(e){
+        fallos.push(`${v.name}: ${e.message}`);
+        if(/conectado|conectar/i.test(e.message)) break;
+      }
+      await new Promise(ok=>setTimeout(ok, 3000 + Math.random()*3000));
+    }
+    await persist('vips');
+    alert(`Terminé.\n• Sacados del grupo: ${sacados}\n• Ya no estaban: ${noEstaban}\n• Con problema: ${fallos.length}${fallos.length ? '\n\n' + fallos.slice(0,8).join('\n') : ''}`);
+    openWinReconsumosModal();
+    render();
+  };
   const limpiar = document.getElementById('winReconLimpiar');
   if(limpiar) limpiar.onclick = async ()=>{
     const conNumero = vencidos.map(x=>({ v:x.v, num:waNumberFromPhone(x.v.contact || '') })).filter(x=>x.num);
