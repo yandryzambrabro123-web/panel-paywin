@@ -618,11 +618,12 @@ const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'Apuest
 const VIP_GROUPS = [
   { key:'vips', title:'Miembros VIP' }
 ];
-// Cuentas del cuadre financiero. ProduBanco queda fuera a propósito: es la cuenta personal.
+// Cuentas del cuadre financiero.
 const FINANCE_ACCOUNTS = [
   { id:'pichincha', name:'Banco Pichincha', type:'banco' },
   { id:'guayaquil', name:'Banco Guayaquil', type:'banco' },
   { id:'pacifico', name:'Banco Pacífico', type:'banco' },
+  { id:'produbanco', name:'ProduBanco', type:'banco' },
   { id:'ecuabet', name:'Caja Ecuabet', type:'caja' },
   { id:'onexbet', name:'Caja OneXBet', type:'caja' },
   { id:'masparley', name:'Caja Más Parley', type:'caja' }
@@ -634,14 +635,8 @@ const FINANCE_DAILY_NOTE_PREFIX = 'Saldo inicial del día';
 // Última "BASE FINANCIERA" que me pasaste (domingo 11/10/26) — queda precargada en el
 // formulario "Actualizar saldo del día" para que solo tengas que revisar y darle Guardar.
 // La próxima vez que me mandes la base del día, actualizo estos valores y te paso el archivo.
-const FINANCE_LATEST_BASE = {
-  pichincha: 0.14,
-  guayaquil: 10,
-  pacifico: 15,
-  ecuabet: 51.65,
-  masparley: 0.19
-  // onexbet no viene en la base que mandas — se deja en blanco a propósito
-};
+// Cuadre en cero: se dejan en blanco a propósito; los saldos los das tú (o se los dices a Win).
+const FINANCE_LATEST_BASE = {};
 
 let state = {
   vips: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], winOutbox: [], winReminders: [], winMemory: [], winTemplates: [], winDifusion: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
@@ -1913,14 +1908,40 @@ function openDailyBalanceForm(rerender){
 
 // Borra TODO el historial de Cuadre Financiero (pruebas y movimientos incluidos) para empezar
 // limpio, y abre de una vez el formulario de saldo del día. Pide doble confirmación por ser irreversible.
+// Antes de borrar el historial se COPIA al Excel (hoja "CuadreRespaldo", con la fecha del respaldo)
+// y solo si se comprueba que quedó guardado se borra del panel.
+async function respaldarCuadre(){
+  const movs = state.financeMovements || [];
+  if(!movs.length) return 0;
+  const fecha = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,16).replace('T',' ');
+  let previo = [];
+  try{
+    const j = await (await fetch(`${SHEETS_API_URL}?sheet=CuadreRespaldo`)).json();
+    previo = j.data || [];
+  }catch(e){ throw new Error('No pude leer el respaldo del Excel. No se borró nada.'); }
+  const mapa = new Map();
+  previo.forEach(x=>{ if(x && x.id) mapa.set(String(x.id), x); });
+  movs.forEach(m=>mapa.set(String(m.id), { ...m, respaldoFecha: fecha }));
+  await fetch(SHEETS_API_URL, {
+    method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({ sheet:'CuadreRespaldo', data: Array.from(mapa.values()) })
+  });
+  await new Promise(ok=>setTimeout(ok, 3000));
+  const chk = await (await fetch(`${SHEETS_API_URL}?sheet=CuadreRespaldo&t=${Date.now()}`)).json();
+  const guardados = new Set((chk.data || []).map(x=>String(x.id)));
+  if(!movs.every(m=>guardados.has(String(m.id)))) throw new Error('El respaldo en el Excel no quedó completo. No se borró nada.');
+  return movs.length;
+}
 async function resetFinanceAll(rerender){
-  if(!confirm('Esto va a BORRAR todos los movimientos de Cuadre Financiero (' + state.financeMovements.length + ' en total). No se puede deshacer.')) return;
+  if(!confirm('Esto va a dejar el Cuadre Financiero en cero (' + state.financeMovements.length + ' movimientos). Antes se guarda una copia en el Excel, en la hoja CuadreRespaldo. ¿Seguimos?')) return;
   const typed = prompt('Para confirmar, escribe BORRAR (en mayúsculas) y presiona aceptar:');
   if(typed !== 'BORRAR'){ alert('No escribiste "BORRAR" exactamente — no se borró nada.'); return; }
+  let n = 0;
+  try{ n = await respaldarCuadre(); }catch(e){ alert(e.message); return; }
   state.financeMovements = [];
   rerender();
   await persist('financeMovements', { force: true }); // reinicio explícito: sí se pisa lo del servidor
-  openDailyBalanceForm(rerender);
+  alert(`Listo: el cuadre quedó en cero${n ? ` y ${n} movimientos quedaron respaldados en el Excel (CuadreRespaldo)` : ''}. Ahora dile a Win los saldos de cada cuenta.`);
 }
 
 // Gráficos de Cuadre Financiero: barras de saldo actual por cuenta, y línea del total
