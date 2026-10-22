@@ -611,7 +611,7 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas', winDifusion: 'WinDifusion' };
+const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas', winDifusion: 'WinDifusion', winGanadas: 'WinGanadasGuardadas' };
 // "Publicidades" guardadas de Win: imagen + texto FIJOS, identificados por nombre (ej: "publicidad
 // de recargas"). Cuando el jefe pide una por nombre, Win la reconoce y la manda directo a la
 // bandeja con ese mismo texto de siempre -- sin redactar nada nuevo con IA.
@@ -640,7 +640,7 @@ const FINANCE_DAILY_NOTE_PREFIX = 'Saldo inicial del día';
 const FINANCE_LATEST_BASE = {};
 
 let state = {
-  vips: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], winOutbox: [], winReminders: [], winMemory: [], winTemplates: [], winDifusion: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
+  vips: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], winOutbox: [], winReminders: [], winMemory: [], winTemplates: [], winDifusion: [], winGanadas: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -702,6 +702,9 @@ function coerceRow(key, row){
   if(key === 'financeMovements'){
     return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'', comprobanteNumero:row.comprobanteNumero||'', receiptImage:row.receiptImage||'', createdAt:row.createdAt||'', createdBy:row.createdBy||'' };
   }
+  if(key === 'winGanadas'){
+    return { id:String(row.id||''), date:String(row.date||'').slice(0,10), caption:String(row.caption||''), imageUrl:String(row.imageUrl||''), grupos:String(row.grupos||''), status:row.status||'pendiente', publishedAt:String(row.publishedAt||'') };
+  }
   if(key === 'winOutbox'){
     return { id:String(row.id||''), kind:row.kind||'otro', destino:row.destino||'', caption:row.caption||'', image:row.image||'', status:row.status||'pendiente', createdAt:row.createdAt||'' };
   }
@@ -749,7 +752,7 @@ async function fetchSheetKey(key){
 // mientras el resto del panel se sigue cargando atrás sin que tengas que esperarlo.
 async function loadAll(){
   const main = document.getElementById('main');
-  const winKeys = ['winMemory', 'winOutbox', 'winReminders', 'winTemplates', 'winDifusion'];
+  const winKeys = ['winMemory', 'winOutbox', 'winReminders', 'winTemplates', 'winDifusion', 'winGanadas'];
   const otherKeys = Object.keys(SHEET_NAMES).filter(k => !winKeys.includes(k));
 
   if(state.view === 'win'){
@@ -2688,6 +2691,7 @@ function renderWin(){
         <button class="win-icon-btn" id="winTemplatesBtn" title="Imágenes guardadas">&#128444;${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winDifusionBtn" title="Listas de difusión">&#128226;</button>
         <button class="win-icon-btn" id="winMicModeBtn" title="${winModoManual() ? 'Micrófono manual (toca para hablar). Toca aquí para cambiar a escucha automática' : 'Escucha automática (hola Win). Toca aquí para cambiar a micrófono manual'}">${winModoManual() ? '&#127897;&#65039;' : '&#128065;&#65039;'}</button>
+        <button class="win-icon-btn" id="winGanadasBtn" title="Ganadas de ayer: publicar las que guardaste">&#128227;${winGanadasPendientes().length ? `<span class="win-icon-badge">${winGanadasPendientes().length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winReconsumosBtn" title="Reconsumos VIP">&#128276;${winReconsumosLista().vencidos.length ? `<span class="win-icon-badge">${winReconsumosLista().vencidos.length}</span>` : ''}</button>
       </div>
       <div class="win-brand"><span id="winBrandDot" class="win-brand-dot win-brand-dot-idle"></span>WIN</div>
@@ -2770,6 +2774,7 @@ function renderWin(){
   document.getElementById('winTemplatesBtn').onclick = openWinTemplatesModal;
   document.getElementById('winDifusionBtn').onclick = openWinDifusionModal;
   document.getElementById('winReconsumosBtn').onclick = openWinReconsumosModal;
+  document.getElementById('winGanadasBtn').onclick = openWinGanadasAyerModal;
   document.getElementById('winMicModeBtn').onclick = ()=>{
     const manual = winModoManual();
     if(!manual || confirm('La escucha automática capta todo lo que se oiga alrededor (incluida la gente de la oficina). ¿Cambiar a escucha automática?')){
@@ -5074,6 +5079,81 @@ let winAjusteChunks = [];
 let winAjusteStream = null;
 let winAjusteRecording = false;
 
+// ---------- Ganadas guardadas para publicar al día siguiente ----------
+// En la pantalla de una apuesta ganada se puede marcar "guardarla para mañana". Al día siguiente,
+// el botón 📣 de Win ("Ganadas de ayer") junta todas las guardadas para reenviarlas con un toque.
+async function winSubirImagenBlob(sendImage, nombre){
+  if(!sendImage) return '';
+  if(sendImage.url) return sendImage.url;
+  if(!sendImage.base64) return '';
+  const up = await withTimeout(fetch('/api/win-imagen', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ base64: sendImage.base64, mediaType: sendImage.mediaType, nombre }) }), 30000);
+  const d = await up.json().catch(()=>({}));
+  return (up.ok && d.url) ? d.url : '';
+}
+async function winGuardarGanadaParaManana(texto, grupos, sendImage){
+  const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
+  const imageUrl = await winSubirImagenBlob(sendImage, 'ganada');
+  if(!imageUrl && sendImage) throw new Error('No se pudo guardar la imagen. Revisa tu conexión e intenta de nuevo.');
+  state.winGanadas.push({ id: uid(), date: hoy, caption: texto, imageUrl, grupos: (grupos || []).join(','), status: 'pendiente', publishedAt: '' });
+  await persist('winGanadas');
+}
+function winGanadasPendientes(){
+  return (state.winGanadas || []).filter(g=>g.status === 'pendiente').sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+}
+function openWinGanadasAyerModal(){
+  const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
+  const lista = winGanadasPendientes();
+  const ayer = lista.filter(g=>g.date < hoy);
+  const deHoy = lista.filter(g=>g.date >= hoy);
+  const item = (g)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px; display:flex; gap:10px;">
+      ${g.imageUrl ? `<img src="${g.imageUrl}" style="width:70px; height:70px; object-fit:cover; border-radius:8px;">` : ''}
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:12px; color:var(--muted);">${fmtDate(g.date)} · ${g.grupos.split(',').filter(Boolean).join(', ') || 'sin grupo'}</div>
+        <div style="font-size:13px; white-space:pre-wrap; max-height:64px; overflow:hidden;">${escapeForTextarea(g.caption)}</div>
+        <button class="btn danger small" data-gan-del="${g.id}" style="margin-top:6px;">Descartar</button>
+      </div>
+    </div>`;
+  openModal(`
+    <h3>📣 Ganadas de ayer</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Las ganadas que guardaste para publicar después. Un toque las manda todas a sus grupos (con pausa entre cada una).</div>
+    ${ayer.length ? ayer.map(item).join('') : '<div class="empty">No hay ganadas guardadas de días anteriores.</div>'}
+    ${ayer.length ? `<button class="btn" id="winGanadasPublicarBtn" style="width:100%; margin:6px 0 12px;">📤 Publicar todas (${ayer.length})</button>` : ''}
+    ${deHoy.length ? `<h4 style="margin:10px 0 6px;">Guardadas hoy (salen mañana) · ${deHoy.length}</h4>${deHoy.map(item).join('')}` : ''}
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal(); renderWin();">Cerrar</button></div>
+  `);
+  document.querySelectorAll('[data-gan-del]').forEach(b=>b.onclick = async ()=>{
+    if(!confirm('¿Descartar esta ganada guardada?')) return;
+    state.winGanadas = state.winGanadas.filter(x=>x.id !== b.dataset.ganDel);
+    await persist('winGanadas', { deletedIds: [b.dataset.ganDel] });
+    openWinGanadasAyerModal();
+  });
+  const pub = document.getElementById('winGanadasPublicarBtn');
+  if(pub) pub.onclick = async ()=>{
+    if(!confirm(`Voy a publicar ${ayer.length} ganada${ayer.length>1?'s':''} en sus grupos. ¿Las mando?`)) return;
+    pub.disabled = true;
+    let ok = 0; const fallos = [];
+    for(let i=0; i<ayer.length; i++){
+      const g = ayer[i];
+      pub.textContent = `Mandando ${i+1} de ${ayer.length}…`;
+      const grupos = g.grupos.split(',').filter(Boolean);
+      let todoOk = grupos.length > 0;
+      for(const nombre of grupos){
+        const jid = winGroupJid(nombre);
+        if(!jid){ fallos.push(`${nombre}: sin conexión directa`); todoOk = false; continue; }
+        try{
+          const r = await withTimeout(fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'directo', grupoId: jid, texto: g.caption, imagenUrl: g.imageUrl || '' }) }), 60000);
+          const d = await r.json().catch(()=>({}));
+          if(!r.ok || !d.ok) throw new Error(d.error || 'falló');
+        }catch(e){ fallos.push(`${nombre}: ${e.message}`); todoOk = false; }
+      }
+      if(todoOk){ g.status = 'publicada'; g.publishedAt = new Date().toISOString(); ok++; }
+    }
+    await persist('winGanadas');
+    alert(`Listo: ${ok} de ${ayer.length} publicadas.${fallos.length ? '\n\nProblemas:\n' + fallos.slice(0,6).join('\n') + '\n\nLas que fallaron siguen guardadas para reintentar.' : ''}`);
+    openWinGanadasAyerModal();
+  };
+}
+
 // ---------- CTA con el número de teléfono en TODOS los textos ----------
 // El número va en WIN_TELEFONO. Win redacta el CTA adaptado a lo que se publica (ver "telefono"
 // en api/win-redactar.js) y, por si el texto sale sin él (o lo editas), aquí se agrega uno
@@ -5316,6 +5396,8 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
         <input type="number" step="0.01" id="f-winGanadaCob" placeholder="Cobrado $ (total)" style="flex:1;">
       </div>
       <div id="winGanadaLeyendo" style="font-size:11.5px; color:var(--muted); margin-top:4px;">${sendImage && sendImage.base64 ? 'Leyendo la captura para sugerir la apuesta y los montos…' : 'Sube captura para que Win lea los montos, o escríbelos.'}</div>
+      <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-top:10px; cursor:pointer;"><input type="checkbox" id="f-winGuardarGanada"> 📌 Guardarla también para publicarla mañana (ganadas de ayer)</label>
+      <button class="btn secondary" type="button" id="winGuardarGanadaBtn" style="width:100%; margin-top:8px; font-size:12.5px;">📌 Solo guardar para mañana (sin mandar hoy)</button>
     </div>` : `<div class="field"><label>Registrar en el panel como</label>
       <select id="f-winRegistrar">${WIN_REGISTRO_TIPOS.map(t=>`<option value="${t.key}" ${t.key===winRegistroDefault(kind, grupos)?'selected':''}>${t.label}</option>`).join('')}</select>
       <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se registra al mandar con la foto, y el recordatorio de Telegram lo cuenta como hecho hoy.</div>
@@ -5352,7 +5434,25 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       }catch(e){ if(nota) nota.textContent = 'No pude leer la captura: elige la apuesta y escribe los montos.'; }
     })();
   }
+  let winGanadaGuardada = false;
+  const winGuardarGanadaSiToca = async (texto)=>{
+    const chk = document.getElementById('f-winGuardarGanada');
+    if(!chk || !chk.checked || winGanadaGuardada) return;
+    try{ await winGuardarGanadaParaManana(texto, grupos, sendImage); winGanadaGuardada = true; chk.disabled = true; }
+    catch(e){ alert('Se mandó, pero no pude guardarla para mañana: ' + e.message); }
+  };
+  const soloGuardarBtn = document.getElementById('winGuardarGanadaBtn');
+  if(soloGuardarBtn) soloGuardarBtn.onclick = async ()=>{
+    const box = document.getElementById('f-winCaptionConfirm');
+    soloGuardarBtn.disabled = true; soloGuardarBtn.textContent = 'Guardando…';
+    try{
+      await winGuardarGanadaParaManana((box && box.value.trim()) || caption, grupos, sendImage);
+      alert('Guardada. Mañana la encuentras en 📣 Ganadas de ayer.');
+      closeModal(); renderWin();
+    }catch(e){ alert(e.message); soloGuardarBtn.disabled = false; soloGuardarBtn.textContent = '📌 Solo guardar para mañana (sin mandar hoy)'; }
+  };
   const winRegistrarSiToca = async (texto)=>{
+    await winGuardarGanadaSiToca(texto);
     if(winRegistrado) return;
     const gan = document.getElementById('f-winGanadaBet');
     if(gan){
