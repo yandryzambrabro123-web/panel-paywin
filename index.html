@@ -4359,6 +4359,16 @@ function openWinBetForm(kind, destinoGuess){
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
     ${!isGanada ? `<div class="field"><label>Código / texto de la apuesta</label><textarea id="f-winCode" placeholder="Pick, cuota, stake..."></textarea></div>` : ''}
+    ${!isGanada ? `<div class="field"><label>¿Qué tipo de apuesta es? (se registra en el panel con la foto)</label>
+      <select id="f-winTipo">
+        <option value="">Según el grupo (VIP → Apuesta VIP, Gratis → Apuesta gratis)</option>
+        ${WIN_REGISTRO_TIPOS.filter(t=>t.key).map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}
+        <option value="none">No registrar</option>
+      </select></div>` : `<div class="field"><label>¿Cuál fue la apuesta que se ganó?</label>
+      <select id="f-winGanadaPick">
+        <option value="">(que Win la sugiera leyendo la captura)</option>
+        ${winApuestasPendientes().map(b=>`<option value="${b._key}|${b.id}">[${b._tag}] ${String(b.pick||'').slice(0,60)} · ${fmtDate(b.date)}</option>`).join('')}
+      </select></div>`}
     <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:0 0 12px; cursor:pointer;"><input type="checkbox" id="f-winCensurar"> ✏️ Quiero censurar la captura yo mismo antes de mandar</label>
     <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winGroups', destinoGuess)}</div>
     <div class="modal-actions">
@@ -5018,6 +5028,9 @@ function openWinPartidosConfirm(grupos, caption, thumbs, images, redactCtx){
 
 async function submitWinBet(kind, opts){
   opts = opts || {};
+  const tipoSel = opts.tipo !== undefined ? opts.tipo : ((document.getElementById('f-winTipo') || {}).value || '');
+  const ganadaSel = opts.ganada !== undefined ? opts.ganada : ((document.getElementById('f-winGanadaPick') || {}).value || '');
+  winPreset = { tipo: tipoSel, ganada: ganadaSel };
   const grupos = opts.grupos || getCheckedWinGroups('f-winGroups');
   const code = opts.code !== undefined ? opts.code : (document.getElementById('f-winCode') ? document.getElementById('f-winCode').value.trim() : '');
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
@@ -5028,7 +5041,7 @@ async function submitWinBet(kind, opts){
   const quiereCensurar = opts.censurar !== undefined ? opts.censurar : !!(document.getElementById('f-winCensurar') && document.getElementById('f-winCensurar').checked);
   if(quiereCensurar){
     const canvas = await winCensorEditor(winPendingFile, 'Censura la captura antes de mandarla');
-    if(!canvas){ winVolverFormularioApuesta(kind, grupos, code, archivoOriginal); return; }
+    if(!canvas){ winVolverFormularioApuesta(kind, grupos, code, archivoOriginal, tipoSel, ganadaSel); return; }
     censurada = { ...canvasToCompressed(canvas), thumb: canvasToThumbnail(canvas) };
   }
   openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
@@ -5041,7 +5054,7 @@ async function submitWinBet(kind, opts){
     });
     const result = await res.json();
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
-    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType }, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType }, ()=> quiereCensurar ? submitWinBet(kind, { grupos, code, file: archivoOriginal, censurar: true }) : winVolverFormularioApuesta(kind, grupos, code, archivoOriginal));
+    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType }, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType }, ()=> quiereCensurar ? submitWinBet(kind, { grupos, code, file: archivoOriginal, censurar: true, tipo: tipoSel, ganada: ganadaSel }) : winVolverFormularioApuesta(kind, grupos, code, archivoOriginal, tipoSel, ganadaSel));
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
@@ -5050,8 +5063,10 @@ async function submitWinBet(kind, opts){
   }
 }
 // Regresa al formulario de la apuesta con la captura, el texto y los grupos ya puestos.
-function winVolverFormularioApuesta(kind, grupos, code, file){
+function winVolverFormularioApuesta(kind, grupos, code, file, tipo, ganada){
   openWinBetForm(kind, grupos.join(', '));
+  const st = document.getElementById('f-winTipo'); if(st && tipo) st.value = tipo;
+  const sg = document.getElementById('f-winGanadaPick'); if(sg && ganada) sg.value = ganada;
   winPendingFile = file;
   const c = document.getElementById('f-winCode');
   if(c) c.value = code || '';
@@ -5311,10 +5326,14 @@ const WIN_REGISTRO_TIPOS = [
   { key:'', label:'No registrar' },
   { key:'vipBets', label:'Apuesta VIP' },
   { key:'freeBets', label:'Apuesta gratis' },
+  { key:'liveBets', label:'Apuesta Live' },
   { key:'gifts', label:'Regalito del día' },
   { key:'stakes', label:'Stake del día' }
 ];
+let winPreset = null; // lo que elegiste en el formulario (tipo de apuesta / cuál ganó); el confirm lo preselecciona
 function winRegistroDefault(kind, grupos){
+  if(kind === 'nueva_apuesta' && winPreset && winPreset.tipo === 'none') return '';
+  if(kind === 'nueva_apuesta' && winPreset && winPreset.tipo) return winPreset.tipo;
   if(kind !== 'nueva_apuesta') return '';
   const g = (grupos || []).map(x=>String(x).toLowerCase());
   if(g.some(x=>x.includes('vip'))) return 'vipBets';
@@ -5326,7 +5345,7 @@ async function winRegistrarEnPanel(key, texto, sendImage){
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
   const pick = String(texto || '').replace(/\s+/g,' ').trim().slice(0,200) || 'Registrado desde Win';
   let row;
-  if(key === 'vipBets' || key === 'freeBets') row = { id:uid(), sport:'', event:'', betType:'simple', pick, odds:0, stake:0, date:hoy, result:'pending', lines:'[]' };
+  if(key === 'vipBets' || key === 'freeBets' || key === 'liveBets') row = { id:uid(), sport:'', event:'', betType:'simple', pick, odds:0, stake:0, date:hoy, result:'pending', lines:'[]' };
   else if(key === 'gifts') row = { id:uid(), sport:'', pick, odds:0, stake:0, recipient:'', date:hoy, result:'pending' };
   else if(key === 'stakes') row = { id:uid(), description:pick, amount:0, date:hoy, result:'pending' };
   else return false;
@@ -5344,11 +5363,12 @@ async function winRegistrarEnPanel(key, texto, sendImage){
   return true;
 }
 
-// Apuestas pendientes (VIP y gratis) a las que se les puede marcar "ganada" desde Win.
+// Apuestas pendientes (VIP, gratis y live) a las que se les puede marcar "ganada" desde Win.
 function winApuestasPendientes(){
   const todas = [
     ...(state.vipBets||[]).map(b=>({ ...b, _key:'vipBets', _tag:'VIP' })),
-    ...(state.freeBets||[]).map(b=>({ ...b, _key:'freeBets', _tag:'Gratis' }))
+    ...(state.freeBets||[]).map(b=>({ ...b, _key:'freeBets', _tag:'Gratis' })),
+    ...(state.liveBets||[]).map(b=>({ ...b, _key:'liveBets', _tag:'Live' }))
   ].filter(b=>b.result==='pending');
   return todas.sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,25);
 }
@@ -5390,7 +5410,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:130px;">${escapeForTextarea(caption)}</textarea></div>
     ${redactCtx ? winCaptionToolsHTML() : ''}
     ${kind === 'ganada' ? `<div class="field"><label>Marcar como ganada la apuesta</label>
-      <select id="f-winGanadaBet"><option value="">(no marcar ninguna)</option>${winApuestasPendientes().map(b=>`<option value="${b._key}|${b.id}">[${b._tag}] ${String(b.pick||'').slice(0,60)} · ${fmtDate(b.date)}</option>`).join('')}</select>
+      <select id="f-winGanadaBet"><option value="">(no marcar ninguna)</option>${winApuestasPendientes().map(b=>`<option value="${b._key}|${b.id}" ${winPreset && winPreset.ganada === (b._key + '|' + b.id) ? 'selected' : ''}>[${b._tag}] ${String(b.pick||'').slice(0,60)} · ${fmtDate(b.date)}</option>`).join('')}</select>
       <div style="display:flex; gap:8px; margin-top:8px;">
         <input type="number" step="0.01" id="f-winGanadaInv" placeholder="Invertido $" style="flex:1;">
         <input type="number" step="0.01" id="f-winGanadaCob" placeholder="Cobrado $ (total)" style="flex:1;">
@@ -5429,7 +5449,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
           const sc = palabras.filter(w=>t.includes(w)).length;
           if(sc > puntos){ puntos = sc; mejor = b; }
         });
-        if(mejor) sel.value = `${mejor._key}|${mejor.id}`;
+        if(mejor && !(winPreset && winPreset.ganada)) sel.value = `${mejor._key}|${mejor.id}`;
         if(nota) nota.textContent = mejor ? 'Win sugirió la apuesta y los montos: revísalos antes de mandar.' : 'Leí los montos, pero no encontré cuál apuesta es: elígela tú.';
       }catch(e){ if(nota) nota.textContent = 'No pude leer la captura: elige la apuesta y escribe los montos.'; }
     })();
