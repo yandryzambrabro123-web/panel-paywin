@@ -118,7 +118,13 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
   // salió sin sentido, sin tener que volver a subir la imagen ni reescribir todo a mano.
   try {
     const { kind, destino, code, imageBase64, mediaType, images, anterior, ajuste } = body;
-    const systemPrompt = PROMPTS[kind] || PROMPTS.contenido;
+    let systemPrompt = PROMPTS[kind] || PROMPTS.contenido;
+    // CTA con el número de teléfono: siempre, adaptado a lo que se publica (no aplica a regalitos
+    // ni a la base de difusión). Si el modelo igual lo omite, el panel lo agrega (winAsegurarCTA).
+    const telefono = String(body.telefono || '').trim();
+    if (telefono && kind !== 'regalito' && kind !== 'difusion_preview') {
+      systemPrompt += `\n\nIMPORTANTE: termina el texto con una línea breve de llamado a la acción (CTA), adaptada a lo que se está publicando (apuesta nueva, ganada, testimonio, partidos, etc.), que incluya SIEMPRE este número de teléfono tal cual: ${telefono}. Una sola línea, con un emoji.`;
+    }
 
     const userContent = [];
     if (Array.isArray(images) && images.length) {

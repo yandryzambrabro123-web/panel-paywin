@@ -4377,7 +4377,7 @@ function winCensorEditor(file, titulo){
           <div class="modal-actions" style="flex-wrap:wrap;">
             <button class="btn secondary" id="winCensorUndo" type="button">↩️ Deshacer</button>
             <button class="btn secondary" id="winCensorClear" type="button">Limpiar</button>
-            <button class="btn secondary" id="winCensorCancel" type="button">Cancelar</button>
+            <button class="btn secondary" id="winCensorCancel" type="button">← Volver</button>
             <button class="btn" id="winCensorDone" type="button">Listo, continuar</button>
           </div>
         `);
@@ -4535,14 +4535,16 @@ async function submitTestimonio(){
   if(!winPendingFile){ alert('Sube la captura primero.'); return; }
   const file = winPendingFile;
   const modoCensura = (document.querySelector('input[name="testiModo"]:checked') || {}).value;
-  if(modoCensura === 'manual'){
+  // Censura a mano: abre el editor con esta misma imagen. También es a donde regresa el botón
+  // "← Volver" de la pantalla del texto, para corregir la censura sin volver a subir nada.
+  const hacerManual = async ()=>{
     const canvas = await winCensorEditor(file, 'Tapa los datos del testimonio');
-    if(!canvas){ closeModal(); renderWin(); return; }
+    if(!canvas){ openTestimonioUploadModal(); return; }
     const compressed = canvasToCompressed(canvas);
     const thumb = canvasToThumbnail(canvas);
-    openWinCaptionConfirm('contenido', grupos, 'Testimonio de nuestro cliente. 🙌', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'contenido', destino: grupos.join(', '), code: 'Es un testimonio de un cliente (captura de recarga/transferencia que el dueño censuró a mano -- no inventes montos ni datos nuevos si pides un ajuste).' });
-    return;
-  }
+    openWinCaptionConfirm('contenido', grupos, 'Testimonio de nuestro cliente. 🙌', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'contenido', destino: grupos.join(', '), code: 'Es un testimonio de un cliente (captura de recarga/transferencia que el dueño censuró a mano -- no inventes montos ni datos nuevos si pides un ajuste).' }, hacerManual);
+  };
+  if(modoCensura === 'manual'){ await hacerManual(); return; }
   openModal(`<h3>Procesando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Leyendo la imagen y tapando los datos. Esto toma unos segundos.</div>`);
   try{
     const { base64, mediaType } = await fileToCompressedImage(file);
@@ -4561,7 +4563,7 @@ async function submitTestimonio(){
     const outCanvas = await buildRedactedImage(file, result.montos);
     const compressed = canvasToCompressed(outCanvas);
     const thumb = canvasToThumbnail(outCanvas);
-    openWinCaptionConfirm('contenido', grupos, result.texto || 'Testimonio de nuestro cliente. 🙌', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'contenido', destino: grupos.join(', '), code: 'Es un testimonio de un cliente (captura de recarga/transferencia ya tapada -- solo se ve el monto, no inventes un monto nuevo si pides un ajuste).' });
+    openWinCaptionConfirm('contenido', grupos, result.texto || 'Testimonio de nuestro cliente. 🙌', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'contenido', destino: grupos.join(', '), code: 'Es un testimonio de un cliente (captura de recarga/transferencia ya tapada -- solo se ve el monto, no inventes un monto nuevo si pides un ajuste).' }, hacerManual);
   }catch(e){
     console.error(e);
     alert('No se pudo procesar el testimonio. Intenta de nuevo.');
@@ -4576,8 +4578,8 @@ async function submitTestimonio(){
 // y recién al final se acomodan todas juntas en una sola imagen tipo collage para publicar.
 let winCollageFiles = [];
 
-function openCollageUploadModal(){
-  winCollageFiles = [];
+function openCollageUploadModal(conservar){
+  if(!conservar) winCollageFiles = [];
   openModal(`
     <h3>Collage de comprobantes</h3>
     <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube las capturas de recarga/transferencia de hoy (2 a 10). Win tapa con negro todo menos el monto en CADA una, antes de armarlas juntas en una sola imagen -- revisa bien el resultado antes de publicar.</div>
@@ -4651,11 +4653,12 @@ function buildCollageImage(canvases){
   return out;
 }
 
-async function submitCollage(){
-  const grupos = getCheckedWinGroups('f-collageGroups');
+async function submitCollage(opts){
+  opts = opts || {};
+  const grupos = opts.grupos || getCheckedWinGroups('f-collageGroups');
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   if(winCollageFiles.length < 2){ alert('Sube al menos 2 capturas para armar el collage.'); return; }
-  const modoCensuraCollage = (document.querySelector('input[name="collageModo"]:checked') || {}).value;
+  const modoCensuraCollage = opts.modo || (document.querySelector('input[name="collageModo"]:checked') || {}).value;
   let canvasesManuales = null;
   if(modoCensuraCollage === 'manual'){
     canvasesManuales = [];
@@ -4663,7 +4666,7 @@ async function submitCollage(){
       const c = await winCensorEditor(winCollageFiles[i], `Censura la captura ${i+1} de ${winCollageFiles.length}`);
       if(c) canvasesManuales.push(c); // si cancelas una, esa captura se queda fuera del collage
     }
-    if(canvasesManuales.length < 1){ closeModal(); renderWin(); return; }
+    if(canvasesManuales.length < 1){ openCollageUploadModal(true); return; }
   }
   openModal(`<h3>Procesando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Leyendo cada comprobante y tapando los datos. Esto toma unos segundos.</div>`);
   try{
@@ -4693,14 +4696,14 @@ async function submitCollage(){
     try{
       const res2 = await withTimeout(fetch('/api/win-redactar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'collage', destino: grupos.join(', ') })
+        body: JSON.stringify({ telefono: WIN_TELEFONO, kind: 'collage', destino: grupos.join(', ') })
       }), 20000);
       const data2 = await res2.json().catch(()=>({}));
       if(data2 && data2.caption) caption = data2.caption;
     }catch(e){ console.error('No se pudo redactar el texto del collage, se usa uno por defecto:', e); }
 
     const faltantes = winCollageFiles.length - canvases.length;
-    openWinCaptionConfirm('collage', grupos, caption, thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'collage', destino: grupos.join(', ') });
+    openWinCaptionConfirm('collage', grupos, caption, thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'collage', destino: grupos.join(', ')  }, ()=>submitCollage({ grupos, modo: 'manual' }));
     if(faltantes) setTimeout(()=>alert(`Ojo: ${faltantes} de las ${winCollageFiles.length} capturas no se pudieron leer bien y se quedaron FUERA del collage (por seguridad, no se publican si no se detecta el monto con claridad).`), 300);
   }catch(e){
     console.error(e);
@@ -4883,7 +4886,7 @@ async function submitPartidosDia(){
     const thumbs = await Promise.all(winPartidosFiles.map(f=>fileToThumbnail(f).catch(()=>'')));
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'partidos_dia', destino: grupos.join(', '), images })
+      body: JSON.stringify({ telefono: WIN_TELEFONO, kind: 'partidos_dia', destino: grupos.join(', '), images })
     });
     const result = await res.json().catch(()=>({}));
     const caption = (result && result.caption) || 'Estos son los partidos de hoy. 🔥⚽';
@@ -4913,10 +4916,13 @@ function openWinPartidosConfirm(grupos, caption, thumbs, images, redactCtx){
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Se manda primero cada foto por separado y al final este texto, con una línea separadora después para no mezclarse con lo que siga.</div>
     ${groupButtonsHTML}
     <div class="modal-actions">
+      ${onBack ? `<button class="btn secondary" id="winCaptionBackBtn">← Volver</button>` : ''}
       <button class="btn secondary" id="winCaptionDoneBtn">Listo, cerrar</button>
     </div>
   `);
   document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
+  const backBtn = document.getElementById('winCaptionBackBtn');
+  if(backBtn) backBtn.onclick = ()=>onBack();
   wireWinCaptionTools(redactCtx);
 
   document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
@@ -4965,15 +4971,19 @@ function openWinPartidosConfirm(grupos, caption, thumbs, images, redactCtx){
   });
 }
 
-async function submitWinBet(kind){
-  const grupos = getCheckedWinGroups('f-winGroups');
-  const code = document.getElementById('f-winCode') ? document.getElementById('f-winCode').value.trim() : '';
+async function submitWinBet(kind, opts){
+  opts = opts || {};
+  const grupos = opts.grupos || getCheckedWinGroups('f-winGroups');
+  const code = opts.code !== undefined ? opts.code : (document.getElementById('f-winCode') ? document.getElementById('f-winCode').value.trim() : '');
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
+  if(opts.file) winPendingFile = opts.file;
   if(!winPendingFile){ alert('Sube la captura primero.'); return; }
+  const archivoOriginal = winPendingFile;
   let censurada = null;
-  if(document.getElementById('f-winCensurar') && document.getElementById('f-winCensurar').checked){
+  const quiereCensurar = opts.censurar !== undefined ? opts.censurar : !!(document.getElementById('f-winCensurar') && document.getElementById('f-winCensurar').checked);
+  if(quiereCensurar){
     const canvas = await winCensorEditor(winPendingFile, 'Censura la captura antes de mandarla');
-    if(!canvas){ closeModal(); renderWin(); return; }
+    if(!canvas){ winVolverFormularioApuesta(kind, grupos, code, archivoOriginal); return; }
     censurada = { ...canvasToCompressed(canvas), thumb: canvasToThumbnail(canvas) };
   }
   openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
@@ -4982,16 +4992,29 @@ async function submitWinBet(kind){
     const thumb = censurada ? censurada.thumb : await fileToThumbnail(winPendingFile).catch(()=> '');
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType })
+      body: JSON.stringify({ telefono: WIN_TELEFONO, kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType })
     });
     const result = await res.json();
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
-    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType }, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType });
+    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType }, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType }, ()=> quiereCensurar ? submitWinBet(kind, { grupos, code, file: archivoOriginal, censurar: true }) : winVolverFormularioApuesta(kind, grupos, code, archivoOriginal));
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
     closeModal();
     renderWin();
+  }
+}
+// Regresa al formulario de la apuesta con la captura, el texto y los grupos ya puestos.
+function winVolverFormularioApuesta(kind, grupos, code, file){
+  openWinBetForm(kind, grupos.join(', '));
+  winPendingFile = file;
+  const c = document.getElementById('f-winCode');
+  if(c) c.value = code || '';
+  const prev = document.getElementById('winDropPreview');
+  if(prev && file){
+    const rd = new FileReader();
+    rd.onload = ()=>{ prev.innerHTML = `<img src="${rd.result}" style="max-width:100%; max-height:140px; border-radius:8px; margin-top:10px;">`; };
+    rd.readAsDataURL(file);
   }
 }
 function isGanadaFallback(kind){ return kind === 'ganada'; }
@@ -5010,6 +5033,29 @@ let winAjusteRecorder = null;
 let winAjusteChunks = [];
 let winAjusteStream = null;
 let winAjusteRecording = false;
+
+// ---------- CTA con el número de teléfono en TODOS los textos ----------
+// El número va en WIN_TELEFONO. Win redacta el CTA adaptado a lo que se publica (ver "telefono"
+// en api/win-redactar.js) y, por si el texto sale sin él (o lo editas), aquí se agrega uno
+// estándar al final. No aplica a los regalitos ni a los mensajes de difusión uno a uno.
+const WIN_TELEFONO = '';
+const WIN_CTA_POR_TIPO = {
+  nueva_apuesta: n => `📲 ¿Quieres entrar al VIP? Escríbenos al ${n}`,
+  ganada: n => `📲 Súmate y gana con nosotros: escríbenos al ${n}`,
+  partidos_dia: n => `📲 Pregúntanos por los picks de hoy: ${n}`,
+  collage: n => `📲 Recarga y retira con confianza: ${n}`,
+  stake_pago: n => `📲 Pide tu stake escribiéndonos al ${n}`,
+  contenido: n => `📲 Escríbenos al ${n}`
+};
+function winAsegurarCTA(texto, kind){
+  const tel = String(WIN_TELEFONO || '').trim();
+  const t = String(texto || '').trim();
+  if(!tel || !t || kind === 'regalito') return t;
+  const digitos = tel.replace(/\D/g, '');
+  if(digitos && t.replace(/\D/g, '').includes(digitos.slice(-9))) return t; // ya trae el número
+  const make = WIN_CTA_POR_TIPO[kind] || WIN_CTA_POR_TIPO.contenido;
+  return `${t}\n\n${make(tel)}`;
+}
 
 function winCaptionToolsHTML(){
   return `
@@ -5033,7 +5079,7 @@ async function winRegenerateCaption(redactCtx, ajuste){
   const btn = document.getElementById('winCaptionRegenBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Generando...'; }
   try{
-    const bodyReq = { kind: redactCtx.kind, destino: redactCtx.destino, code: redactCtx.code, anterior };
+    const bodyReq = { kind: redactCtx.kind, destino: redactCtx.destino, code: redactCtx.code, anterior, telefono: WIN_TELEFONO };
     if(ajuste) bodyReq.ajuste = ajuste;
     if(redactCtx.images) bodyReq.images = redactCtx.images;
     else if(redactCtx.imageBase64) { bodyReq.imageBase64 = redactCtx.imageBase64; bodyReq.mediaType = redactCtx.mediaType; }
@@ -5043,7 +5089,7 @@ async function winRegenerateCaption(redactCtx, ajuste){
     }), 20000);
     const data = await res.json().catch(()=>({}));
     if(!res.ok || !data.caption) throw new Error((data && data.error) || 'No se pudo generar el texto.');
-    if(box) box.value = data.caption;
+    if(box) box.value = winAsegurarCTA(data.caption, redactCtx.kind);
   }catch(e){
     console.error(e);
     alert('No se pudo generar otro texto. Intenta de nuevo.');
@@ -5207,7 +5253,8 @@ async function winMarcarGanada(key, id, invertido, cobrado, sendImage){
   return true;
 }
 
-function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCtx){
+function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCtx, onBack){
+  caption = winAsegurarCTA(caption, kind);
   let winRegistrado = false; // se registra una sola vez por pantalla, aunque mandes a varios grupos
   const groupButtonsHTML = grupos.map((g, i) => {
     const jid = winGroupJid(g);
@@ -5371,7 +5418,7 @@ async function submitWinContent(){
     }
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'contenido', destino: grupos.join(', '), code: nota, imageBase64: base64, mediaType })
+      body: JSON.stringify({ telefono: WIN_TELEFONO, kind: 'contenido', destino: grupos.join(', '), code: nota, imageBase64: base64, mediaType })
     });
     const result = await res.json();
     const caption = (result && result.caption) || nota || 'Nuevo contenido.';
