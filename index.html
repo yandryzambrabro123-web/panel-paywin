@@ -2729,6 +2729,10 @@ function renderWin(){
       <div id="winStatus" class="win-status">Activando a Win...</div>
       <div id="winBars" class="win-bars">${'<span class="win-bar"></span>'.repeat(7)}</div>
       <div id="winLiveTranscript" class="win-live-transcript"></div>
+      <div style="display:flex; gap:10px; justify-content:center; margin-top:14px;">
+        <button class="btn" id="winPowerOnBtn" type="button" style="min-width:120px;">⏻ Encender Win</button>
+        <button class="btn danger" id="winPowerOffBtn" type="button" style="min-width:120px;">⏻ Apagar Win</button>
+      </div>
       <button class="win-type-toggle" id="winTypeToggleBtn">Prefiero escribir</button>
       <div id="winTypeBox" style="display:none; margin-top:16px; width:100%; max-width:560px; text-align:left;">
         <div style="display:flex; gap:10px; align-items:flex-start;">
@@ -2741,6 +2745,20 @@ function renderWin(){
 
   document.getElementById('winSendBtn').onclick = sendWinCommand;
   document.getElementById('winCommandInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendWinCommand(); } });
+  const actualizarPower = ()=>{
+    const on = document.getElementById('winPowerOnBtn'), off = document.getElementById('winPowerOffBtn');
+    if(on) on.disabled = !!winListeningActive;
+    if(off) off.disabled = !winListeningActive;
+  };
+  document.getElementById('winPowerOnBtn').onclick = async ()=>{
+    if(winListeningActive) return;
+    if(!winAudioUnlocked){ unlockWinAudio(); winAudioUnlocked = true; }
+    await startWinListening();
+    actualizarPower();
+  };
+  document.getElementById('winPowerOffBtn').onclick = ()=>{ stopWinListening(); actualizarPower(); };
+  winPowerRefresh = actualizarPower;
+  actualizarPower();
   document.getElementById('winTypeToggleBtn').onclick = ()=>{
     const box = document.getElementById('winTypeBox');
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
@@ -2791,14 +2809,15 @@ function renderWin(){
 // distinto según el navegador soporte o no el dictado continuo (ver winHasSpeechRecognition):
 // con soporte, el toque apaga todo; sin soporte (iPhone), el toque arranca/corta la grabación de
 // "mantén tocado para hablar", y para apagar del todo basta con salir de la pestaña de Win.
+let winPowerRefresh = null;
 function winOrbTap(){
   if(!winAudioUnlocked){ unlockWinAudio(); winAudioUnlocked = true; }
   if(!winListeningActive){
     // primer toque: activa el micrófono y, en modo manual, empieza a grabar de una vez
-    Promise.resolve(startWinListening()).then(()=>{ if(!winHasSpeechRecognition && winListeningActive && !winPTTRecording) winPTTStart(); });
+    Promise.resolve(startWinListening()).then(()=>{ if(!winHasSpeechRecognition && winListeningActive && !winPTTRecording) winPTTStart(); if(winPowerRefresh) winPowerRefresh(); });
     return;
   }
-  if(winHasSpeechRecognition){ stopWinListening(); return; }
+  if(winHasSpeechRecognition){ stopWinListening(); if(winPowerRefresh) winPowerRefresh(); return; }
   if(winPTTRecording) winPTTStopAndSend(); else winPTTStart();
 }
 
@@ -3859,6 +3878,7 @@ async function startWinListening(){
     return;
   }
   winListeningActive = true;
+  if(winPowerRefresh) winPowerRefresh();
   winAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const source = winAudioCtx.createMediaStreamSource(winMicStream);
   winAnalyser = winAudioCtx.createAnalyser();
@@ -4136,7 +4156,8 @@ function stopWinListening(){
   // quedó desbloqueado para reproducir sin restricciones en iPhone, y crear uno nuevo más
   // adelante volvería a estar bloqueado.
   if(winAudioEl){ try{ winAudioEl.pause(); }catch(e){} }
-  if(winPTTRecorder){ try{ if(winPTTRecording) winPTTRecorder.stop(); }catch(e){} winPTTRecorder = null; winPTTRecording = false; }
+  if(winPTTRecorder){ try{ winPTTRecorder.onstop = null; if(winPTTRecording) winPTTRecorder.stop(); }catch(e){} winPTTRecorder = null; winPTTRecording = false; }
+  winPTTChunks = [];
   winFinalBuffer = '';
   winConversation = [];
   clearTimeout(winFastBatchTimer);
@@ -4144,9 +4165,10 @@ function stopWinListening(){
   winUpdateBurstBadge();
   const orb = document.getElementById('winOrb');
   if(orb){ orb.style.transform = ''; }
-  applyWinOrbState('idle', 'Toca el círculo para activar a Win');
+  applyWinOrbState('idle', 'Win apagado. Toca el círculo o "Encender Win" para activarlo');
   const liveEl = document.getElementById('winLiveTranscript');
   if(liveEl) liveEl.textContent = '';
+  if(winPowerRefresh) winPowerRefresh();
 }
 
 // Mientras hay cualquier modal abierto (el formulario de Win, u otro cualquiera del
