@@ -2542,7 +2542,13 @@ let winMicStream = null;
 // iPhone (Apple no lo implementa en WebKit, el motor que usan todos ahí -- Safari, Chrome,
 // cualquiera). En esos casos Win funciona con "mantén tocado para hablar": graba el audio y lo
 // manda a transcribir (api/win-transcribir.js) en vez de "escuchar" todo el rato.
-const winHasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+// Modo manual (por defecto): el micrófono SOLO graba entre un toque y el siguiente -- toca para
+// empezar a hablar, toca otra vez para mandar y que Win actúe. Así no capta la conversación de
+// la oficina mientras no lo estés usando. El modo "automático" (escucha continua con "hola Win",
+// solo en Chrome/Edge) se activa desde el botón 🎙️ de la esquina de Win.
+function winModoManual(){ try{ return localStorage.getItem('winMicAuto') !== '1'; }catch(e){ return true; } }
+const winHasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !winModoManual();
+const WIN_AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 let winPTTRecorder = null;
 let winPTTChunks = [];
 let winPTTRecording = false;
@@ -2681,6 +2687,7 @@ function renderWin(){
         <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti">&#129504;${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winTemplatesBtn" title="Imágenes guardadas">&#128444;${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winDifusionBtn" title="Listas de difusión">&#128226;</button>
+        <button class="win-icon-btn" id="winMicModeBtn" title="${winModoManual() ? 'Micrófono manual (toca para hablar). Toca aquí para cambiar a escucha automática' : 'Escucha automática (hola Win). Toca aquí para cambiar a micrófono manual'}">${winModoManual() ? '&#127897;&#65039;' : '&#128065;&#65039;'}</button>
         <button class="win-icon-btn" id="winReconsumosBtn" title="Reconsumos VIP">&#128276;${winReconsumosLista().vencidos.length ? `<span class="win-icon-badge">${winReconsumosLista().vencidos.length}</span>` : ''}</button>
       </div>
       <div class="win-brand"><span id="winBrandDot" class="win-brand-dot win-brand-dot-idle"></span>WIN</div>
@@ -2745,6 +2752,13 @@ function renderWin(){
   document.getElementById('winTemplatesBtn').onclick = openWinTemplatesModal;
   document.getElementById('winDifusionBtn').onclick = openWinDifusionModal;
   document.getElementById('winReconsumosBtn').onclick = openWinReconsumosModal;
+  document.getElementById('winMicModeBtn').onclick = ()=>{
+    const manual = winModoManual();
+    if(!manual || confirm('La escucha automática capta todo lo que se oiga alrededor (incluida la gente de la oficina). ¿Cambiar a escucha automática?')){
+      try{ localStorage.setItem('winMicAuto', manual ? '1' : '0'); }catch(e){}
+      location.reload();
+    }
+  };
   winNotificarReconsumos();
 
   const orb = document.getElementById('winOrb');
@@ -2753,7 +2767,7 @@ function renderWin(){
 
   if(winListeningActive){
     if(winHasSpeechRecognition) applyWinOrbState('listening', 'Escuchando... dime qué necesitas');
-    else applyWinOrbState('listening', winPTTRecording ? 'Grabando... toca para mandar' : 'Toca y mantén para hablar');
+    else applyWinOrbState('listening', winPTTRecording ? 'Grabando... toca para mandar' : 'Toca para hablar');
   } else if(winTabJustOpened && winAudioUnlocked){
     // Recién entraste a la pestaña (y el audio ya estaba desbloqueado de una visita anterior en
     // esta misma carga de página) -- se activa sola, como siempre.
@@ -2779,7 +2793,11 @@ function renderWin(){
 // "mantén tocado para hablar", y para apagar del todo basta con salir de la pestaña de Win.
 function winOrbTap(){
   if(!winAudioUnlocked){ unlockWinAudio(); winAudioUnlocked = true; }
-  if(!winListeningActive){ startWinListening(); return; }
+  if(!winListeningActive){
+    // primer toque: activa el micrófono y, en modo manual, empieza a grabar de una vez
+    Promise.resolve(startWinListening()).then(()=>{ if(!winHasSpeechRecognition && winListeningActive && !winPTTRecording) winPTTStart(); });
+    return;
+  }
   if(winHasSpeechRecognition){ stopWinListening(); return; }
   if(winPTTRecording) winPTTStopAndSend(); else winPTTStart();
 }
@@ -3835,7 +3853,7 @@ async function startWinListening(){
   applyWinOrbState('idle', 'Activando a Win...');
   playWinIntroSequence();
   try{
-    winMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    winMicStream = await navigator.mediaDevices.getUserMedia({ audio: WIN_AUDIO_CONSTRAINTS });
   }catch(e){
     applyWinOrbState('idle', 'No se pudo activar el micrófono. Tócalo para intentar de nuevo.');
     return;
@@ -3848,7 +3866,7 @@ async function startWinListening(){
   source.connect(winAnalyser);
   winVolumeLoop();
   winConversation = []; // conversación nueva cada vez que se activa el micrófono
-  applyWinOrbState('listening', winHasSpeechRecognition ? 'Escuchando... dile "hola Win" para empezar' : 'Listo -- toca y mantén para hablar');
+  applyWinOrbState('listening', winHasSpeechRecognition ? 'Escuchando... dile "hola Win" para empezar' : 'Listo -- toca para hablar, y toca otra vez para mandar');
   // La cara despierta justo cuando la secuencia de arranque se disuelve, no de entrada.
   const orb = document.getElementById('winOrb');
   const auraWrap = document.getElementById('winAuraWrap');
@@ -3906,7 +3924,7 @@ function winPTTStopAndSend(){
 
 async function winPTTFinish(mimeType){
   if(!winPTTChunks.length){
-    applyWinOrbState('listening', 'No se grabó nada -- toca y mantén para hablar');
+    applyWinOrbState('listening', 'No se grabó nada -- toca para hablar');
     return;
   }
   const blob = new Blob(winPTTChunks, { type: mimeType });
@@ -3927,7 +3945,7 @@ async function winPTTFinish(mimeType){
     processWinVoiceCommand(data.text.trim());
   }catch(e){
     console.error('Error transcribiendo con ElevenLabs:', e);
-    applyWinOrbState('listening', 'No te escuché bien -- toca y mantén para hablar de nuevo');
+    applyWinOrbState('listening', 'No te escuché bien -- toca para hablar de nuevo');
   }
 }
 
@@ -3997,7 +4015,7 @@ async function winSpeak(text, onDone){
     } else {
       // Modo "mantén tocado para hablar" (iPhone) -- no hay nada que arrancar solo, queda
       // lista esperando el próximo toque.
-      applyWinOrbState('listening', 'Toca y mantén para hablar');
+      applyWinOrbState('listening', 'Toca para hablar');
     }
     if(onDone) onDone();
   };
@@ -5110,7 +5128,7 @@ async function winToggleMicRecording(btn, onTranscribed){
   }
   let stream;
   try{
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: WIN_AUDIO_CONSTRAINTS });
   }catch(e){
     alert('No se pudo acceder al micrófono. Dale permiso del navegador, o escríbelo directo en el texto.');
     return;
