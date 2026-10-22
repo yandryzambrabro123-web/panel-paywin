@@ -1285,6 +1285,40 @@ async function delItem(key, id, rerenderFn){
   await persist(key, { deletedIds: [id] });
 }
 
+// ---------- Limpiar apuestas viejas (con respaldo en el Excel) ----------
+// Copia las filas a la hoja "ApuestasRespaldo" (con la hoja de origen y la fecha del respaldo),
+// comprueba que quedaron guardadas, y recién ahí las borra del panel.
+async function limpiarApuestasAnteriores(key, rerender){
+  const ayer = new Date(Date.now() - 29*60*60*1000).toISOString().slice(0,10); // ayer en Ecuador
+  const entrada = prompt('Se van a borrar las apuestas con fecha ANTERIOR a esta (AAAA-MM-DD). Ayer es ' + ayer + ', así que si dejas esa fecha se conserva ayer y hoy:', ayer);
+  if(entrada === null) return;
+  const corte = entrada.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(corte)){ alert('Fecha inválida. Usa el formato AAAA-MM-DD, por ejemplo ' + ayer + '.'); return; }
+  const viejas = (state[key] || []).filter(b => String(b.date || '').slice(0,10) < corte);
+  if(!viejas.length){ alert('No hay apuestas anteriores a ' + corte + '.'); return; }
+  if(!confirm(`Voy a borrar ${viejas.length} apuestas anteriores al ${corte} de esta lista y guardar una copia en el Excel (hoja ApuestasRespaldo). Se conservan las demás (${state[key].length - viejas.length}). ¿Seguimos?`)) return;
+  try{
+    const hoja = SHEET_NAMES[key];
+    const fecha = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,16).replace('T',' ');
+    let previo = [];
+    try{ previo = (await (await fetch(`${SHEETS_API_URL}?sheet=ApuestasRespaldo`)).json()).data || []; }
+    catch(e){ throw new Error('No pude leer el respaldo del Excel. No se borró nada.'); }
+    const mapa = new Map();
+    previo.forEach(x=>{ if(x && x.id) mapa.set(String(x.hoja) + '|' + String(x.id), x); });
+    viejas.forEach(b=>mapa.set(hoja + '|' + b.id, { ...b, hoja, respaldoFecha: fecha }));
+    await fetch(SHEETS_API_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet:'ApuestasRespaldo', data: Array.from(mapa.values()) }) });
+    await new Promise(ok=>setTimeout(ok, 3000));
+    const chk = (await (await fetch(`${SHEETS_API_URL}?sheet=ApuestasRespaldo&t=${Date.now()}`)).json()).data || [];
+    const guardados = new Set(chk.map(x=>String(x.hoja) + '|' + String(x.id)));
+    if(!viejas.every(b=>guardados.has(hoja + '|' + b.id))) throw new Error('El respaldo en el Excel no quedó completo. No se borró nada.');
+    const ids = viejas.map(b=>b.id);
+    state[key] = state[key].filter(b=>!ids.includes(b.id));
+    await persist(key, { deletedIds: ids });
+    alert(`Listo: ${ids.length} apuestas borradas del panel y respaldadas en el Excel (ApuestasRespaldo).`);
+  }catch(e){ alert(e.message); }
+  rerender();
+}
+
 /* ---------- PICKS (Apuestas Gratis / Apuestas VIP) — generic ---------- */
 function renderPicks(key, title){
   const rows = filterByDate(state[key], 'date', key);
@@ -1297,6 +1331,7 @@ function renderPicks(key, title){
       </div>
       ${dateFilterHTML(key)}
       <div style="display:flex; gap:10px;">
+        <button class="btn secondary" id="cleanOldBtn">🧹 Borrar anteriores</button>
         <button class="btn secondary" id="exportBtn">Exportar CSV</button>
         <button class="btn" id="addBtn">+ Nueva apuesta</button>
       </div>
@@ -1331,6 +1366,8 @@ function renderPicks(key, title){
     </div>
   `;
   const rerender = ()=>renderPicks(key, title);
+  const cleanBtn = document.getElementById('cleanOldBtn');
+  if(cleanBtn) cleanBtn.onclick = ()=>limpiarApuestasAnteriores(key, rerender);
   wireDateFilter(key, rerender);
   document.getElementById('addBtn').onclick = ()=>openPickForm(key, rerender);
   document.getElementById('exportBtn').onclick = () => exportCSV(key);
@@ -4277,6 +4314,7 @@ function openWinBetForm(kind, destinoGuess){
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
     ${!isGanada ? `<div class="field"><label>Código / texto de la apuesta</label><textarea id="f-winCode" placeholder="Pick, cuota, stake..."></textarea></div>` : ''}
+    <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:0 0 12px; cursor:pointer;"><input type="checkbox" id="f-winCensurar"> ✏️ Quiero censurar la captura yo mismo antes de mandar</label>
     <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winGroups', destinoGuess)}</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -4310,6 +4348,91 @@ function wireWinDropzone(){
   }, { once: true });
 }
 
+// ---------- Editor para censurar a mano ----------
+// Muestra la imagen y dejas arrastrar recuadros negros encima de lo que quieres tapar (nombre,
+// número, cuenta, etc.). Devuelve una promesa con el canvas ya censurado (null si cancelas).
+// OJO: a diferencia del modo automático (que tapa todo menos el monto), aquí queda visible todo lo
+// que tú no tapes -- por eso se pide revisar antes de mandar.
+function winCensorEditor(file, titulo){
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>resolve(null);
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>resolve(null);
+      img.onload = ()=>{
+        const scale = Math.min(1, 1600 / img.width);
+        const W = Math.max(1, Math.round(img.width * scale)), H = Math.max(1, Math.round(img.height * scale));
+        const base = document.createElement('canvas'); base.width = W; base.height = H;
+        base.getContext('2d').drawImage(img, 0, 0, W, H);
+        const rects = [];
+        let drag = null;
+        openModal(`
+          <h3>${titulo || 'Censurar imagen'}</h3>
+          <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Arrastra con el dedo o el mouse para tapar con negro lo que NO debe verse (nombres, números, cuentas). Puedes hacer todos los recuadros que quieras. Lo que no tapes, se publica.</div>
+          <div style="max-height:62vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
+            <canvas id="winCensorCanvas" style="display:block; width:100%; touch-action:none; cursor:crosshair;"></canvas>
+          </div>
+          <div id="winCensorInfo" style="font-size:12px; color:var(--muted); margin:8px 0;">0 recuadros</div>
+          <div class="modal-actions" style="flex-wrap:wrap;">
+            <button class="btn secondary" id="winCensorUndo" type="button">↩️ Deshacer</button>
+            <button class="btn secondary" id="winCensorClear" type="button">Limpiar</button>
+            <button class="btn secondary" id="winCensorCancel" type="button">Cancelar</button>
+            <button class="btn" id="winCensorDone" type="button">Listo, continuar</button>
+          </div>
+        `);
+        const cv = document.getElementById('winCensorCanvas');
+        cv.width = W; cv.height = H;
+        const ctx = cv.getContext('2d');
+        const info = ()=>{ document.getElementById('winCensorInfo').textContent = `${rects.length} recuadro${rects.length===1?'':'s'}`; };
+        const draw = ()=>{
+          ctx.drawImage(base, 0, 0);
+          ctx.fillStyle = '#000';
+          rects.forEach(r=>ctx.fillRect(r.x, r.y, r.w, r.h));
+          if(drag){
+            ctx.fillStyle = 'rgba(0,0,0,0.65)';
+            ctx.fillRect(Math.min(drag.x0, drag.x1), Math.min(drag.y0, drag.y1), Math.abs(drag.x1 - drag.x0), Math.abs(drag.y1 - drag.y0));
+          }
+        };
+        const pos = (e)=>{
+          const b = cv.getBoundingClientRect();
+          return { x: Math.max(0, Math.min(W, (e.clientX - b.left) * W / b.width)), y: Math.max(0, Math.min(H, (e.clientY - b.top) * H / b.height)) };
+        };
+        cv.onpointerdown = (e)=>{ e.preventDefault(); cv.setPointerCapture(e.pointerId); const p = pos(e); drag = { x0:p.x, y0:p.y, x1:p.x, y1:p.y }; };
+        cv.onpointermove = (e)=>{ if(!drag) return; const p = pos(e); drag.x1 = p.x; drag.y1 = p.y; draw(); };
+        const fin = ()=>{
+          if(!drag) return;
+          const r = { x:Math.min(drag.x0, drag.x1), y:Math.min(drag.y0, drag.y1), w:Math.abs(drag.x1 - drag.x0), h:Math.abs(drag.y1 - drag.y0) };
+          drag = null;
+          if(r.w > 6 && r.h > 6) rects.push(r);
+          draw(); info();
+        };
+        cv.onpointerup = fin; cv.onpointercancel = fin;
+        document.getElementById('winCensorUndo').onclick = ()=>{ rects.pop(); draw(); info(); };
+        document.getElementById('winCensorClear').onclick = ()=>{ rects.length = 0; draw(); info(); };
+        document.getElementById('winCensorCancel').onclick = ()=>{ resolve(null); };
+        document.getElementById('winCensorDone').onclick = ()=>{
+          if(!rects.length && !confirm('No taparon nada: la imagen se publicaría COMPLETA, con todos los datos. ¿Seguro?')) return;
+          const out = document.createElement('canvas'); out.width = W; out.height = H;
+          const octx = out.getContext('2d');
+          octx.drawImage(base, 0, 0);
+          octx.fillStyle = '#000';
+          rects.forEach(r=>octx.fillRect(r.x, r.y, r.w, r.h));
+          resolve(out);
+        };
+        draw();
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+const WIN_CENSOR_MODO_HTML = (name) => `
+  <div class="field"><label>¿Cómo tapar los datos?</label>
+    <label style="display:flex; gap:8px; align-items:flex-start; font-size:13px; padding:4px 0; cursor:pointer;"><input type="radio" name="${name}" value="auto" checked> <span>🤖 Automático (Win tapa todo menos el monto)</span></label>
+    <label style="display:flex; gap:8px; align-items:flex-start; font-size:13px; padding:4px 0; cursor:pointer;"><input type="radio" name="${name}" value="manual"> <span>✏️ Yo lo censuro (tú tapas lo que quieras antes de mandar)</span></label>
+  </div>`;
+
 // ---------- Testimonio: tapa automáticamente todo lo que no sea el monto ----------
 // En vez de "detectar y tapar" los datos sensibles (riesgoso si al modelo se le pasa algo),
 // el servidor (api/leer-testimonio.js) nos dice dónde está el MONTO (lo único que debe
@@ -4325,6 +4448,7 @@ function openTestimonioUploadModal(){
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    ${WIN_CENSOR_MODO_HTML('testiModo')}
     <div class="field"><label>¿A qué grupo va?</label>${winGroupPickerHTML('f-testiGroups', ['Gratis 1','Gratis 2','Gratis 3'])}</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -4410,6 +4534,15 @@ async function submitTestimonio(){
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   if(!winPendingFile){ alert('Sube la captura primero.'); return; }
   const file = winPendingFile;
+  const modoCensura = (document.querySelector('input[name="testiModo"]:checked') || {}).value;
+  if(modoCensura === 'manual'){
+    const canvas = await winCensorEditor(file, 'Tapa los datos del testimonio');
+    if(!canvas){ closeModal(); renderWin(); return; }
+    const compressed = canvasToCompressed(canvas);
+    const thumb = canvasToThumbnail(canvas);
+    openWinCaptionConfirm('contenido', grupos, 'Testimonio de nuestro cliente. 🙌', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'contenido', destino: grupos.join(', '), code: 'Es un testimonio de un cliente (captura de recarga/transferencia que el dueño censuró a mano -- no inventes montos ni datos nuevos si pides un ajuste).' });
+    return;
+  }
   openModal(`<h3>Procesando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Leyendo la imagen y tapando los datos. Esto toma unos segundos.</div>`);
   try{
     const { base64, mediaType } = await fileToCompressedImage(file);
@@ -4451,6 +4584,7 @@ function openCollageUploadModal(){
     <input id="winCollageInput" type="file" accept="image/*" multiple style="display:none;">
     <button class="btn secondary" id="winCollageAddBtn" type="button" style="width:100%; margin-bottom:10px;">📎 Elegir capturas</button>
     <div id="winCollagePreview" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
+    ${WIN_CENSOR_MODO_HTML('collageModo')}
     <div class="field"><label>¿A qué grupo va?</label>${winGroupPickerHTML('f-collageGroups', ['Gratis 1', 'Gratis 2', 'Gratis 3'])}</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -4521,9 +4655,19 @@ async function submitCollage(){
   const grupos = getCheckedWinGroups('f-collageGroups');
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   if(winCollageFiles.length < 2){ alert('Sube al menos 2 capturas para armar el collage.'); return; }
+  const modoCensuraCollage = (document.querySelector('input[name="collageModo"]:checked') || {}).value;
+  let canvasesManuales = null;
+  if(modoCensuraCollage === 'manual'){
+    canvasesManuales = [];
+    for(let i = 0; i < winCollageFiles.length; i++){
+      const c = await winCensorEditor(winCollageFiles[i], `Censura la captura ${i+1} de ${winCollageFiles.length}`);
+      if(c) canvasesManuales.push(c); // si cancelas una, esa captura se queda fuera del collage
+    }
+    if(canvasesManuales.length < 1){ closeModal(); renderWin(); return; }
+  }
   openModal(`<h3>Procesando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Leyendo cada comprobante y tapando los datos. Esto toma unos segundos.</div>`);
   try{
-    const resultados = await Promise.all(winCollageFiles.map(async (file)=>{
+    const resultados = canvasesManuales ? canvasesManuales : await Promise.all(winCollageFiles.map(async (file)=>{
       try{
         const { base64, mediaType } = await fileToCompressedImage(file);
         const res = await withTimeout(fetch('/api/leer-testimonio', {
@@ -4826,10 +4970,16 @@ async function submitWinBet(kind){
   const code = document.getElementById('f-winCode') ? document.getElementById('f-winCode').value.trim() : '';
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   if(!winPendingFile){ alert('Sube la captura primero.'); return; }
+  let censurada = null;
+  if(document.getElementById('f-winCensurar') && document.getElementById('f-winCensurar').checked){
+    const canvas = await winCensorEditor(winPendingFile, 'Censura la captura antes de mandarla');
+    if(!canvas){ closeModal(); renderWin(); return; }
+    censurada = { ...canvasToCompressed(canvas), thumb: canvasToThumbnail(canvas) };
+  }
   openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
   try{
-    const { base64, mediaType, previewUrl } = await fileToCompressedImage(winPendingFile);
-    const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    const { base64, mediaType, previewUrl } = censurada || await fileToCompressedImage(winPendingFile);
+    const thumb = censurada ? censurada.thumb : await fileToThumbnail(winPendingFile).catch(()=> '');
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType })
