@@ -3259,7 +3259,6 @@ function openWinDifusionModal(){
         ${l.id === 'stakes' ? `<button class="btn secondary small" id="winDifCargarStakesBtn">🔄 Actualizar compradores</button>` : ''}
         <button class="btn secondary small" data-win-dif-ver="${l.id}">Ver</button>
         <button class="btn secondary small" data-win-dif-manual="${l.id}" title="Abre WhatsApp para que mandes tú mismo, uno por uno -- no pasa por el bot, cero riesgo de bloqueo">💬 Manual</button>
-        <button class="btn small" data-win-dif-mandar="${l.id}">Mandar (bot)</button>
       </div>`;
     }).join('')}
     <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">"Manual" te arma un mensaje distinto para cada contacto y te abre WhatsApp con el chat ya listo para que lo mandes tú -- no usa el bot, así que no arriesga que vuelvan a bloquear el número. "Mandar (bot)" es el envío automático de siempre.</div>
@@ -3272,7 +3271,6 @@ function openWinDifusionModal(){
   const cargarBtn = document.getElementById('winDifCargarStakesBtn');
   if(cargarBtn) cargarBtn.onclick = ()=>cargarContactosDeVentaStakes();
   document.querySelectorAll('[data-win-dif-ver]').forEach(b=>b.onclick=()=>openWinDifusionListaModal(b.dataset.winDifVer));
-  document.querySelectorAll('[data-win-dif-mandar]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifMandar, 'bot'));
   document.querySelectorAll('[data-win-dif-manual]').forEach(b=>b.onclick=()=>openWinDifusionComposeModal(b.dataset.winDifManual, 'manual'));
 }
 
@@ -3356,7 +3354,7 @@ function handleAbrirDifusion(input){
 let winDifFoto = null;
 
 function openWinDifusionComposeModal(listaId, modo){
-  modo = modo === 'manual' ? 'manual' : 'bot';
+  modo = 'manual'; // la difusión automática por el bot se eliminó (causaba bloqueos del WhatsApp); solo queda la manual
   winDifFoto = null;
   const contactos = getDifusionContactos(listaId);
   const explicacion = modo === 'manual'
@@ -3440,7 +3438,7 @@ async function generarPreviewDifusion(listaId, contactos, modo){
       <button class="btn" id="winDifSendBtn" style="width:100%; margin-bottom:8px;">${modo === 'manual' ? `Armar mensajes para los ${contactos.length}` : `Mandar a los ${contactos.length}`}</button>
     `;
     wireWinCaptionTools({ kind: 'difusion_preview', destino, code: nota, ...ctxFoto });
-    document.getElementById('winDifSendBtn').onclick = ()=> modo === 'manual' ? submitWinDifusionManual(listaId, contactos) : submitWinDifusion(listaId, contactos);
+    document.getElementById('winDifSendBtn').onclick = ()=> submitWinDifusionManual(listaId, contactos);
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
@@ -3535,48 +3533,6 @@ async function submitWinDifusionManual(listaId, contactos){
   }
 }
 
-async function submitWinDifusion(listaId, contactos){
-  const box = document.getElementById('f-winCaptionConfirm');
-  const base = box ? box.value.trim() : '';
-  if(!base){ alert('Genera o escribe el texto primero.'); return; }
-  if(!contactos.length){ alert('No hay contactos con teléfono en esta lista.'); return; }
-  const btn = document.getElementById('winDifSendBtn');
-  btn.disabled = true; btn.textContent = 'Mandando...';
-  try{
-    const cantidad = Math.max(1, Math.min(6, contactos.length));
-    let variantes = [base];
-    try{
-      const res = await withTimeout(fetch('/api/win-redactar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modo: 'difusion', instruccion: base, cantidad })
-      }), 20000);
-      const data = await res.json().catch(()=>({}));
-      if(res.ok && Array.isArray(data.variantes) && data.variantes.length) variantes = data.variantes;
-    }catch(e){ console.error('No se pudo redactar variantes, se manda el mensaje tal cual:', e); }
-
-    const mensajes = contactos.map((c, i) => ({ grupoId: phoneToJid(c.telefono), texto: variantes[i % variantes.length] })).filter(m=>m.grupoId);
-    const colaRes = await withTimeout(fetch('/api/win-enviar', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ modo: 'cola', mensajes, intervaloMs: 60000 })
-    }), 20000, 'El bot de WhatsApp tardó demasiado en responder -- puede que esté caído o reiniciando.');
-    const colaInfo = await colaRes.json().catch(()=>({}));
-    if(!colaRes.ok || !colaInfo.ok) throw new Error(colaInfo.error || 'No se pudo encolar la difusión.');
-    closeModal();
-    renderWin();
-    const msg = `Listo, jefe. Encolé ${mensajes.length} avisos de "${winDifusionListaNombre(listaId)}", uno por minuto -- el primero sale de una.`;
-    if(winListeningActive) winSpeak(msg); else alert(msg);
-  }catch(e){
-    console.error(e);
-    alert(`No se pudo mandar la difusión: ${e.message}`);
-    btn.disabled = false; btn.textContent = `Mandar a los ${contactos.length}`;
-  }
-}
-
-// Dispara el protocolo fijo de la mañana (ver api/win-protocolo-manana.js) ya mismo, en vez de
-// esperar a las 8am -- el mismo endpoint que corre solo con Vercel Cron todos los días. El control
-// es POR PIEZA: si ya mandaste algo a mano antes (completo o suelto con mandar_paso_protocolo_manana),
-// eso no se repite -- solo se manda lo que todavía falte. El cron de las 8am funciona igual: si ya
-// mandaste algo a mano, a las 8 solo manda el resto.
 async function handleMandarProtocoloManana(){
   try{
     const res = await fetch('/api/win-protocolo-manana', { method: 'POST' });
@@ -4834,41 +4790,9 @@ async function submitStakePago(){
     const valor = result.valor || '-';
     const caption = STAKE_PAGO_TEXT_BASE.replace('{cuota}', cuota).replace('{hora}', hora).replace('{valor}', valor);
 
-    // Compradores conocidos (cualquiera que ya haya comprado un stake antes, con teléfono
-    // guardado) -- se mandan solos, uno por minuto, directo desde el bot de WhatsApp (que
-    // corre 24/7 en Railway, ver /enviar-cola en whatsapp-bot/index.js). No se revisan a
-    // mano uno por uno -- el jefe pidió explícitamente este ritmo para bajar el riesgo del
-    // número dedicado, aceptando que es un número desechable para esta prueba.
-    const buyers = getKnownBuyers().filter(b=>b.phone);
-    const mensajes = buyers.map(b => ({ grupoId: phoneToJid(b.phone), texto: buildStakePagoDM(b.name, cuota, hora, valor) })).filter(m=>m.grupoId);
-    let colaInfo = null;
-    if(mensajes.length){
-      try{
-        const colaRes = await fetch('/api/win-enviar', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ modo: 'cola', mensajes, intervaloMs: 60000 })
-        });
-        colaInfo = await colaRes.json().catch(()=>null);
-        if(!colaRes.ok) throw new Error((colaInfo && colaInfo.error) || 'No se pudo encolar los avisos.');
-      }catch(e){
-        console.error(e);
-        colaInfo = { error: e.message };
-      }
-    }
-
+    // Ya NO se mandan avisos automáticos a los compradores por el bot (eso causaba bloqueos del
+    // WhatsApp). Si quieres avisarles uno por uno: Win -> 📢 Listas de difusión -> Stakes -> 💬 Manual.
     openWinCaptionConfirm('stake_pago', grupos, caption, thumb || previewUrl, { base64, mediaType });
-    if(mensajes.length){
-      const minutos = mensajes.length;
-      if(colaInfo && colaInfo.ok){
-        setTimeout(()=>winSpeak(`Ya quedaron ${mensajes.length} avisos en cola, uno por minuto -- el primero sale de una, en como ${minutos} minutos están todos mandados.`), 400);
-      } else {
-        setTimeout(()=>winSpeak('No se pudo conectar con el bot para mandar los avisos a los compradores. Revisa la conexión.'), 400);
-      }
-    } else {
-      // Nunca se queda en silencio -- si no hay nadie en cola, el jefe tiene que saber por qué
-      // (normalmente: ningún comprador registrado tiene teléfono guardado).
-      setTimeout(()=>winSpeak('No mandé avisos a nadie -- no encontré compradores con teléfono guardado. Revisa que los registros en Venta de Stakes tengan el número.'), 400);
-    }
   }catch(e){
     console.error(e);
     alert('No se pudo procesar el stake. Intenta de nuevo.');

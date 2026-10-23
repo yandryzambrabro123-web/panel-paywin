@@ -280,76 +280,8 @@ app.post('/enviar-multiple', requireApiKey, async (req, res) => {
   }
 });
 
-// Cola de envíos espaciados (ej: avisar uno por uno a cada cliente que ya compró un stake,
-// en vez de mandarles a todos de golpe). El panel manda la lista COMPLETA una sola vez y
-// este servidor (que corre 24/7, no depende de que el panel esté abierto) va descargando la
-// cola solo, a un ritmo fijo -- así el patrón de envíos se parece más a una persona
-// escribiendo uno por uno que a un bot mandando ráfagas, lo que baja el riesgo de que
-// WhatsApp marque el número. No persiste en disco: si el servicio se reinicia a mitad de
-// una cola, lo que faltaba se pierde (para este uso -- avisos de stakes del día -- no vale
-// la pena la complejidad de guardarlo).
-let colaEnvios = [];
-let colaIntervaloMs = 60000; // 1 minuto por defecto
-let colaTimer = null;
-
-async function tickCola() {
-  if (!colaEnvios.length) {
-    clearInterval(colaTimer);
-    colaTimer = null;
-    return;
-  }
-  if (!connected) return; // espera a que reconecte -- no descarta el mensaje, solo lo deja en espera
-  const item = colaEnvios.shift();
-  try {
-    await pausaHumana();
-    if (item.imagenBase64) {
-      const buffer = Buffer.from(item.imagenBase64, 'base64');
-      await sock.sendMessage(item.grupoId, { image: buffer, mimetype: item.mediaType || 'image/jpeg', caption: item.texto });
-    } else {
-      await sock.sendMessage(item.grupoId, { text: item.texto });
-    }
-    console.log('Cola: mandado a', item.grupoId, '-- quedan', colaEnvios.length);
-  } catch (e) {
-    console.error('Cola: error mandando a', item.grupoId, e.message);
-  }
-}
-
-function iniciarColaSiHaceFalta(nuevoIntervaloMs) {
-  if (nuevoIntervaloMs && nuevoIntervaloMs >= 15000 && nuevoIntervaloMs !== colaIntervaloMs) {
-    colaIntervaloMs = nuevoIntervaloMs;
-    if (colaTimer) { clearInterval(colaTimer); colaTimer = null; }
-  }
-  if (colaTimer) return;
-  // El primer aviso se manda de una, sin esperar el minuto completo -- setInterval por sí solo
-  // solo dispara DESPUÉS de que pasa el intervalo completo, y eso hacía parecer que la cola no
-  // estaba haciendo nada durante el primer minuto.
-  tickCola();
-  colaTimer = setInterval(tickCola, colaIntervaloMs);
-}
-
-// Agrega mensajes a la cola de envío espaciado. Body: { mensajes: [{grupoId, texto,
-// imagenBase64?, mediaType?}, ...], intervaloMs? } -- intervaloMs es opcional (mínimo 15s
-// por seguridad), si no se manda se usa el que ya esté activo (1 minuto por defecto).
-app.post('/enviar-cola', requireApiKey, (req, res) => {
-  const { mensajes, intervaloMs } = req.body || {};
-  if (!Array.isArray(mensajes) || !mensajes.length) {
-    return res.status(400).json({ error: 'Falta la lista de mensajes.' });
-  }
-  let agregados = 0;
-  for (const m of mensajes) {
-    if (m && m.grupoId && m.texto) {
-      colaEnvios.push({ grupoId: m.grupoId, texto: m.texto, imagenBase64: m.imagenBase64 || '', mediaType: m.mediaType || '' });
-      agregados++;
-    }
-  }
-  iniciarColaSiHaceFalta(Number(intervaloMs) || null);
-  res.json({ ok: true, agregados, pendientes: colaEnvios.length, intervaloMs: colaIntervaloMs });
-});
-
-// Para ver cuánto falta en la cola.
-app.get('/cola', requireApiKey, (req, res) => {
-  res.json({ pendientes: colaEnvios.length, intervaloMs: colaIntervaloMs, activa: !!colaTimer });
-});
+// (La cola de envíos masivos espaciados se eliminó: la difusión automática causaba bloqueos del
+// número. La difusión ahora es solo manual desde el panel.)
 
 // Ruta de uso único para identificar, a mano, cuál id de /grupos corresponde a cuál grupo
 // real cuando salen nombres duplicados -- manda un texto cortito directo desde el navegador

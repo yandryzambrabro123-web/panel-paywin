@@ -136,7 +136,7 @@ const TOOLS = [
   },
   {
     name: 'abrir_difusion',
-    description: 'Abre (o manda directo, si ya sabe a cuál lista) una difusión: un aviso o promo masiva por WhatsApp a una lista de clientes (compradores de stakes, clientes fuertes, de Más Parlay, Ecuabet u OneXBet). Se manda uno por minuto, con varias versiones distintas del mismo texto, directo al número de cada cliente, sin revisión manual.',
+    description: 'Abre la difusión MANUAL (nunca se manda sola por el bot) a una lista: un aviso o promo masiva por WhatsApp a una lista de clientes (compradores de stakes, clientes fuertes, de Más Parlay, Ecuabet u OneXBet). Se manda uno por minuto, con varias versiones distintas del mismo texto, directo al número de cada cliente, sin revisión manual.',
     input_schema: {
       type: 'object',
       properties: {

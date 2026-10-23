@@ -15,8 +15,7 @@
 //                { grupoId, texto, imagenBase64?, imagenUrl?, mediaType? }
 //   "multiple"  -- varias fotos + un texto final (ej. "partidos del día").
 //                { grupoId, imagenes: [{base64, mediaType}], texto }
-//   "cola"      -- lista de mensajes espaciados, uno por minuto (ej. avisos de stake de pago,
-//                difusiones). { mensajes: [{grupoId, texto, imagenBase64?, mediaType?}], intervaloMs? }
+//   (el modo "cola" -- envíos masivos espaciados -- se eliminó: causaba bloqueos del WhatsApp)
 //
 // Variables de entorno necesarias en Vercel (Settings -> Environment Variables):
 //   WA_BOT_URL      -- la URL pública que te dio Railway (sin "/" al final), ej:
@@ -75,26 +74,6 @@ module.exports = async function handler(req, res) {
       const data = await botRes.json().catch(() => ({}));
       if (!botRes.ok) {
         res.status(502).json({ error: data.error || 'El bot no pudo sacar a la persona del grupo.' });
-        return;
-      }
-      res.status(200).json(data);
-      return;
-    }
-
-    if (modo === 'cola') {
-      const { mensajes, intervaloMs } = body;
-      if (!Array.isArray(mensajes) || !mensajes.length) {
-        res.status(400).json({ error: 'Falta la lista de mensajes.' });
-        return;
-      }
-      const botRes = await fetch(`${base}/enviar-cola`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
-        body: JSON.stringify({ mensajes, intervaloMs })
-      });
-      const data = await botRes.json().catch(() => ({}));
-      if (!botRes.ok) {
-        res.status(502).json({ error: data.error || 'El bot de WhatsApp no pudo encolar los mensajes.' });
         return;
       }
       res.status(200).json(data);
