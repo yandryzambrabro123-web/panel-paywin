@@ -3204,7 +3204,8 @@ function renderWin(){
       </div>
       <div class="win-quick-row">
         <button class="win-quick-btn" id="winQuickTestiBtn" type="button">${winIcon('testimonio')}<span>Mandar testimonio</span></button>
-        <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Mandar pago de stake</span></button>
+        <button class="win-quick-btn" id="winQuickComunicadoBtn" type="button">${winIcon('difusion')}<span>Mandar comunicado</span></button>
+        <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
         <button class="win-quick-btn" id="winQuickGanadaBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta ganada</span></button>
       </div>
       <button class="win-type-toggle" id="winTypeToggleBtn">Prefiero escribir</button>
@@ -3232,6 +3233,7 @@ function renderWin(){
   };
   document.getElementById('winPowerOffBtn').onclick = ()=>{ stopWinListening(); actualizarPower(); };
   document.getElementById('winQuickTestiBtn').onclick = ()=>{ playWinSfx('action'); openTestimonioUploadModal(); };
+  document.getElementById('winQuickComunicadoBtn').onclick = ()=>{ playWinSfx('action'); openWinContentForm('', ['Gratis 1','Gratis 2','Gratis 3'], 'Mandar comunicado'); };
   document.getElementById('winQuickStakeBtn').onclick = ()=>{ playWinSfx('action'); openStakePagoUploadModal(); };
   document.getElementById('winQuickGanadaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('ganada',''); };
   winPowerRefresh = actualizarPower;
@@ -6027,9 +6029,10 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   });
 }
 
-function openWinContentForm(nota, destinoGuess){
+function openWinContentForm(nota, destinoGuess, titulo){
   openModal(`
-    <h3>Subir algo a la comunidad</h3>
+    <h3>${titulo || 'Subir algo a la comunidad'}</h3>
+    ${titulo ? `<div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Escribe el comunicado. La imagen es opcional: puedes mandar solo texto. Win lo redacta y tú lo revisas antes de mandarlo.</div>` : ''}
     <div class="field"><label>¿Qué necesitas mandar?</label><input id="f-winContentNote" value="${(nota||'').replace(/"/g,'&quot;')}" placeholder="Ej: testimonio de este cliente"></div>
     <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
       <div style="font-size:26px; margin-bottom:6px;">📎</div>
