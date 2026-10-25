@@ -53,6 +53,14 @@ function cambiarHoja(hoja, fn) {
   });
 }
 
+// Secciones de "Stake de pago" de los últimos 7 días, la más nueva primero.
+async function seccionesAbiertas() {
+  const desde = new Date(Date.now() - 5 * 60 * 60 * 1000 - 7 * 86400000).toISOString().slice(0, 10);
+  const lista = (await leerHoja(HOJA_SECCIONES)).filter((s) => /stake de pago/i.test(String(s.title || '')) && String(s.day || '').slice(0, 10) >= desde);
+  lista.sort((a, b) => String(b.day).localeCompare(String(a.day)) || String(b.id).localeCompare(String(a.id)));
+  return lista;
+}
+
 async function seccionDeHoy() {
   const hoy = hoyEC();
   const secs = (await leerHoja(HOJA_SECCIONES)).filter((s) => String(s.day || '').slice(0, 10) === hoy);
@@ -154,7 +162,8 @@ async function procesarUpdate(u) {
     try {
       const hoy = hoyEC();
       const filas = await leerHoja(HOJA_REGISTROS);
-      ok = !!usuario && filas.some((f) => f.estado === 'aprobado' && String(f.day || '').slice(0, 10) === hoy && normUser(f.telegram) === usuario);
+      const limite48 = Date.now() - 48 * 3600e3;
+      ok = !!usuario && filas.some((f) => f.estado === 'aprobado' && new Date(f.resueltoAt || f.createdAt || 0).getTime() >= limite48 && normUser(f.telegram) === usuario);
     } catch (e) { console.error('No pude revisar registros para la solicitud de ingreso:', e.message); }
     try {
       if (ok) {
@@ -216,7 +225,7 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 .w{width:100%;max-width:440px}h1{font-size:22px;margin:18px 0 4px}p{color:#9aa3b2;font-size:14px;line-height:1.45}
 .c{background:linear-gradient(180deg,#161a23,#10131a);border:1px solid rgba(212,175,106,.3);border-radius:16px;padding:20px;margin-top:16px}
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:14px 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
-input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
+select{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.n{font-size:12.5px;color:#D4AF6A;margin-top:6px;min-height:16px}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
 </style></head><body><div class="w"><h1>Stake de pago</h1><p id="sub">Cargando…</p><div class="c" id="box"></div></div>
 <script>
@@ -226,11 +235,11 @@ function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt
 async function init(){
   try{const r=await fetch('/stake/hoy');const d=await r.json();
     if(!d.abierto){$('#sub').textContent='Hoy todavía no hay un stake de pago abierto. Vuelve a intentarlo cuando se anuncie.';box.style.display='none';return}
-    sec=d;$('#sub').textContent=d.titulo+' · $'+d.precio+'. Completa tus datos para que aprobemos tu acceso.';form()
+    sec=d;$('#sub').textContent='Elige el stake que compraste y completa tus datos para que aprobemos tu acceso.';form()
   }catch(e){$('#sub').textContent='No se pudo cargar. Intenta de nuevo.';box.style.display='none'}
 }
 function form(){
-  box.innerHTML='<label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off"><div class="n" id="nota"></div>'+
+  box.innerHTML='<label>¿Qué stake compraste?</label><select id="sec">'+sec.secciones.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.titulo)+' · $'+s.precio+'</option>').join('')+'</select><label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off"><div class="n" id="nota"></div>'+
   '<div id="resto" style="display:none"><label>Nombre</label><input id="nom" autocomplete="given-name"><label>Apellido</label><input id="ape" autocomplete="family-name">'+
   '<label>Usuario de Telegram</label><input id="tgu" placeholder="@tuusuario" autocapitalize="none" autocomplete="off"><label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999">'+
   '<div class="e" id="err"></div><button id="env">Enviar registro</button></div>';
@@ -248,7 +257,7 @@ async function buscar(c){
 }
 async function enviar(){
   const b=$('#env'),er=$('#err');er.textContent='';
-  const body={cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,telegram:$('#tgu').value,telefono:$('#tel').value};
+  const body={sectionId:$('#sec').value,cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,telegram:$('#tgu').value,telefono:$('#tel').value};
   if(!body.nombre.trim()||!body.apellido.trim()||!body.telegram.trim().replace('@','')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
   b.disabled=true;b.textContent='Enviando…';
   try{const r=await fetch('/stake/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
@@ -270,9 +279,9 @@ function montar(app) {
 
   app.get('/stake/hoy', async (req, res) => {
     try {
-      const sec = await seccionDeHoy();
-      if (!sec) return res.json({ abierto: false });
-      res.json({ abierto: true, titulo: sec.title, precio: Number(sec.price) || 0 });
+      const secs = await seccionesAbiertas();
+      if (!secs.length) return res.json({ abierto: false });
+      res.json({ abierto: true, secciones: secs.map((x) => ({ id: x.id, titulo: x.title, precio: Number(x.price) || 0 })) });
     } catch (e) { res.status(500).json({ error: 'No se pudo consultar.' }); }
   });
 
@@ -297,8 +306,9 @@ function montar(app) {
       if (!nombre || !apellido) return res.status(400).json({ error: 'Falta tu nombre y apellido.' });
       if (!/^[a-z0-9_]{4,32}$/.test(telegram)) return res.status(400).json({ error: 'Revisa tu usuario de Telegram (sin espacios).' });
       if (telefono.length < 9 || telefono.length > 10) return res.status(400).json({ error: 'Revisa tu número de teléfono.' });
-      const sec = await seccionDeHoy();
-      if (!sec) return res.status(409).json({ error: 'Hoy no hay un stake de pago abierto.' });
+      const secs = await seccionesAbiertas();
+      const sec = secs.find((x) => String(x.id) === String(b.sectionId)) || secs[0];
+      if (!sec) return res.status(409).json({ error: 'No hay un stake de pago abierto.' });
       const hoy = hoyEC();
       const previo = !!(await buscarCliente(cedula));
       let reg = null, repetido = null;
