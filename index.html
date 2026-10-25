@@ -612,6 +612,17 @@ function maskPhone(phone){
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
 const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas', winDifusion: 'WinDifusion', winGanadas: 'WinGanadasGuardadas' };
+
+// ---------- Corte del panel (25-oct-2026, 7:20am Ecuador) ----------
+// El panel NO muestra lo que se registró antes de este momento en estas listas (miembros VIP,
+// apuestas gratis/VIP/live, regalitos y cuadre). NO se borra nada: todo sigue intacto en el Excel y
+// cada guardado lo conserva. Todos los ids se generan con uid() (hora en base 36 + 5 letras), así
+// que la fecha de creación sale del propio id. Lo nuevo (registrado después del corte) sí se ve.
+const PANEL_CORTE_MS = 1792930800000;
+const CLAVES_CORTE = ['vips','freeBets','vipBets','liveBets','gifts','financeMovements'];
+function idCreadoMs(id){ const n = parseInt(String(id||'').slice(0,-5), 36); return Number.isFinite(n) ? n : 0; }
+function esAnteriorAlCorte(item){ return idCreadoMs(item && item.id) < PANEL_CORTE_MS; }
+function filtrarCorte(key, arr){ return CLAVES_CORTE.includes(key) ? (arr||[]).filter(x=>!esAnteriorAlCorte(x)) : arr; }
 // "Publicidades" guardadas de Win: imagen + texto FIJOS, identificados por nombre (ej: "publicidad
 // de recargas"). Cuando el jefe pide una por nombre, Win la reconoce y la manda directo a la
 // bandeja con ese mismo texto de siempre -- sin redactar nada nuevo con IA.
@@ -741,7 +752,7 @@ async function fetchSheetKey(key){
   try{
     const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
     const json = await res.json();
-    state[key] = (json.data || []).map(row => coerceRow(key, row));
+    state[key] = filtrarCorte(key, (json.data || []).map(row => coerceRow(key, row)));
   }catch(e){ console.error('Error cargando', key, e); state[key] = []; state.syncError = true; state.failedKeys.push(key); }
 }
 
@@ -786,10 +797,17 @@ async function persist(key, options = {}){
 
   if(force){
     try{
+      let aGuardar = state[key];
+      if(CLAVES_CORTE.includes(key)){
+        // lo anterior al corte NO se pisa nunca: se vuelve a guardar junto con lo nuevo
+        const r = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
+        const viejos = ((await r.json()).data || []).map(row => coerceRow(key, row)).filter(esAnteriorAlCorte);
+        aGuardar = viejos.concat(state[key]);
+      }
       await fetch(SHEETS_API_URL, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ sheet: SHEET_NAMES[key], data: state[key] })
+        body: JSON.stringify({ sheet: SHEET_NAMES[key], data: aGuardar })
       });
       state.syncError = false;
     }catch(e){
@@ -808,6 +826,11 @@ async function persist(key, options = {}){
     }catch(e){
       serverArr = null; // no se pudo refrescar — se guarda igual lo que hay localmente, sin mezclar
     }
+    if(!serverArr && CLAVES_CORTE.includes(key)){
+      // sin poder leer el Excel no se guarda: así jamás se pisa lo anterior al corte
+      state.syncError = true;
+      return;
+    }
 
     let toSend = state[key];
     if(serverArr){
@@ -816,7 +839,7 @@ async function persist(key, options = {}){
       state[key].forEach(item => { if(item && item.id) map.set(item.id, item); }); // local manda sobre servidor
       deletedIds.forEach(id => map.delete(id));
       toSend = Array.from(map.values());
-      state[key] = toSend; // refleja la mezcla real (incluye lo que trajo el servidor)
+      state[key] = filtrarCorte(key, toSend); // lo anterior al corte se guarda pero no se muestra
     }
 
     await fetch(SHEETS_API_URL, {
@@ -1794,7 +1817,7 @@ async function refreshFinanceData(){
   try{
     const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES.financeMovements}`);
     const json = await res.json();
-    state.financeMovements = (json.data || []).map(row => coerceRow('financeMovements', row));
+    state.financeMovements = filtrarCorte('financeMovements', (json.data || []).map(row => coerceRow('financeMovements', row)));
     state.syncError = false;
   }catch(e){
     console.error('Error actualizando Cuadre Financiero', e);

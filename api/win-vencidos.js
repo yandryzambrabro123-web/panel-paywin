@@ -55,7 +55,10 @@ module.exports = async function handler(req, res) {
   try {
     const today = ecuadorToday();
     const sheet = await (await fetch(`${SHEETS_API_URL}?sheet=VIPs`)).json();
-    const vips = (sheet.data || []).filter(v => !(v.joinDate && String(v.removidoVip) === String(v.joinDate)));
+    // Corte del panel (25-oct-2026, 7:20am Ecuador): lo registrado antes de esta hora no se muestra ni se avisa (sigue en el Excel).
+    const CORTE_MS = 1792930800000;
+    const creadoMs = v => { const n = parseInt(String((v && v.id) || '').slice(0, -5), 36); return Number.isFinite(n) ? n : 0; };
+    const vips = (sheet.data || []).filter(v => creadoMs(v) >= CORTE_MS).filter(v => !(v.joinDate && String(v.removidoVip) === String(v.joinDate)));
 
     const vencidos = [];
     const porVencer = [];
