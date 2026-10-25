@@ -101,12 +101,23 @@ async function avisarJefe(reg, sec) {
 }
 
 // ---- Aprobar / rechazar un registro ----
+// Otros módulos pueden decidir si un stake ya no está disponible (los pagos quedan "en cola")
+const gancho = { stakeCerrado: async () => false };
+
 async function resolverRegistro(id, aprobar) {
-  let reg = null, ya = false;
+  let reg = null, ya = false, enCola = false;
+  let cerrado = false;
+  if (aprobar) {
+    try {
+      const r0 = (await leerHoja(HOJA_REGISTROS)).find((f) => String(f.id) === String(id));
+      cerrado = !!(r0 && await gancho.stakeCerrado(r0.sectionId));
+    } catch (e) { cerrado = false; }
+  }
   await cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => {
     if (String(f.id) !== String(id)) return f;
     reg = f;
     if (f.estado !== 'pendiente') { ya = true; return f; }
+    if (aprobar && cerrado) { enCola = true; return { ...f, estado: 'cola', resueltoAt: new Date().toISOString() }; }
     return { ...f, estado: aprobar ? 'aprobado' : 'rechazado', resueltoAt: new Date().toISOString() };
   }));
   if (!reg) return { error: 'No encontré ese registro.' };
@@ -125,7 +136,7 @@ async function resolverRegistro(id, aprobar) {
       });
     }
   }
-  return { ok: true, reg };
+  return { ok: true, reg, enCola };
 }
 
 // ---- Escucha de Telegram (botones y solicitudes de ingreso al canal) ----
@@ -144,7 +155,7 @@ async function procesarUpdate(u) {
     try {
       if (accion === 'ap' || accion === 're') {
         const r = await resolverRegistro(a, accion === 'ap');
-        const txt = r.error ? `⚠️ ${r.error}` : (accion === 'ap' ? '✅ Aprobado' : '❌ Rechazado');
+        const txt = r.error ? `⚠️ ${r.error}` : (r.enCola ? '🕒 Cobrado: queda en cola hasta el próximo stake' : accion === 'ap' ? '✅ Aprobado' : '❌ Rechazado');
         await tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt });
         if (cq.message) await tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: txt, callback_data: 'x' }]] } }).catch(() => {});
       } else if (manejadores[accion]) {
@@ -280,6 +291,7 @@ function espera(id){
   box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Registro enviado. Estamos revisando tu pago; no cierres esta pantalla.</p>';
   const tick=async()=>{try{const r=await fetch('/stake/estado/'+id);const d=await r.json();
     if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado!</p><p>Entra al canal con el botón. Si te pide unirte, solicítalo con tu usuario de Telegram registrado.</p>'+(d.link?'<a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al canal de Telegram</a>':'<p>En un momento te pasamos el link por mensaje.</p>')}
+    else if(d.estado==='cola'){box.innerHTML='<p style="color:#D4AF6A;font-size:16px">🕒 Tu pago está confirmado. Este stake ya terminó; en cuanto salga el siguiente te mostramos aquí el link del canal.</p><p>No cierres esta pantalla.</p>'}
     else if(d.estado==='rechazado'){clearInterval(timer);box.innerHTML='<p style="color:#ff7a7a;font-size:16px">No pudimos aprobar tu registro. Comunícate con la agencia.</p>'}
   }catch(e){}};
   timer=setInterval(tick,4000);
@@ -364,4 +376,4 @@ function montar(app) {
   escuchar().catch((e) => console.error('No arrancó la escucha de Telegram:', e.message));
 }
 
-module.exports = { montar, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, TG_ADMIN, TG_TOKEN };
+module.exports = { montar, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, gancho, TG_ADMIN, TG_TOKEN };

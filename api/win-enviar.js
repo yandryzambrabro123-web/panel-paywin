@@ -55,6 +55,26 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    if (modo === 'regalito_url') {
+      res.status(200).json({ url: `${base}/regalito` });
+      return;
+    }
+
+    if (modo === 'regalito_publicar') {
+      const botRes = await fetch(`${base}/regalito/publicar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
+        body: JSON.stringify({ link: String(body.link || '') })
+      });
+      const data = await botRes.json().catch(() => ({}));
+      if (!botRes.ok) {
+        res.status(502).json({ error: data.error || 'El bot no pudo publicar el regalito.' });
+        return;
+      }
+      res.status(200).json(data);
+      return;
+    }
+
     if (modo === 'vip_url') {
       res.status(200).json({ url: `${base}/vip` });
       return;
