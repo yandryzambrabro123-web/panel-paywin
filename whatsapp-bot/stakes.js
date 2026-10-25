@@ -286,7 +286,7 @@ function montar(app) {
   });
 
   app.get('/stake/cedula/:ced', async (req, res) => {
-    if (!limite(req, res, 40, 10 * 60 * 1000)) return;
+    if (!limite(req, res, 3000, 10 * 60 * 1000)) return;
     try {
       const c = await buscarCliente(req.params.ced);
       res.json(c ? { found: true, ...c } : { found: false });
@@ -294,7 +294,7 @@ function montar(app) {
   });
 
   app.post('/stake/registro', async (req, res) => {
-    if (!limite(req, res, 8, 10 * 60 * 1000)) return;
+    if (!limite(req, res, 3000, 10 * 60 * 1000)) return;
     try {
       if (!TG_TOKEN() || !TG_ADMIN()) return res.status(500).json({ error: 'El registro no está configurado todavía.' });
       const b = req.body || {};
@@ -328,7 +328,7 @@ function montar(app) {
   });
 
   app.get('/stake/estado/:id', async (req, res) => {
-    if (!limite(req, res, 400, 10 * 60 * 1000)) return;
+    if (!limite(req, res, 20000, 10 * 60 * 1000)) return;
     try {
       const reg = (await leerHoja(HOJA_REGISTROS)).find((f) => String(f.id) === String(req.params.id));
       if (!reg) return res.json({ estado: 'desconocido' });
