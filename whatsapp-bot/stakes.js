@@ -277,6 +277,16 @@ init();
 function montar(app) {
   app.get('/stake', (req, res) => { res.set('Cache-Control', 'no-store').type('html').send(PAGINA); });
 
+  // Diagnóstico (no muestra secretos): ¿el bot ve las variables de Telegram y el token funciona?
+  app.get('/stake/diag', async (req, res) => {
+    const out = { tokenConfigurado: !!TG_TOKEN(), chatIdConfigurado: !!TG_ADMIN(), escuchando };
+    if (TG_TOKEN()) {
+      try { const me = await tg('getMe', {}); out.bot = '@' + me.username; out.tokenValido = true; }
+      catch (e) { out.tokenValido = false; out.error = e.message; }
+    }
+    res.json(out);
+  });
+
   app.get('/stake/hoy', async (req, res) => {
     try {
       const secs = await seccionesAbiertas();
