@@ -616,6 +616,13 @@
     border-radius:999px; font:600 13px var(--body); letter-spacing:.02em; cursor:pointer;
     transition:box-shadow .2s ease, transform .2s ease, opacity .2s ease, border-color .2s ease, color .2s ease;
   }
+  .win-group-picker label{ justify-content:flex-start !important; text-align:left !important; }
+  .win-group-picker input[type=checkbox]{ width:auto !important; flex:0 0 auto; margin:0; }
+  .win-quick-row{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:12px; }
+  .win-quick-btn{ display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border-radius:12px; border:1px solid rgba(212,175,106,.35); background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02)); color:#f3ead6; font:600 13px 'Chakra Petch',sans-serif; cursor:pointer; transition:.18s; }
+  .win-quick-btn svg{ width:18px; height:18px; color:var(--accent); }
+  .win-quick-btn:hover{ transform:translateY(-2px); border-color:var(--accent); box-shadow:0 10px 22px -12px rgba(212,175,106,.9); }
+  .win-quick-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
   .win-power-btn svg{ width:16px; height:16px; }
   #winPowerOnBtn{
     color:var(--accent-light); border:1px solid rgba(212,175,106,.7);
@@ -3106,6 +3113,7 @@ const WIN_ICON_PATHS = {
   alerta:'<path d="M12 4L3 19h18L12 4z"/><path d="M12 10v4M12 17v.5"/>',
   sol:'<circle cx="12" cy="12" r="3.8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
   info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.5"/>',
+  testimonio:'<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4.5 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 9.5h8M8 12.5h5"/>',
   power:'<path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/>'
 };
 function winIcon(name){
@@ -3194,6 +3202,11 @@ function renderWin(){
         <button class="win-power-btn" id="winPowerOnBtn" type="button">${winIcon('power')}Encender Win</button>
         <button class="win-power-btn" id="winPowerOffBtn" type="button">${winIcon('power')}Apagar Win</button>
       </div>
+      <div class="win-quick-row">
+        <button class="win-quick-btn" id="winQuickTestiBtn" type="button">${winIcon('testimonio')}<span>Mandar testimonio</span></button>
+        <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Mandar pago de stake</span></button>
+        <button class="win-quick-btn" id="winQuickGanadaBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta ganada</span></button>
+      </div>
       <button class="win-type-toggle" id="winTypeToggleBtn">Prefiero escribir</button>
       <div id="winTypeBox" style="display:none; margin-top:16px; width:100%; max-width:560px; text-align:left;">
         <div style="display:flex; gap:10px; align-items:flex-start;">
@@ -3218,6 +3231,9 @@ function renderWin(){
     actualizarPower();
   };
   document.getElementById('winPowerOffBtn').onclick = ()=>{ stopWinListening(); actualizarPower(); };
+  document.getElementById('winQuickTestiBtn').onclick = ()=>{ playWinSfx('action'); openTestimonioUploadModal(); };
+  document.getElementById('winQuickStakeBtn').onclick = ()=>{ playWinSfx('action'); openStakePagoUploadModal(); };
+  document.getElementById('winQuickGanadaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('ganada',''); };
   winPowerRefresh = actualizarPower;
   actualizarPower();
   winFxInit();
