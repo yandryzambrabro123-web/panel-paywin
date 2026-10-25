@@ -40,6 +40,21 @@ module.exports = async function handler(req, res) {
   const base = botUrl.replace(/\/$/, '');
 
   try {
+    if (modo === 'vip_desactivar') {
+      const botRes = await fetch(`${base}/vip/desactivar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
+        body: JSON.stringify({ id: String(body.id || '') })
+      });
+      const data = await botRes.json().catch(() => ({}));
+      if (!botRes.ok) {
+        res.status(502).json({ error: data.error || 'El bot no pudo desactivar al miembro.' });
+        return;
+      }
+      res.status(200).json(data);
+      return;
+    }
+
     if (modo === 'vip_url') {
       res.status(200).json({ url: `${base}/vip` });
       return;

@@ -61,6 +61,37 @@ async function novedad(tipo, titulo, detalle) {
 const cambiarHojaSafe = (hoja, fn) => H.cambiarHoja(hoja, fn);
 
 // ---------- Salida automática de vencidos ----------
+// Borra TODO lo que hay de una persona: su fila de VIPs y sus registros.
+async function borrarDatosVip(v) {
+  const ced = String(v.cedula || '').replace(/\D/g, '');
+  await cambiarHojaSafe(HOJA_VIPS, (filas) => filas.filter((f) => String(f.id) !== String(v.id)));
+  await cambiarHojaSafe(HOJA_REGISTROS, (filas) => filas.filter((f) => String(f.id) !== String(v.registroId || '') && !(ced && String(f.cedula || '').replace(/\D/g, '') === ced)));
+}
+
+// Desactivación manual desde el panel (botón Eliminar): avisa por Telegram, saca del grupo y borra todo.
+async function desactivarMiembro(id) {
+  const v = (await H.leerHoja(HOJA_VIPS)).find((f) => String(f.id) === String(id));
+  if (!v) return { ok: true, borrado: true, avisado: false, sacado: false, detalle: 'Ya no estaba en el sistema.' };
+  const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
+  const tid = String(v.telegramId || '').replace(/\D/g, '');
+  const out = { ok: true, avisado: false, sacado: false, borrado: false, detalle: '' };
+  if (tid && cfg && cfg.chatId) {
+    const primero = String(v.name || '').split(' ')[0] || '';
+    const texto = `Hola ${primero} 👋\n\nTu membresía VIP ha sido desactivada y fuiste retirado del grupo.\n\nCualquier novedad, comunícate con atención al cliente: ${TELEFONO_AGENCIA}.`;
+    try { await H.tg('sendMessage', { chat_id: tid, text: texto }); out.avisado = true; } catch (e) { out.detalle += 'No pude avisarle por Telegram (no activó los avisos). '; }
+    try {
+      await H.tg('banChatMember', { chat_id: cfg.chatId, user_id: Number(tid) });
+      await H.tg('unbanChatMember', { chat_id: cfg.chatId, user_id: Number(tid), only_if_banned: true });
+      out.sacado = true;
+    } catch (e) { out.detalle += 'No pude sacarlo del grupo: ' + e.message.slice(0, 100) + '. Sácalo a mano. '; }
+  } else {
+    out.detalle += 'No tiene Telegram vinculado (no entró con su link), así que no pude avisarle ni sacarlo del grupo: sácalo a mano. ';
+  }
+  await borrarDatosVip(v);
+  out.borrado = true;
+  return out;
+}
+
 let salidasHoy = { fecha: '', n: 0 };
 let corriendo = false;
 const intentosFallidos = new Map(); // id -> veces que falló (para no insistir toda la tarde)
@@ -107,9 +138,7 @@ async function procesarVencidos() {
         await H.tg('unbanChatMember', { chat_id: cfg.chatId, user_id: Number(tid), only_if_banned: true });
         // 3) ELIMINAR todos sus datos del sistema (su fila de VIPs y sus registros). Si la persona
         //    quiere volver, tiene que hacer todo el registro otra vez.
-        const ced = String(v.cedula || '').replace(/\D/g, '');
-        await cambiarHojaSafe(HOJA_VIPS, (filas) => filas.filter((f) => String(f.id) !== String(v.id)));
-        await cambiarHojaSafe(HOJA_REGISTROS, (filas) => filas.filter((f) => String(f.id) !== String(v.registroId || '') && !(ced && String(f.cedula || '').replace(/\D/g, '') === ced)));
+        await borrarDatosVip(v);
         salidasHoy.n++;
         const primero = String(v.name || '').split(' ')[0] || 'Un miembro';
         await novedad('vip', `${primero} salió del VIP por vencimiento`, 'Se le avisó por Telegram (si activó los avisos), se le sacó del grupo y se borraron sus datos.');
@@ -201,8 +230,22 @@ async function vincularTelegram(regId, userId) {
   await H.cambiarHoja(HOJA_VIPS, (filas) => filas.map((f) => String(f.registroId || '') === String(regId) ? { ...f, telegramId: String(userId) } : f));
 }
 
-function montar(app, stakes) {
+function montar(app, stakes, extra) {
   H = stakes;
+  const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
+
+  // El panel (a través de Vercel) llama a este endpoint con la clave del bot.
+  app.post('/vip/desactivar', requireApiKey, async (req, res) => {
+    try {
+      const id = String((req.body || {}).id || '');
+      if (!id) return res.status(400).json({ error: 'Falta el id.' });
+      res.json(await desactivarMiembro(id));
+    } catch (e) {
+      console.error('Desactivar VIP:', e);
+      res.status(500).json({ error: 'No se pudo desactivar: ' + e.message });
+    }
+  });
+
 
   // Escucha de Telegram: /vipgrupo, /start vip_<id> y entradas al grupo con un link personal
   H.hooks.push(async (u) => {
@@ -349,4 +392,4 @@ function montar(app, stakes) {
   setTimeout(() => { procesarVencidos().catch(() => {}); }, 90 * 1000);
 }
 
-module.exports = { montar, diasRestantes, procesarVencidos };
+module.exports = { montar, diasRestantes, procesarVencidos, desactivarMiembro };
