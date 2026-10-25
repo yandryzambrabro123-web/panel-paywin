@@ -130,7 +130,9 @@ let offset = 0;
 let escuchando = false;
 // Otros módulos (ej. vip.js) registran aquí sus botones de Telegram: prefijo -> función(cq, partes)
 const manejadores = {};
+const hooks = []; // funciones(update) que reciben TODOS los updates de Telegram (mensajes, miembros, etc.)
 async function procesarUpdate(u) {
+  for (const h of hooks) { try { await h(u); } catch (e) { console.error('Hook de Telegram:', e.message); } }
   if (u.callback_query) {
     const cq = u.callback_query;
     const deAdmin = String(cq.from && cq.from.id) === TG_ADMIN();
@@ -191,7 +193,7 @@ async function escuchar() {
   await tg('deleteWebhook', { drop_pending_updates: false }).catch(() => {});
   for (;;) {
     try {
-      const ups = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['callback_query', 'chat_join_request'] });
+      const ups = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['callback_query', 'chat_join_request', 'message', 'channel_post', 'chat_member'] });
       for (const u of ups) { offset = u.update_id + 1; await procesarUpdate(u); }
     } catch (e) {
       console.error('Telegram (escucha):', e.message);
@@ -355,4 +357,4 @@ function montar(app) {
   escuchar().catch((e) => console.error('No arrancó la escucha de Telegram:', e.message));
 }
 
-module.exports = { montar, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, TG_ADMIN, TG_TOKEN };
+module.exports = { montar, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, TG_ADMIN, TG_TOKEN };

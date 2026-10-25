@@ -1039,7 +1039,7 @@ function resultLabel(r){ return r==='won'?'Ganada':r==='lost'?'Perdida':'Pendien
 
 function coerceRow(key, row){
   if(key === 'vips'){
-    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true', removidoVip: String(row.removidoVip||''), avisoVip: String(row.avisoVip||'') };
+    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true', removidoVip: String(row.removidoVip||''), avisoVip: String(row.avisoVip||''), telegramId: String(row.telegramId||''), registroId: String(row.registroId||'') };
   }
   if(key === 'freeBets' || key === 'vipBets' || key === 'liveBets'){
     return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]'), imageUrl:String(row.imageUrl||''), imageWonUrl:String(row.imageWonUrl||''), returned:Number(row.returned)||0, ganancia:Number(row.ganancia)||0 };
@@ -1512,6 +1512,7 @@ function updateNavBadges(){
     const inactiveCount = (state[key]||[]).filter(v=>effectiveStatus(v, key)==='inactive').length;
     const el = document.getElementById(`navAlert-${key}`);
     if(!el) return;
+    if(key === 'vips'){ el.style.display = 'none'; return; } // Win saca solo a los vencidos: ya no hace falta la alerta
     if(inactiveCount > 0){ el.textContent = inactiveCount; el.style.display = 'inline-block'; }
     else{ el.style.display = 'none'; }
   });
@@ -1546,7 +1547,6 @@ function renderVipGroup(key, title){
       ${dateFilterHTML(key)}
       <div style="display:flex; gap:10px;">
         <button class="btn secondary" id="copyVipRegLinkBtn">Copiar link de registro</button>
-        <button class="btn secondary" id="reconsumosVipBtn">Reconsumos${winReconsumosLista().vencidos.length ? ` (${winReconsumosLista().vencidos.length})` : ''}</button>
         <button class="btn secondary" id="exportVipBtn">Exportar CSV</button>
         <button class="btn" id="addVipBtn">+ Nuevo miembro</button>
       </div>
@@ -1596,7 +1596,6 @@ function renderVipGroup(key, title){
     el.focus(); el.setSelectionRange(el.value.length, el.value.length);
   };
   document.getElementById('addVipBtn').onclick = ()=>openVipForm(key, rerender);
-  document.getElementById('reconsumosVipBtn').onclick = openWinReconsumosModal;
   document.getElementById('copyVipRegLinkBtn').onclick = async (e)=>{
     const btn = e.currentTarget;
     try{
@@ -3303,7 +3302,6 @@ function renderWin(){
       location.reload();
     }
   };
-  winNotificarReconsumos();
 
   const orb = document.getElementById('winOrb');
   orb.style.opacity = ''; orb.style.cursor = '';

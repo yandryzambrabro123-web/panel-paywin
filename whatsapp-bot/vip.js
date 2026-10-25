@@ -1,30 +1,39 @@
-// Registro público del grupo VIP + salida AUTOMÁTICA de los miembros vencidos.
+// Registro público del grupo VIP (en TELEGRAM) + salida AUTOMÁTICA de los miembros vencidos.
+//
+// Todo pasa por Telegram: NO se manda nada a WhatsApp.
+//
+// Configuración (una sola vez): crea el grupo/canal VIP en Telegram, agrega al bot como
+// ADMINISTRADOR (con permiso de invitar y de banear usuarios) y escribe  /vipgrupo  dentro del
+// grupo. El bot guarda cuál es y desde ahí genera los links de ingreso solo.
 //
 // Entrada:
-//   1. El cliente abre  <url del bot>/vip  (link único), llena sus datos (la fecha de ingreso se
+//   1. El cliente abre  <url del bot>/vip  (link único) y llena sus datos (la fecha de ingreso se
 //      pone sola con el día de hoy).
 //   2. Al jefe le llega un mensaje de Telegram con botones: Aprobar (mensual / trimestral / anual)
 //      o Rechazar. El plan lo elige el jefe al aprobar.
-//   3. Al aprobar: el cliente ve en su pantalla el link del grupo VIP, y queda registrado en la hoja
-//      "VIPs" del panel (si ya existía con esa cédula, se renueva en vez de duplicarse).
+//   3. Al aprobar: se crea un link de UN SOLO USO para esa persona, que se le muestra en pantalla
+//      junto con un botón para activar los avisos de su membresía (abre el bot en Telegram). Queda
+//      registrado en la hoja "VIPs" del panel (si ya existía esa cédula, se renueva).
+//   4. Cuando la persona entra con su link, el bot anota su id de Telegram (así puede sacarla
+//      después).
 //
 // Salida (automática, sin avisar al jefe por Telegram):
-//   Todos los días desde las 9am (Ecuador), a cada miembro VIP cuya membresía ya venció el bot le
-//   manda un mensaje privado de WhatsApp avisándole, lo saca de los grupos VIP y lo marca como
-//   removido. Solo queda una anotación en la Bandeja del panel. Medidas de seguridad:
+//   Todos los días desde las 9am (Ecuador), a cada miembro VIP con la membresía vencida el bot le
+//   manda un mensaje por Telegram (si activó los avisos) y lo saca del grupo VIP. Solo queda una
+//   anotación en la Bandeja del panel. Medidas de seguridad:
 //     - Solo toca miembros creados DESPUÉS del corte del panel (los anteriores están "ocultos").
 //     - Máximo MAX_POR_DIA personas por día.
-//     - Si WhatsApp está desconectado o el bot no es admin, no marca nada y reintenta luego.
+//     - Si el bot no es admin del grupo o no tiene el id de Telegram de la persona, no marca nada
+//       y deja un aviso en la Bandeja.
 //     - Interruptor de emergencia: variable de Railway VIP_AUTO_OFF=1 (apaga las salidas automáticas).
 
 let H = null; // helpers de stakes.js (se asignan en montar)
 
 const HOJA_VIPS = 'VIPs';
 const HOJA_REGISTROS = 'RegistrosVip';
+const HOJA_CONFIG = 'ConfigVip';
 const CORTE_MS = 1792930800000; // mismo corte que el panel (PANEL_CORTE_MS en index.html)
 const PLAN_MESES = { mensual: 1, trimestral: 3, anual: 12 };
-const VIP_JIDS = ['120363411532196622@g.us', '120363411657541281@g.us']; // VIP y VIP Más Parley
-const VIP_LINK = 'https://chat.whatsapp.com/GQ0QxxU85LTH222xshkrrA';
 const TELEFONO_AGENCIA = '0963852803';
 const MAX_POR_DIA = 10;
 const HORA_SALIDA_MIN = 9 * 60; // 9:00 Ecuador
@@ -41,13 +50,6 @@ function diasRestantes(v, hoy) {
   d.setMonth(d.getMonth() + meses);
   return Math.ceil((new Date(d.toISOString().slice(0, 10)) - new Date(hoy)) / 86400000);
 }
-function telefonoWA(t) {
-  let d = String(t || '').replace(/\D/g, '');
-  if (d.startsWith('593')) return d;
-  if (d.startsWith('0')) return '593' + d.slice(1);
-  return d.length === 9 ? '593' + d : d;
-}
-
 async function novedad(tipo, titulo, detalle) {
   try {
     await cambiarHojaSafe('Novedades', (filas) => [{ id: H.nuevoId(), tipo, titulo, detalle: detalle || '', createdAt: new Date().toISOString(), leido: false }, ...filas].slice(0, 300));
@@ -60,54 +62,55 @@ let salidasHoy = { fecha: '', n: 0 };
 let corriendo = false;
 const intentosFallidos = new Map(); // id -> veces que falló (para no insistir toda la tarde)
 
-async function procesarVencidos(bot) {
+async function procesarVencidos() {
   if (corriendo || process.env.VIP_AUTO_OFF === '1') return;
   const ahora = new Date(Date.now() - 5 * 3600e3);
   const hoy = ahora.toISOString().slice(0, 10);
   const minutos = ahora.getUTCHours() * 60 + ahora.getUTCMinutes();
   if (minutos < HORA_SALIDA_MIN) return;
-  if (!bot.conectado()) return;
+  if (!H.TG_TOKEN()) return;
   if (salidasHoy.fecha !== hoy) salidasHoy = { fecha: hoy, n: 0 };
   corriendo = true;
   try {
-    // solo miembros activos creados después del corte; los que ya están "inactivos" o removidos se respetan
+    // solo miembros activos creados después del corte; los "inactivos" o ya removidos se respetan
     const vips = (await H.leerHoja(HOJA_VIPS)).filter((v) => esVigente(v) && !removido(v) && String(v.status || 'active') !== 'inactive');
     const vencidos = vips.filter((v) => { const d = diasRestantes(v, hoy); return d !== null && d < 0; });
+    if (!vencidos.length) return;
+    const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
     for (const v of vencidos) {
       if (salidasHoy.n >= MAX_POR_DIA) break;
       if ((intentosFallidos.get(v.id) || 0) >= 3) continue;
-      const num = telefonoWA(v.contact);
-      if (num.length < 11) {
+      const nombre = v.name || 'un miembro';
+      if (!cfg || !cfg.chatId) {
+        if (!intentosFallidos.get('cfg')) { intentosFallidos.set('cfg', 1); await novedad('alerta', 'No puedo sacar vencidos del VIP', 'Falta decirle al bot cuál es el grupo VIP: escribe /vipgrupo dentro del grupo de Telegram.'); }
+        break;
+      }
+      const tid = String(v.telegramId || '').replace(/\D/g, '');
+      if (!tid) {
         intentosFallidos.set(v.id, 99);
-        await novedad('alerta', `No pude sacar a ${v.name || 'un miembro'} del VIP`, 'Venció su membresía pero no tiene un teléfono válido. Sácalo a mano.');
+        await novedad('alerta', `No pude sacar a ${nombre} del VIP`, 'Venció su membresía pero el bot no tiene su id de Telegram (no entró con su link). Sácalo a mano.');
         continue;
       }
       try {
-        // 1) aviso privado (una sola vez por vencimiento)
+        // 1) aviso por Telegram (una sola vez por vencimiento; solo llega si la persona activó los avisos)
         if (String(v.avisoVip) !== String(v.joinDate)) {
-          const nombre = String(v.name || '').split(' ')[0] || '';
-          const texto = `Hola ${nombre} 👋\n\nTu membresía VIP llegó a su fin. Gracias por haber sido parte del grupo 🙌\n\nSi quieres renovar y seguir recibiendo las apuestas, escríbenos al ${TELEFONO_AGENCIA} y te reactivamos.`;
-          try {
-            await bot.privado(num, texto);
-            await cambiarHojaSafe(HOJA_VIPS, (filas) => filas.map((f) => String(f.id) === String(v.id) ? { ...f, avisoVip: String(f.joinDate) } : f));
-          } catch (e) { console.error('No pude avisarle por privado a', v.name, e.message); }
+          const primero = String(v.name || '').split(' ')[0] || '';
+          const texto = `Hola ${primero} 👋\n\nTu membresía VIP llegó a su fin y te saqué del grupo. Gracias por haber sido parte 🙌\n\nSi quieres renovar y seguir recibiendo las apuestas, escríbenos al ${TELEFONO_AGENCIA} y te reactivamos.`;
+          await H.tg('sendMessage', { chat_id: tid, text: texto }).catch((e) => console.error('No pude avisarle por Telegram a', nombre, e.message));
+          await cambiarHojaSafe(HOJA_VIPS, (filas) => filas.map((f) => String(f.id) === String(v.id) ? { ...f, avisoVip: String(f.joinDate) } : f));
         }
-        // 2) sacarlo de los grupos VIP
-        const res = await bot.sacar(num, VIP_JIDS);
-        const todoBien = res.length > 0 && res.every((r) => r.ok);
-        if (!todoBien) {
-          intentosFallidos.set(v.id, (intentosFallidos.get(v.id) || 0) + 1);
-          const motivo = res.filter((r) => !r.ok).map((r) => r.error || r.status).join(' | ');
-          if ((intentosFallidos.get(v.id) || 0) >= 3) await novedad('alerta', `No pude sacar a ${v.name || 'un miembro'} del VIP`, `Venció su membresía. Motivo: ${motivo}. Sácalo a mano.`);
-          continue;
-        }
+        // 2) sacarlo del grupo (ban + unban: queda fuera pero puede volver a entrar si renueva)
+        await H.tg('banChatMember', { chat_id: cfg.chatId, user_id: Number(tid) });
+        await H.tg('unbanChatMember', { chat_id: cfg.chatId, user_id: Number(tid), only_if_banned: true });
         // 3) marcarlo como removido (igual que el botón del panel)
         await cambiarHojaSafe(HOJA_VIPS, (filas) => filas.map((f) => String(f.id) === String(v.id) ? { ...f, removidoVip: String(f.joinDate), status: 'inactive' } : f));
         salidasHoy.n++;
-        await novedad('vip', `${v.name || 'Un miembro'} salió del VIP por vencimiento`, `Se le avisó por WhatsApp y se le sacó de los grupos VIP.`);
+        await novedad('vip', `${nombre} salió del VIP por vencimiento`, 'Se le avisó por Telegram (si activó los avisos) y se le sacó del grupo VIP.');
       } catch (e) {
-        console.error('Error sacando vencido', v.name, e.message);
-        intentosFallidos.set(v.id, (intentosFallidos.get(v.id) || 0) + 1);
+        console.error('Error sacando vencido', nombre, e.message);
+        const n = (intentosFallidos.get(v.id) || 0) + 1;
+        intentosFallidos.set(v.id, n);
+        if (n >= 3) await novedad('alerta', `No pude sacar a ${nombre} del VIP`, `Venció su membresía. Motivo: ${e.message}. Revisa que el bot sea admin con permiso de banear. Sácalo a mano.`);
       }
     }
   } catch (e) {
@@ -166,7 +169,7 @@ async function enviar(){
 function espera(id){
   box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Registro enviado. Estamos revisando tu pago; no cierres esta pantalla.</p>';
   const tick=async()=>{try{const r=await fetch('/vip/estado/'+id);const d=await r.json();
-    if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado! Bienvenido al VIP.</p><p>Entra al grupo con el botón.</p><a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al grupo VIP</a>'}
+    if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado! Bienvenido al VIP.</p><p>1. Entra al grupo con tu link personal (sirve una sola vez, no lo compartas).</p><a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al grupo VIP</a>'+(d.bot?'<p style="margin-top:18px">2. Activa los avisos de tu membresía (te avisamos antes de que termine).</p><a class="b" style="background:#232a38;color:#f3ead6;margin-top:8px" href="https://t.me/'+esc(d.bot)+'?start=vip_'+esc(id)+'" target="_blank" rel="noopener">Activar avisos</a>':'')}
     else if(d.estado==='rechazado'){clearInterval(timer);box.innerHTML='<p style="color:#ff7a7a;font-size:16px">No pudimos aprobar tu registro. Comunícate con la agencia.</p>'}
   }catch(e){}};
   timer=setInterval(tick,4000);
@@ -174,8 +177,46 @@ function espera(id){
 form();
 </script></body></html>`;
 
-function montar(app, stakes, bot) {
+let botUsername = '';
+async function nombreBot() {
+  if (botUsername) return botUsername;
+  try { const me = await H.tg('getMe', {}); botUsername = me.username || ''; } catch (e) { /* sin nombre: la página no muestra el botón de avisos */ }
+  return botUsername;
+}
+
+// Guarda el id de Telegram de la persona (en su registro y en su fila de VIPs) para poder sacarla y avisarle después.
+async function vincularTelegram(regId, userId) {
+  if (!regId || !userId) return;
+  await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => String(f.id) === String(regId) ? { ...f, telegramId: String(userId) } : f));
+  await H.cambiarHoja(HOJA_VIPS, (filas) => filas.map((f) => String(f.registroId || '') === String(regId) ? { ...f, telegramId: String(userId) } : f));
+}
+
+function montar(app, stakes) {
   H = stakes;
+
+  // Escucha de Telegram: /vipgrupo, /start vip_<id> y entradas al grupo con un link personal
+  H.hooks.push(async (u) => {
+    const m = u.message || u.channel_post;
+    if (m && typeof m.text === 'string') {
+      const t = m.text.trim();
+      const esAdmin = !m.from || String(m.from.id) === H.TG_ADMIN();
+      if (/^\/vipgrupo(@\w+)?$/i.test(t) && m.chat.type !== 'private' && esAdmin) {
+        await H.cambiarHoja(HOJA_CONFIG, () => [{ chatId: String(m.chat.id), titulo: m.chat.title || '', actualizado: new Date().toISOString() }]);
+        await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `✅ Grupo VIP guardado: "${m.chat.title || m.chat.id}". Desde ahora los clientes aprobados reciben un link de ingreso a este grupo.` }).catch(() => {});
+        return;
+      }
+      const st = t.match(/^\/start\s+vip_(\w+)$/i);
+      if (st && m.chat.type === 'private' && m.from) {
+        await vincularTelegram(st[1], m.from.id);
+        await H.tg('sendMessage', { chat_id: m.chat.id, text: '✅ Listo. Aquí te voy a avisar cuando tu membresía VIP esté por terminar.' }).catch(() => {});
+        return;
+      }
+    }
+    const cm = u.chat_member;
+    if (cm && cm.invite_link && /^vip:/.test(cm.invite_link.name || '') && ['member', 'administrator'].includes(cm.new_chat_member && cm.new_chat_member.status)) {
+      await vincularTelegram(cm.invite_link.name.slice(4), cm.new_chat_member.user.id);
+    }
+  });
 
   // Botones de Telegram:  vp:<id>:<m|t|a> = aprobar con ese plan   vr:<id> = rechazar
   const PLANES = { m: 'mensual', t: 'trimestral', a: 'anual' };
@@ -199,10 +240,18 @@ function montar(app, stakes, bot) {
 
   async function aprobar(id, plan) {
     let reg = null, ya = false;
+    // Antes de aprobar: tiene que existir el grupo VIP y poder crear el link de un solo uso
+    const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
+    if (!cfg || !cfg.chatId) return { error: 'Falta configurar el grupo VIP: escribe /vipgrupo dentro del grupo de Telegram.' };
+    let link = '';
+    try {
+      const l = await H.tg('createChatInviteLink', { chat_id: cfg.chatId, member_limit: 1, expire_date: Math.floor(Date.now() / 1000) + 72 * 3600, name: 'vip:' + id });
+      link = l.invite_link;
+    } catch (e) { return { error: 'No pude crear el link del grupo. ¿El bot es admin con permiso de invitar? (' + e.message.slice(0, 80) + ')' }; }
     await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => {
       if (String(f.id) !== String(id)) return f;
       reg = f; if (f.estado !== 'pendiente') { ya = true; return f; }
-      return { ...f, estado: 'aprobado', plan, resueltoAt: new Date().toISOString() };
+      return { ...f, estado: 'aprobado', plan, link, resueltoAt: new Date().toISOString() };
     }));
     if (!reg) return { error: 'No encontré ese registro.' };
     if (ya) return { error: `Ese registro ya estaba ${reg.estado}.` };
@@ -214,10 +263,10 @@ function montar(app, stakes, bot) {
       if (idx >= 0) { // renovación: la misma persona vuelve a pagar
         const f = filas[idx];
         const nuevas = filas.slice();
-        nuevas[idx] = { ...f, name: `${reg.nombre} ${reg.apellido}`, contact: reg.telefono, city: reg.ciudad, plan, joinDate: hoy, status: 'active', removidoVip: '', avisoVip: '', notes: notas };
+        nuevas[idx] = { ...f, name: `${reg.nombre} ${reg.apellido}`, contact: reg.telefono, city: reg.ciudad, plan, joinDate: hoy, status: 'active', removidoVip: '', avisoVip: '', notes: notas, registroId: reg.id };
         return nuevas;
       }
-      return [...filas, { id: H.nuevoId(), name: `${reg.nombre} ${reg.apellido}`, contact: reg.telefono, cedula: reg.cedula, city: reg.ciudad, plan, joinDate: hoy, notes: notas, status: 'active', noReconsumo: false, giftPending: false, removidoVip: '', avisoVip: '' }];
+      return [...filas, { id: H.nuevoId(), name: `${reg.nombre} ${reg.apellido}`, contact: reg.telefono, cedula: reg.cedula, city: reg.ciudad, plan, joinDate: hoy, notes: notas, status: 'active', noReconsumo: false, giftPending: false, removidoVip: '', avisoVip: '', telegramId: '', registroId: reg.id }];
     });
     return { ok: true };
   }
@@ -273,13 +322,13 @@ function montar(app, stakes, bot) {
     try {
       const reg = (await H.leerHoja(HOJA_REGISTROS)).find((f) => String(f.id) === String(req.params.id));
       if (!reg) return res.json({ estado: 'desconocido' });
-      res.json(reg.estado === 'aprobado' ? { estado: 'aprobado', link: VIP_LINK } : { estado: reg.estado });
+      res.json(reg.estado === 'aprobado' ? { estado: 'aprobado', link: reg.link || '', bot: await nombreBot() } : { estado: reg.estado });
     } catch (e) { res.json({ estado: 'pendiente' }); }
   });
 
   // Revisión de vencidos cada 10 minutos (hace algo solo desde las 9am y si hay alguien vencido).
-  setInterval(() => { procesarVencidos(bot).catch((e) => console.error('vencidos VIP:', e.message)); }, 10 * 60 * 1000);
-  setTimeout(() => { procesarVencidos(bot).catch(() => {}); }, 90 * 1000);
+  setInterval(() => { procesarVencidos().catch((e) => console.error('vencidos VIP:', e.message)); }, 10 * 60 * 1000);
+  setTimeout(() => { procesarVencidos().catch(() => {}); }, 90 * 1000);
 }
 
 module.exports = { montar, diasRestantes, procesarVencidos };

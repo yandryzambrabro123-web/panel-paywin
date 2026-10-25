@@ -113,22 +113,8 @@ const app = express();
 app.use(express.json({ limit: '15mb' }));
 const stakes = require('./stakes');
 stakes.montar(app); // registro público del Stake de pago + aprobación por Telegram
-// Registro público del VIP + salida automática de los vencidos (usa el WhatsApp del bot).
-require('./vip').montar(app, stakes, {
-  conectado: () => connected,
-  sacar: (digitos, grupoIds) => sacarDeGrupos(digitos, grupoIds),
-  // Manda un mensaje PRIVADO a un número (ej. 0999999999 o 593999999999).
-  privado: async (numero, texto) => {
-    let d = String(numero || '').replace(/\D/g, '');
-    if (d.startsWith('0')) d = '593' + d.slice(1);
-    else if (d.length === 9) d = '593' + d;
-    if (d.length < 11) throw new Error('Teléfono inválido');
-    let jid = d + '@s.whatsapp.net';
-    try { const r = await sock.onWhatsApp(d); if (r && r[0] && r[0].exists === false) throw new Error('Ese número no tiene WhatsApp'); if (r && r[0] && r[0].jid) jid = r[0].jid; } catch (e) { if (/no tiene WhatsApp/.test(e.message)) throw e; }
-    await pausaHumana();
-    await sock.sendMessage(jid, { text: texto });
-  }
-});
+// Registro público del VIP + salida automática de los vencidos (todo por Telegram).
+require('./vip').montar(app, stakes); // registro VIP (Telegram) + salida automática de vencidos
 
 function requireApiKey(req, res, next) {
   if (!API_KEY) {
