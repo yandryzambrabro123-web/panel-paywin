@@ -762,6 +762,7 @@ async function loadAll(){
     await Promise.all(otherKeys.map(fetchSheetKey));
     await migrateStakeSales();
     render();
+    await borronYCuentaNueva();
     return;
   }
 
@@ -770,6 +771,7 @@ async function loadAll(){
   await migrateStakeSales();
   state.loaded = true;
   render();
+  await borronYCuentaNueva();
 }
 
 // IMPORTANTE (varios dispositivos a la vez): antes esto mandaba SIEMPRE el arreglo completo
@@ -1019,23 +1021,24 @@ function renderDashboard(){
       </div>
     </div>
 
-    <div class="card" style="margin-top:18px;">
-      <div class="card-title">Reiniciar registros del panel</div>
-      <div class="meta" style="margin-bottom:10px;">Vacía miembros VIP, apuestas (gratis, VIP y live), regalitos y cuadre. Antes guarda todo en el Excel. No toca Stakes, Venta de Stakes ni nada de Win.</div>
-      <button class="btn danger" id="reiniciarPanelBtn">Reiniciar registros (con respaldo en el Excel)</button>
-    </div>
   `;
-  const rp = document.getElementById('reiniciarPanelBtn');
-  if(rp) rp.onclick = ()=>reiniciarRegistrosPanel(renderDashboard);
 }
 
-// ---------- Reiniciar registros del panel (con respaldo completo en el Excel) ----------
+// ---------- Borrón y cuenta nueva (UNA SOLA VEZ, automático, con respaldo completo en el Excel) ----------
 // Deja VACÍOS en el panel: miembros VIP, apuestas gratis/VIP/live, regalitos y cuadre. NO toca
 // Stakes, Secciones ni Venta de Stakes, ni nada de Win (memoria, plantillas, difusión, recordatorios,
 // ganadas guardadas). Antes de borrar copia todo a hojas de respaldo del Excel (VIPsArchivo,
 // ApuestasRespaldo, RegalitosRespaldo, CuadreRespaldo), comprueba que quedó guardado, y recién
 // entonces vacía las hojas que lee el panel. Si algo del respaldo falla, no se borra nada.
-async function reiniciarRegistrosPanel(rerender){
+async function borronYCuentaNueva(){
+  const MARCA = 'borron-2026-10-25';
+  const CLAVES_BORRON = ['vips','freeBets','vipBets','liveBets','gifts','financeMovements'];
+  if(!state.loaded || CLAVES_BORRON.some(k=>(state.failedKeys||[]).includes(k))) return; // si algo no cargó bien, NO se hace nada
+  try{
+    const m = (await (await fetch(`${SHEETS_API_URL}?sheet=ReinicioPanel&t=${Date.now()}`)).json()).data || [];
+    if(m.some(x=>String(x.id)===MARCA)) return; // ya se hizo
+  }catch(e){ return; } // si no puedo confirmar que no se hizo, no hago nada
+  const rerender = ()=>render();
   const ahora = new Date(Date.now() - 5*60*60*1000).toISOString();
   const fecha = ahora.slice(0,16).replace('T',' ');
   const dia = ahora.slice(0,10);
@@ -1047,11 +1050,10 @@ async function reiniciarRegistrosPanel(rerender){
     { sheet:'CuadreRespaldo', keyOf:r=>String(r.id), items:(state.financeMovements||[]).map(m=>({ k:String(m.id), row:{ ...m, respaldoFecha: fecha } })) }
   ].filter(p=>p.items.length);
   const total = plan.reduce((n,p)=>n+p.items.length,0);
-  if(!total){ alert('No hay registros para reiniciar.'); return; }
-  const resumen = `Miembros VIP: ${(state.vips||[]).length}\nApuestas gratis: ${(state.freeBets||[]).length}\nApuestas VIP: ${(state.vipBets||[]).length}\nApuestas live: ${(state.liveBets||[]).length}\nRegalitos: ${(state.gifts||[]).length}\nMovimientos de cuadre: ${(state.financeMovements||[]).length}`;
-  if(!confirm('Voy a guardar una copia de todo esto en el Excel y luego dejarlo vacío en el panel:\n\n' + resumen + '\n\nStakes, Venta de Stakes y todo lo de Win NO se tocan. ¿Seguimos?')) return;
-  const typed = prompt('Para confirmar, escribe REINICIAR (en mayúsculas):');
-  if(typed !== 'REINICIAR'){ alert('No escribiste "REINICIAR" exactamente. No se borró nada.'); return; }
+  if(!total){
+    await fetch(SHEETS_API_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet:'ReinicioPanel', data:[{ id:MARCA, fecha }] }) });
+    return;
+  }
   try{
     // 1) respaldar: leer lo que ya hay en cada hoja de respaldo, mezclar y guardar
     for(const p of plan){
@@ -1071,7 +1073,7 @@ async function reiniciarRegistrosPanel(rerender){
       if(!p.items.every(it=>guardados.has(it.k))) throw new Error('El respaldo en la hoja ' + p.sheet + ' no quedó completo. No se borró nada.');
     }
     // 3) vaciar lo que lee el panel (solo esas 6 listas)
-    const claves = ['vips','freeBets','vipBets','liveBets','gifts','financeMovements'];
+    const claves = CLAVES_BORRON;
     claves.forEach(k=>{ state[k] = []; });
     for(const k of claves){ await persist(k, { force:true }); }
     // 4) comprobar que de verdad quedaron vacías en el Excel
@@ -1081,9 +1083,12 @@ async function reiniciarRegistrosPanel(rerender){
       const d = (await (await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[k]}&t=${Date.now()}`)).json()).data || [];
       if(d.length) sobran.push(SHEET_NAMES[k] + ' (' + d.length + ')');
     }
+    if(!sobran.length){
+      await fetch(SHEETS_API_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet:'ReinicioPanel', data:[{ id:MARCA, fecha }] }) });
+    }
     alert(sobran.length
-      ? 'Respaldo listo, pero estas hojas todavía tienen filas: ' + sobran.join(', ') + '. Avísale a Claude.'
-      : `Listo: ${total} registros respaldados en el Excel y el panel quedó vacío. Stakes y Win siguen igual.`);
+      ? 'Borrón y cuenta nueva: respaldo listo, pero estas hojas todavía tienen filas: ' + sobran.join(', ') + '. Avísale a Claude.'
+      : `Borrón y cuenta nueva listo: ${total} registros respaldados en el Excel y el panel quedó vacío. Stakes y Win siguen igual.`);
   }catch(e){ alert(e.message); }
   rerender();
 }
@@ -1160,7 +1165,6 @@ function renderVipGroup(key, title){
       </div>
       ${dateFilterHTML(key)}
       <div style="display:flex; gap:10px;">
-        ${inactiveTotal > 0 ? `<button class="btn danger" id="archivarInactivosBtn">🗄️ Archivar inactivos (${inactiveTotal})</button>` : ''}
         <button class="btn secondary" id="exportVipBtn">Exportar CSV</button>
         <button class="btn" id="addVipBtn">+ Nuevo miembro</button>
       </div>
@@ -1216,18 +1220,6 @@ function renderVipGroup(key, title){
   document.querySelectorAll('[data-reconsumo-vip]').forEach(b=>b.onclick=()=>toggleReconsumo(key, b.dataset.reconsumoVip, rerender));
   document.querySelectorAll('[data-gift-vip]').forEach(b=>b.onclick=()=>toggleGiftPending(key, b.dataset.giftVip, rerender));
   document.querySelectorAll('[data-del-vip]').forEach(b=>b.onclick=()=>delItem(key, b.dataset.delVip, rerender));
-  const archBtn = document.getElementById('archivarInactivosBtn');
-  if(archBtn) archBtn.onclick = async ()=>{
-    const ids = state[key].filter(v=>effectiveStatus(v, key)==='inactive').map(v=>v.id);
-    if(!ids.length) return;
-    if(!confirm(`Voy a quitar del panel a los ${ids.length} miembros inactivos. Siguen guardados en el Excel, en la hoja VIPsArchivo. ¿Seguimos?`)) return;
-    archBtn.disabled = true; archBtn.textContent = 'Archivando…';
-    try{
-      const r = await archivarMiembrosVip(ids);
-      alert(`Listo: ${r.archivados} miembros quitados del panel y guardados en el Excel (VIPsArchivo).`);
-    }catch(e){ alert(e.message); }
-    rerender();
-  };
   updateNavBadges();
 }
 async function toggleGiftPending(key, id, rerender){
