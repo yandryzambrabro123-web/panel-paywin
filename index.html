@@ -2093,6 +2093,7 @@ function renderStakeSales(){
         <div class="page-sub">Total histórico en ventas: ${fmtMoney(totalAll)}</div>
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
+        <button class="btn secondary" id="refreshStakeSalesBtn" title="Actualizar ventas y registros" aria-label="Actualizar" style="width:42px; padding:0; height:42px; display:inline-flex; align-items:center; justify-content:center;"><svg id="refreshStakeIco" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
         ${readOnly ? '' : `<button class="btn secondary" id="difusionStakesBtn">Difusión de stakes</button>
         <button class="btn secondary" id="exportStakeSalesBtn">Exportar CSV</button>
         <button class="btn secondary" id="addSectionBtn">+ Nueva sección</button>
@@ -2113,6 +2114,7 @@ function renderStakeSales(){
   }
 
   document.getElementById('difusionStakesBtn').onclick = openWinDifusionModal;
+  document.getElementById('refreshStakeSalesBtn').onclick = refreshStakeSales;
   const regBtn = document.getElementById('copyRegLinkBtn');
   if(regBtn) regBtn.onclick = async ()=>{
     try{
@@ -2255,6 +2257,29 @@ function financeTotal(){
 // Trae de nuevo SOLO los movimientos de Cuadre Financiero desde Google Sheets y repinta
 // nada más esa sección — para cuando otra persona (tu colaborador) está registrando cuadres
 // al mismo tiempo que tú tienes la página abierta, sin tener que recargar todo el panel.
+// Vuelve a traer de Google Sheets las ventas y secciones de stakes (para ver los registros que
+// van entrando por el link). Si falla la lectura, NO toca lo que ya se está mostrando.
+async function refreshStakeSales(){
+  const ico = document.getElementById('refreshStakeIco');
+  const btn = document.getElementById('refreshStakeSalesBtn');
+  if(btn) btn.disabled = true;
+  if(ico) ico.animate([{transform:'rotate(0)'},{transform:'rotate(360deg)'}], { duration: 800, iterations: Infinity });
+  try{
+    const [ventas, secs] = await Promise.all(['stakeSales','stakeSections'].map(async k=>{
+      const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[k]}`);
+      const json = await res.json();
+      if(!Array.isArray(json.data)) throw new Error('Respuesta inválida');
+      return filtrarCorte(k, json.data.map(row => coerceRow(k, row)));
+    }));
+    state.stakeSales = ventas;
+    state.stakeSections = secs;
+  }catch(e){
+    console.error('Error actualizando ventas de stakes', e);
+    alert('No se pudo actualizar. Revisa tu conexión e intenta de nuevo.');
+  }
+  if(state.view === 'stakeSales') renderStakeSales();
+}
+
 async function refreshFinanceData(){
   const btn = document.getElementById('refreshFinanceBtn');
   if(btn){ btn.disabled = true; btn.textContent = '🔄 Actualizando...'; }
