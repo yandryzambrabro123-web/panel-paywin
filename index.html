@@ -1042,7 +1042,7 @@ function coerceRow(key, row){
     return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true', removidoVip: String(row.removidoVip||''), avisoVip: String(row.avisoVip||'') };
   }
   if(key === 'freeBets' || key === 'vipBets' || key === 'liveBets'){
-    return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]'), imageUrl:String(row.imageUrl||''), returned:Number(row.returned)||0, ganancia:Number(row.ganancia)||0 };
+    return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]'), imageUrl:String(row.imageUrl||''), imageWonUrl:String(row.imageWonUrl||''), returned:Number(row.returned)||0, ganancia:Number(row.ganancia)||0 };
   }
   if(key === 'stakeSales'){
     // name/phone forzados a String: si en la hoja alguien quedó con el nombre o el teléfono
@@ -1809,7 +1809,8 @@ function renderPicks(key, title){
               <option value="lost" ${b.result==='lost'?'selected':''}>Perdida</option>
             </select>
             ${b.result==='won' && b.ganancia>0 ? `<div class="mono" style="font-size:12px; color:var(--win,#7bd88f); margin-top:4px;">Ganancia +${fmtMoney(b.ganancia)}</div>` : ''}
-            ${b.imageUrl ? `<div style="margin-top:4px;"><a href="${b.imageUrl}" target="_blank" rel="noopener" style="font-size:12px;">📷 Ver foto</a></div>` : ''}
+            ${b.imageUrl ? `<div style="margin-top:4px;"><a href="${esc(b.imageUrl)}" target="_blank" rel="noopener" style="font-size:12px;">📷 Ver foto</a></div>` : ''}
+            ${b.imageWonUrl && b.imageWonUrl !== b.imageUrl ? `<div style="margin-top:4px;"><a href="${esc(b.imageWonUrl)}" target="_blank" rel="noopener" style="font-size:12px;">🏆 Foto ganada</a></div>` : ''}
           </td>
           <td class="mono">${fmtDate(b.date)}</td>
           <td class="row-actions">
@@ -1960,7 +1961,7 @@ function renderStakes(){
     <div class="card">
       ${sorted.length ? `<table><thead><tr><th>Descripción</th><th>Monto</th><th>Resultado</th><th>Fecha</th><th></th></tr></thead><tbody>
         ${sorted.map(s=>`<tr>
-          <td>${s.description}</td>
+          <td>${s.description}${s.imageUrl ? `<div style="margin-top:4px;"><a href="${esc(s.imageUrl)}" target="_blank" rel="noopener" style="font-size:12px;">📷 Ver foto</a></div>` : ''}</td>
           <td class="mono">${fmtMoney(s.amount)}</td>
           <td>
             <select data-result="${s.id}" class="result-select ${s.result}">
@@ -2963,7 +2964,7 @@ function renderGifts(){
       ${sorted.length ? `<table><thead><tr><th>Deporte</th><th>Pick</th><th>Cuota</th><th>Stake</th><th>Para quién</th><th>Resultado</th><th>Fecha</th><th></th></tr></thead><tbody>
         ${sorted.map(g=>`<tr>
           <td>${g.sport||'-'}</td>
-          <td>${g.pick}</td>
+          <td>${g.pick}${g.imageUrl ? `<div style="margin-top:4px;"><a href="${esc(g.imageUrl)}" target="_blank" rel="noopener" style="font-size:12px;">📷 Ver foto</a></div>` : ''}</td>
           <td class="mono">${Number(g.odds).toFixed(2)}</td>
           <td class="mono">${fmtMoney(g.stake)}</td>
           <td>${g.recipient || 'Grupo general'}</td>
@@ -5898,6 +5899,15 @@ function winRegistroDefault(kind, grupos){
   if(g.some(x=>x.includes('gratis'))) return 'freeBets';
   return '';
 }
+// Sube la foto a Vercel Blob (calidad real). Reintenta una vez; si no se pudo, devuelve ''.
+async function winSubirFotoReintento(sendImage, nombre){
+  if(!sendImage) return '';
+  for(let i=0; i<2; i++){
+    try{ const url = await winSubirImagenBlob(sendImage, nombre); if(url) return url; }catch(e){ console.error('Subida de foto, intento', i+1, e); }
+  }
+  return '';
+}
+
 async function winRegistrarEnPanel(key, texto, sendImage){
   if(!key) return false;
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
@@ -5908,14 +5918,11 @@ async function winRegistrarEnPanel(key, texto, sendImage){
   else if(key === 'stakes') row = { id:uid(), description:pick, amount:0, date:hoy, result:'pending' };
   else return false;
   // La foto se guarda en Vercel Blob (en su calidad real) y en la hoja solo queda el link.
-  try{
-    if(sendImage && sendImage.url) row.imageUrl = sendImage.url;
-    else if(sendImage && sendImage.base64){
-      const up = await withTimeout(fetch('/api/win-imagen', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ base64: sendImage.base64, mediaType: sendImage.mediaType, nombre: key }) }), 30000);
-      const d = await up.json().catch(()=>({}));
-      if(up.ok && d.url) row.imageUrl = d.url;
-    }
-  }catch(e){ console.error('No se pudo guardar la foto del registro:', e); }
+  if(sendImage){
+    const url = await winSubirFotoReintento(sendImage, key);
+    if(url) row.imageUrl = url;
+    else alert('Se registró, pero la foto no se pudo guardar. Súbela a mano en el registro.');
+  }
   state[key].push(row);
   await persist(key);
   return true;
@@ -5940,12 +5947,10 @@ async function winMarcarGanada(key, id, invertido, cobrado, sendImage){
     b.returned = cobrado;
     if(invertido > 0){ b.ganancia = Math.round((cobrado - invertido)*100)/100; b.odds = Math.round((cobrado/invertido)*100)/100; }
   }
-  if(!b.imageUrl && sendImage && sendImage.base64){
-    try{
-      const up = await withTimeout(fetch('/api/win-imagen', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ base64: sendImage.base64, mediaType: sendImage.mediaType, nombre: key + '-ganada' }) }), 30000);
-      const d = await up.json().catch(()=>({}));
-      if(up.ok && d.url) b.imageUrl = d.url;
-    }catch(e){ console.error(e); }
+  if(sendImage){
+    const url = await winSubirFotoReintento(sendImage, key + '-ganada');
+    if(url){ b.imageWonUrl = url; if(!b.imageUrl) b.imageUrl = url; }
+    else alert('Se marcó como ganada, pero la foto no se pudo guardar.');
   }
   await persist(key);
   return true;
