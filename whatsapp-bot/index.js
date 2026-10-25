@@ -111,6 +111,7 @@ iniciarConexion().catch((e) => console.error('Error iniciando la conexión con W
 
 const app = express();
 app.use(express.json({ limit: '15mb' }));
+require('./stakes').montar(app); // registro público del Stake de pago + aprobación por Telegram
 
 function requireApiKey(req, res, next) {
   if (!API_KEY) {

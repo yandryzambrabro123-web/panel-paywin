@@ -40,6 +40,11 @@ module.exports = async function handler(req, res) {
   const base = botUrl.replace(/\/$/, '');
 
   try {
+    if (modo === 'stake_url') {
+      res.status(200).json({ url: `${base}/stake` });
+      return;
+    }
+
     if (modo === 'revisar') {
       const { numeros, grupoIds } = body;
       if (!Array.isArray(numeros) || !Array.isArray(grupoIds) || !grupoIds.length) {

@@ -2062,6 +2062,7 @@ function renderStakeSales(){
         <div class="score-cell" style="flex:0;"><div class="score-label">Compensación</div><div class="score-value">${comp.length}</div></div>
         <div class="score-cell" style="flex:0;"><div class="score-label">Total en ventas</div><div class="score-value win">${fmtMoney(sectionTotal(cur.id))}</div></div>
         ${readOnly ? '' : `<div style="margin-left:auto; display:flex; gap:8px;">
+          ${/stake de pago/i.test(cur.title||'') ? '<button class="btn secondary small" id="copyRegLinkBtn">Copiar link de registro</button>' : ''}
           <button class="btn secondary small" id="editSectionBtn">Editar sección</button>
           <button class="btn danger small" id="delSectionBtn">Eliminar sección</button>
         </div>`}
@@ -2112,6 +2113,16 @@ function renderStakeSales(){
   }
 
   document.getElementById('difusionStakesBtn').onclick = openWinDifusionModal;
+  const regBtn = document.getElementById('copyRegLinkBtn');
+  if(regBtn) regBtn.onclick = async ()=>{
+    try{
+      const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'stake_url' }) });
+      const d = await r.json();
+      if(!r.ok || !d.url) throw new Error(d.error || 'No se pudo obtener el link.');
+      try{ await navigator.clipboard.writeText(d.url); regBtn.textContent = 'Copiado ✓'; }
+      catch(e){ prompt('Copia este link:', d.url); }
+    }catch(e){ alert(e.message); }
+  };
   document.getElementById('exportStakeSalesBtn').onclick = ()=>exportCSV('stakeSales');
   document.getElementById('addSectionBtn').onclick = ()=>openStakeSectionForm();
   if(cur){
