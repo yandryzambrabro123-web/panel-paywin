@@ -553,6 +553,99 @@
     text-shadow:0 0 14px rgba(212,175,106,.6);
   }
   @keyframes winIntroNameIn{ to{ opacity:1; letter-spacing:.5em; } }
+
+  /* =====================================================================
+     Win -- versión 2: más profundidad, dock de cristal con iconos de línea, esfera de partículas
+     que reacciona a la voz, y menos carga para el navegador.
+     ===================================================================== */
+  body.win-locked #main{
+    background:
+      radial-gradient(ellipse 62% 56% at 50% 44%, rgba(212,175,106,.11), transparent 72%),
+      radial-gradient(ellipse 90% 38% at 50% 112%, rgba(212,175,106,.09), transparent 70%),
+      radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0,0,0,.45) 100%);
+  }
+  .win-fx{ position:absolute; left:50%; top:50%; width:520px; height:520px; margin:-260px 0 0 -260px; z-index:0; pointer-events:none; }
+  @media (min-width:1100px) and (min-height:820px){ .win-aura-wrap{ transform:scale(1.16); margin:44px 0; } }
+
+  .win-brand{ font-size:15px; letter-spacing:.7em; padding-left:.7em; margin-bottom:12px; gap:12px; color:var(--accent-light); text-shadow:0 0 18px rgba(212,175,106,.55); }
+  .win-brand::before, .win-brand::after{ content:''; width:54px; height:1px; background:linear-gradient(90deg, transparent, rgba(212,175,106,.7)); }
+  .win-brand::after{ background:linear-gradient(270deg, transparent, rgba(212,175,106,.7)); }
+  .win-brand-dot{ order:-1; margin-right:-4px; }
+  .win-status{ font-size:16px; color:rgba(231,236,242,.8); letter-spacing:.01em; margin-top:18px; }
+  .win-live-transcript{ font-family:var(--mono); font-size:12.5px; }
+
+  /* Dock de cristal con iconos de línea (reemplaza los emojis) */
+  .win-corner-icons{
+    top:16px; right:18px; gap:2px; padding:6px; border-radius:18px; z-index:30;
+    background:linear-gradient(180deg, rgba(30,37,50,.74), rgba(14,18,26,.74));
+    border:1px solid rgba(212,175,106,.24);
+    -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    box-shadow:0 14px 34px -14px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .win-icon-btn{
+    width:40px; height:40px; border-radius:12px; background:transparent; border:1px solid transparent;
+    color:var(--accent-light); transition:background .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease;
+  }
+  .win-icon-btn:hover{ background:rgba(212,175,106,.14); color:#fff; border-color:transparent; transform:translateY(-2px); box-shadow:0 8px 18px -10px rgba(212,175,106,.9); }
+  .win-icon-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .win-ico{ width:21px; height:21px; display:block; }
+  .win-icon-btn::after{
+    content:attr(data-label); position:absolute; top:calc(100% + 10px); left:50%; transform:translate(-50%,-4px);
+    white-space:nowrap; font:500 12px var(--body); color:var(--text); padding:6px 10px; border-radius:8px;
+    background:rgba(10,13,19,.94); border:1px solid rgba(212,175,106,.3); opacity:0; pointer-events:none;
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  .win-icon-btn:hover::after{ opacity:1; transform:translate(-50%,0); }
+  .win-icon-badge{ top:1px; right:1px; min-width:16px; height:16px; font-size:10px; background:var(--accent); color:#1A1206; box-shadow:0 0 10px rgba(212,175,106,.7); }
+  .win-icon-badge.win-badge-alert{ background:var(--loss); color:#fff; box-shadow:0 0 10px rgba(229,72,77,.7); }
+
+  @media (max-width:820px){
+    .win-corner-icons{
+      position:fixed; top:auto; right:auto; left:50%; transform:translateX(-50%);
+      bottom:calc(env(safe-area-inset-bottom, 0px) + 12px); gap:0; padding:5px;
+    }
+    .win-icon-btn{ width:38px; height:38px; }
+    .win-icon-btn::after{ display:none; }
+    body.win-locked .win-fullscreen{ padding-bottom:84px; }
+  }
+
+  /* Botones de encendido */
+  .win-power-row{ display:flex; gap:10px; justify-content:center; margin-top:16px; }
+  .win-power-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px; min-width:132px; padding:10px 20px;
+    border-radius:999px; font:600 13px var(--body); letter-spacing:.02em; cursor:pointer;
+    transition:box-shadow .2s ease, transform .2s ease, opacity .2s ease, border-color .2s ease, color .2s ease;
+  }
+  .win-power-btn svg{ width:16px; height:16px; }
+  #winPowerOnBtn{
+    color:var(--accent-light); border:1px solid rgba(212,175,106,.7);
+    background:linear-gradient(180deg, rgba(212,175,106,.28), rgba(212,175,106,.08));
+    box-shadow:0 0 26px -8px rgba(212,175,106,.8), inset 0 1px 0 rgba(255,255,255,.12);
+  }
+  #winPowerOnBtn:hover:not(:disabled){ transform:translateY(-1px); box-shadow:0 0 34px -6px rgba(212,175,106,.95), inset 0 1px 0 rgba(255,255,255,.18); }
+  #winPowerOffBtn{ color:var(--muted); border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.03); }
+  #winPowerOffBtn:hover:not(:disabled){ color:#ff8d92; border-color:rgba(229,72,77,.7); box-shadow:0 0 22px -8px rgba(229,72,77,.8); }
+  .win-power-btn:disabled{ opacity:.35; cursor:default; box-shadow:none; }
+  .win-power-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+
+  /* Lectura de datos reales abajo a la izquierda */
+  .win-hud{
+    position:absolute; left:26px; bottom:22px; text-align:left; font-family:var(--mono); font-size:11.5px; line-height:1.9;
+    color:var(--muted); letter-spacing:.03em; padding-left:12px; border-left:1px solid rgba(212,175,106,.45);
+  }
+  .win-hud b{ color:var(--accent-light); font-weight:500; }
+  @media (max-width:820px){ .win-hud{ display:none; } }
+
+  /* Menos carga: el brillo del orbe ya no cambia de tono (eso repintaba toda la capa) */
+  @keyframes winOrbHue{
+    0%,100%{ filter:saturate(1.15) brightness(1.05); transform:scale(0.95); }
+    50%{ filter:saturate(1.3) brightness(1.18); transform:scale(1.0); }
+  }
+  .win-orb, .win-dial, .win-dial-inner, .win-ring, .win-spark{ will-change:transform; }
+  body.win-paused .win-fullscreen *, body.win-paused .win-fullscreen::after{ animation-play-state:paused !important; }
+  @media (prefers-reduced-motion: reduce){
+    .win-fullscreen *, .win-fullscreen::after{ animation-duration:.001s !important; animation-iteration-count:1 !important; }
+  }
 </style>
 
 <div id="loginScreen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);">
@@ -2667,6 +2760,23 @@ function seedWinMemoryIfEmpty(){
   persist('winMemory'); // se guarda en segundo plano, no bloquea el primer render
 }
 
+
+const WIN_ICON_PATHS = {
+  bandeja:'<path d="M4 13l2.5-7h11L20 13v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-5z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>',
+  reloj:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  memoria:'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/>',
+  imagen:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 3.5 3L16 12l4 4.5"/>',
+  difusion:'<path d="M4 10v4h3l7 4V6L7 10H4z"/><path d="M17.5 9.5a3.5 3.5 0 0 1 0 5"/>',
+  mic:'<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
+  ojo:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  trofeo:'<path d="M8 4h8v5a4 4 0 0 1-8 0V4z"/><path d="M8 6H5v1.5A3 3 0 0 0 8 10.5M16 6h3v1.5a3 3 0 0 1-3 3M12 13v4M9 20h6M10 17h4"/>',
+  campana:'<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15L6 16.5z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>',
+  power:'<path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/>'
+};
+function winIcon(name){
+  return `<svg class="win-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${WIN_ICON_PATHS[name]||''}</svg>`;
+}
+
 function renderWin(){
   seedWinMemoryIfEmpty();
   const outboxRows = [...state.winOutbox].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
@@ -2696,17 +2806,22 @@ function renderWin(){
         </div>
       </div>
       <div class="win-corner-icons">
-        <button class="win-icon-btn" id="winOutboxBtn" title="Bandeja de envíos">&#128229;${pending.length ? `<span class="win-icon-badge">${pending.length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winRemindersBtn" title="Recordatorios">&#9200;${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti">&#129504;${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winTemplatesBtn" title="Imágenes guardadas">&#128444;${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winDifusionBtn" title="Listas de difusión">&#128226;</button>
-        <button class="win-icon-btn" id="winMicModeBtn" title="${winModoManual() ? 'Micrófono manual (toca para hablar). Toca aquí para cambiar a escucha automática' : 'Escucha automática (hola Win). Toca aquí para cambiar a micrófono manual'}">${winModoManual() ? '&#127897;&#65039;' : '&#128065;&#65039;'}</button>
-        <button class="win-icon-btn" id="winGanadasBtn" title="Ganadas de ayer: publicar las que guardaste">&#128227;${winGanadasPendientes().length ? `<span class="win-icon-badge">${winGanadasPendientes().length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winReconsumosBtn" title="Reconsumos VIP">&#128276;${winReconsumosLista().vencidos.length ? `<span class="win-icon-badge">${winReconsumosLista().vencidos.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winOutboxBtn" data-label="Bandeja de envíos" aria-label="Bandeja de envíos">${winIcon('bandeja')}${pending.length ? `<span class="win-icon-badge">${pending.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winRemindersBtn" data-label="Recordatorios" aria-label="Recordatorios">${winIcon('reloj')}${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winMemoryBtn" data-label="Lo que Win sabe de ti" aria-label="Lo que Win sabe de ti">${winIcon('memoria')}${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winTemplatesBtn" data-label="Imágenes guardadas" aria-label="Imágenes guardadas">${winIcon('imagen')}${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winDifusionBtn" data-label="Listas de difusión" aria-label="Listas de difusión">${winIcon('difusion')}</button>
+        <button class="win-icon-btn" id="winMicModeBtn" data-label="${winModoManual() ? 'Micrófono manual · toca para pasar a escucha automática' : 'Escucha automática · toca para pasar a micrófono manual'}" aria-label="Cambiar modo del micrófono">${winIcon(winModoManual() ? 'mic' : 'ojo')}</button>
+        <button class="win-icon-btn" id="winGanadasBtn" data-label="Ganadas de ayer" aria-label="Ganadas de ayer">${winIcon('trofeo')}${winGanadasPendientes().length ? `<span class="win-icon-badge">${winGanadasPendientes().length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winReconsumosBtn" data-label="Reconsumos VIP" aria-label="Reconsumos VIP">${winIcon('campana')}${winReconsumosLista().vencidos.length ? `<span class="win-icon-badge win-badge-alert">${winReconsumosLista().vencidos.length}</span>` : ''}</button>
+      </div>
+      <div class="win-hud" aria-hidden="true">
+        <div>Ecuador <b id="winHudClock">--:--</b></div>
+        <div>Micrófono <b>${winModoManual() ? 'manual' : 'automático'}</b></div>
       </div>
       <div class="win-brand"><span id="winBrandDot" class="win-brand-dot win-brand-dot-idle"></span>WIN</div>
       <div class="win-aura-wrap" id="winAuraWrap">
+        <canvas id="winFx" class="win-fx" aria-hidden="true"></canvas>
         <div class="win-dial"></div>
         <div class="win-dial-inner"></div>
         <div class="win-ring win-ring-1"></div>
@@ -2744,9 +2859,9 @@ function renderWin(){
       <div id="winStatus" class="win-status">Activando a Win...</div>
       <div id="winBars" class="win-bars">${'<span class="win-bar"></span>'.repeat(7)}</div>
       <div id="winLiveTranscript" class="win-live-transcript"></div>
-      <div style="display:flex; gap:10px; justify-content:center; margin-top:14px;">
-        <button class="btn" id="winPowerOnBtn" type="button" style="min-width:120px;">⏻ Encender Win</button>
-        <button class="btn danger" id="winPowerOffBtn" type="button" style="min-width:120px;">⏻ Apagar Win</button>
+      <div class="win-power-row">
+        <button class="win-power-btn" id="winPowerOnBtn" type="button">${winIcon('power')}Encender Win</button>
+        <button class="win-power-btn" id="winPowerOffBtn" type="button">${winIcon('power')}Apagar Win</button>
       </div>
       <button class="win-type-toggle" id="winTypeToggleBtn">Prefiero escribir</button>
       <div id="winTypeBox" style="display:none; margin-top:16px; width:100%; max-width:560px; text-align:left;">
@@ -2774,6 +2889,8 @@ function renderWin(){
   document.getElementById('winPowerOffBtn').onclick = ()=>{ stopWinListening(); actualizarPower(); };
   winPowerRefresh = actualizarPower;
   actualizarPower();
+  winFxInit();
+  winHudInit();
   document.getElementById('winTypeToggleBtn').onclick = ()=>{
     const box = document.getElementById('winTypeBox');
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
@@ -2826,6 +2943,94 @@ function renderWin(){
 // con soporte, el toque apaga todo; sin soporte (iPhone), el toque arranca/corta la grabación de
 // "mantén tocado para hablar", y para apagar del todo basta con salir de la pestaña de Win.
 let winPowerRefresh = null;
+
+// ---------- Win: esfera de partículas (canvas) + reloj ----------
+// Una nube de puntos en 3D que gira alrededor del núcleo y reacciona a la voz: en reposo gira
+// despacio, al escuchar se abre con el volumen del micrófono, al pensar gira rápido y al hablar
+// late. Es solo adorno: no toca ninguna función de Win. Se pausa sola cuando la pestaña no se ve.
+let winFxRaf = 0, winFxLevel = 0, winHudTimer = 0;
+document.addEventListener('visibilitychange', ()=>{ document.body.classList.toggle('win-paused', document.hidden); });
+function winHudInit(){
+  clearInterval(winHudTimer);
+  const tick = ()=>{ const el = document.getElementById('winHudClock'); if(el) el.textContent = new Date(Date.now() - 5*3600*1000).toISOString().slice(11,16); };
+  tick();
+  winHudTimer = setInterval(()=>{ if(!document.getElementById('winHudClock')){ clearInterval(winHudTimer); return; } tick(); }, 20000);
+}
+function winFxInit(){
+  cancelAnimationFrame(winFxRaf);
+  const cv = document.getElementById('winFx');
+  if(!cv || !cv.getContext) return;
+  const SIZE = 520, C = SIZE/2;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = SIZE*dpr; cv.height = SIZE*dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const N = window.innerWidth < 600 ? 300 : 520;
+  const pts = [], ga = Math.PI * (3 - Math.sqrt(5));
+  for(let i=0;i<N;i++){
+    const y = 1 - (i/(N-1))*2, r = Math.sqrt(1 - y*y), th = ga*i;
+    pts.push({ x:Math.cos(th)*r, y, z:Math.sin(th)*r, ph:Math.random()*6.283, sz:1.0 + Math.random()*1.5 });
+  }
+  const arcs = Array.from({length:5}, (_,i)=>({ tilt:0.3 + i*0.63, spin:(i%2 ? 1 : -1) * (0.35 + i*0.09), ph:Math.random()*6.283 }));
+  let rotY = 0, speed = 0.12, amp = 0.06, last = performance.now();
+  const TILT_X = 0.38, cx = Math.cos(TILT_X), sx = Math.sin(TILT_X);
+  const proj = (x, y, z, cy, sy, R)=>{
+    const x1 = x*cy + z*sy, z1 = -x*sy + z*cy;
+    const y2 = y*cx - z1*sx, z2 = y*sx + z1*cx;
+    const p = 1/(1 - z2*0.32);
+    return { px:C + x1*R*p, py:C + y2*R*p, d:z2, p };
+  };
+  function frame(now){
+    if(!document.getElementById('winFx')) return;
+    const dt = Math.min((now - last)/1000, 0.05); last = now;
+    const orb = document.getElementById('winOrb');
+    const cls = orb ? orb.className : '';
+    const mode = cls.indexOf('thinking') >= 0 ? 'thinking' : cls.indexOf('speaking') >= 0 ? 'speaking' : cls.indexOf('listening') >= 0 ? 'listening' : cls.indexOf('done') >= 0 ? 'done' : 'idle';
+    const targetSpeed = { idle:0.12, listening:0.3, thinking:1.5, speaking:0.55, done:0.2 }[mode];
+    speed += (targetSpeed - speed) * Math.min(1, dt*3);
+    winFxLevel *= 0.9; // el volumen real lo manda winVolumeLoop; si no llega, se apaga solo
+    let lvl;
+    if(mode === 'listening') lvl = winFxLevel;
+    else if(mode === 'speaking') lvl = 0.45 + 0.3*Math.sin(now/90) + 0.2*Math.sin(now/37);
+    else if(mode === 'thinking') lvl = 0.5 + 0.3*Math.sin(now/160);
+    else lvl = 0.07 + 0.04*Math.sin(now/900);
+    amp += (lvl - amp) * Math.min(1, dt*10);
+    rotY += speed*dt;
+    const cy = Math.cos(rotY), sy = Math.sin(rotY);
+    const R = 178 * (1 + amp*0.13);
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    ctx.globalCompositeOperation = 'lighter';
+    for(let i=0;i<N;i++){
+      const q = pts[i];
+      const k = proj(q.x, q.y, q.z, cy, sy, R);
+      const t = (k.d + 1)/2;                                    // 0 = atrás, 1 = adelante
+      const a = (0.14 + 0.86*t) * (0.78 + 0.22*Math.sin(now/650 + q.ph));
+      const r = 255*(0.55 + 0.45*t), g = 226*(0.5 + 0.5*t), b = 160*(0.35 + 0.65*t);
+      ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${a.toFixed(3)})`;
+      const size = q.sz * (0.65 + t*0.9) * (1 + amp*0.9);
+      ctx.fillRect(k.px - size/2, k.py - size/2, size, size);
+    }
+    // arcos de energía: estelas que recorren la esfera
+    for(let j=0;j<arcs.length;j++){
+      const ar = arcs[j], head = now/1000*ar.spin + ar.ph;
+      const ct = Math.cos(ar.tilt), st = Math.sin(ar.tilt);
+      for(let s=0;s<30;s++){
+        const ang = head - s*0.04*(ar.spin>0 ? 1 : -1);
+        const x = Math.cos(ang), y = Math.sin(ang)*ct, z = Math.sin(ang)*st;
+        const k = proj(x, y, z, cy, sy, R*1.07);
+        const fade = 1 - s/30, t = (k.d + 1)/2;
+        ctx.fillStyle = `rgba(255,232,180,${(fade*fade*(0.18 + 0.7*t)*(0.7 + amp)).toFixed(3)})`;
+        const size = (s === 0 ? 4.6 : 3) * fade + 0.5;
+        ctx.fillRect(k.px - size/2, k.py - size/2, size, size);
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    if(!reduce) winFxRaf = requestAnimationFrame(frame);
+  }
+  winFxRaf = requestAnimationFrame(frame);
+}
+
 function winOrbTap(){
   if(!winAudioUnlocked){ unlockWinAudio(); winAudioUnlocked = true; }
   if(!winListeningActive){
@@ -4057,6 +4262,7 @@ function winVolumeLoop(){
   const data = new Uint8Array(winAnalyser.frequencyBinCount);
   winAnalyser.getByteFrequencyData(data);
   const avg = data.reduce((a,b)=>a+b,0) / data.length; // 0..255
+  winFxLevel = Math.max(winFxLevel, Math.min(avg / 110, 1));
   const orb = document.getElementById('winOrb');
   if(orb && !orb.classList.contains('win-orb-thinking')){
     const scale = 0.85 + Math.min(avg / 130, 1) * 0.3;
