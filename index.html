@@ -15,7 +15,7 @@
 </head>
 <body>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap');
   :root{
     --bg:#0D1117;
     --surface:#161B22;
@@ -646,6 +646,185 @@
   @media (prefers-reduced-motion: reduce){
     .win-fullscreen *, .win-fullscreen::after{ animation-duration:.001s !important; animation-iteration-count:1 !important; }
   }
+
+  /* =====================================================================
+     Panel v2 -- toda la interfaz: dock flotante con nombres, tarjetas de cristal, tipografía
+     técnica y menos animaciones permanentes. Solo es capa visual: no cambia ninguna función.
+     ===================================================================== */
+  :root{
+    --bg:#080B10; --surface:#10151D; --surface-2:#171E29; --border:rgba(255,255,255,.09);
+    --text:#E9EDF3; --muted:#8B97AA;
+    --display:'Chakra Petch','Montserrat',sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
+    --glass:linear-gradient(180deg, rgba(27,34,46,.78), rgba(14,18,26,.78));
+    --edge:rgba(212,175,106,.24);
+  }
+  body{
+    background:
+      radial-gradient(ellipse 70% 50% at 10% -6%, rgba(212,175,106,.15), transparent 60%),
+      radial-gradient(ellipse 60% 45% at 100% 106%, rgba(212,175,106,.09), transparent 62%),
+      var(--bg);
+    background-attachment:fixed;
+  }
+  body::before{
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background-image:linear-gradient(rgba(212,175,106,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(212,175,106,.04) 1px, transparent 1px);
+    background-size:56px 56px;
+    -webkit-mask:radial-gradient(ellipse 85% 70% at 50% 25%, #000, transparent 88%); mask:radial-gradient(ellipse 85% 70% at 50% 25%, #000, transparent 88%);
+  }
+  ::selection{ background:rgba(212,175,106,.35); color:#fff; }
+  .menu-toggle, .menu-backdrop{ display:none !important; }
+  #app{ display:flex; }
+
+  /* Barra superior: logo + nombre */
+  .topbar{ position:fixed; top:calc(env(safe-area-inset-top, 0px) + 14px); left:16px; z-index:40; display:flex; align-items:center; gap:10px; max-width:calc(100vw - 32px); }
+  .brand{
+    display:flex; align-items:center; gap:10px; padding:5px 16px 5px 5px; margin:0; border:1px solid var(--edge); border-radius:999px;
+    background:var(--glass); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    box-shadow:0 14px 32px -16px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .brand img{ width:36px; height:36px; }
+  .brand-text{ font-family:var(--display); font-size:15px; font-weight:700; text-transform:none; letter-spacing:.02em; line-height:1.15; }
+  .brand-text small{ display:block; font:500 10.5px var(--body); color:var(--muted); letter-spacing:.02em; }
+  #syncStatus{ margin:0 !important; padding:7px 12px !important; border-radius:999px !important; background:rgba(229,72,77,.12); }
+
+  /* Dock flotante con iconos + nombre */
+  #sidebar{
+    position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); transform:translateX(-50%); z-index:45;
+    width:auto; max-width:calc(100vw - 24px); padding:7px; border-radius:24px; border-right:none;
+    flex-direction:row; align-items:stretch; gap:2px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; scroll-snap-type:x proximity;
+    background:var(--glass); border:1px solid var(--edge);
+    -webkit-backdrop-filter:blur(18px) saturate(1.3); backdrop-filter:blur(18px) saturate(1.3);
+    box-shadow:0 26px 56px -20px rgba(0,0,0,.95), 0 0 0 1px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.07);
+    transition:none;
+  }
+  #sidebar::-webkit-scrollbar{ display:none; }
+  .nav-item{
+    flex:0 0 auto; flex-direction:column; justify-content:center; gap:4px; min-width:62px; padding:9px 8px 7px;
+    border-left:none; border-radius:17px; font-size:10.5px; font-weight:600; letter-spacing:.01em; color:var(--muted);
+    scroll-snap-align:center; text-shadow:none; box-shadow:none; transition:background .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease;
+  }
+  .nav-item:hover{ color:var(--text); background:rgba(255,255,255,.06); transform:translateY(-2px); text-shadow:none; }
+  .nav-item.active{
+    color:#1A1206; border-left:none; text-shadow:none;
+    background:linear-gradient(180deg,#E7C98C,#C99B4A);
+    box-shadow:0 10px 24px -10px rgba(212,175,106,.95), inset 0 1px 0 rgba(255,255,255,.45);
+  }
+  .nav-icon{ width:auto; font-size:0; display:flex; }
+  .nav-icon svg{ width:22px; height:22px; display:block; }
+  .nav-label{ white-space:nowrap; }
+  .nav-alert{ position:absolute; top:3px; right:7px; margin:0; font-size:10px; padding:2px 5px; box-shadow:0 0 10px rgba(229,72,77,.7); }
+  .nav-logout{ margin-left:6px; border-radius:17px; }
+  .nav-logout::before{ content:''; position:absolute; left:-5px; top:12px; bottom:12px; width:1px; background:var(--border); }
+  .nav-logout:hover{ color:#ff8d92; }
+  .nav-item:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  #main{ flex:1; width:100%; max-width:1380px; margin:0 auto; padding:88px 32px 132px; }
+  td.row-actions{ flex-wrap:wrap; min-width:230px; max-width:330px; }
+  body.win-locked #main{ max-width:none; padding:0; margin:0; }
+  body.win-locked .win-fullscreen{ padding:70px 16px 104px; }
+
+  /* Títulos y textos */
+  .page-title{ font-family:var(--display); font-size:30px; font-weight:700; text-transform:none; letter-spacing:-.005em; }
+  .page-title::after{ height:2px; width:40px; bottom:-8px; }
+  .page-sub{ margin:10px 0 24px; font-size:13.5px; }
+  .card-title{ font-family:var(--display); font-size:15px; font-weight:600; text-transform:none; letter-spacing:.01em; color:var(--accent-light); margin-bottom:16px; }
+  .score-label{ text-transform:none; font-size:12.5px; letter-spacing:.01em; font-weight:500; }
+  .score-value{ font-family:var(--display); font-size:34px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .mono, .score-value, td.mono{ font-variant-numeric:tabular-nums; }
+
+  /* Tarjetas de cristal */
+  .scoreboard{ gap:14px; background:transparent; border:none; border-radius:0; overflow:visible; }
+  .score-cell{
+    position:relative; overflow:hidden; background:var(--glass); border:1px solid var(--border); border-radius:20px; padding:20px 22px;
+    box-shadow:0 18px 40px -28px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .score-cell::before{ content:''; position:absolute; left:22px; right:22px; top:0; height:1px; background:linear-gradient(90deg, transparent, rgba(212,175,106,.7), transparent); }
+  .card, .finance-acc-card{
+    background:var(--glass); border:1px solid var(--border); border-radius:20px; padding:22px; animation:none; overflow:auto;
+    box-shadow:0 18px 40px -28px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .card:hover{ transform:none; border-color:rgba(212,175,106,.38); box-shadow:0 22px 46px -26px rgba(0,0,0,.95), 0 0 0 1px rgba(212,175,106,.12); }
+  .finance-total-card{ border-radius:20px; background:linear-gradient(180deg, rgba(212,175,106,.2), rgba(74,58,31,.55)); }
+  .finance-acc-card .acc-name{ text-transform:none; font-size:12.5px; letter-spacing:.01em; }
+  .grid-2{ gap:18px; }
+
+  /* Tablas */
+  th{ text-transform:none; font-size:12px; letter-spacing:.01em; font-weight:600; padding:10px 12px; }
+  td{ padding:13px 12px; border-bottom-color:rgba(255,255,255,.06); }
+  tbody tr{ transition:background .15s ease; }
+  tbody tr:hover td{ background:rgba(212,175,106,.05); }
+  .badge{ display:inline-flex; align-items:center; gap:6px; text-transform:none; font-size:11.5px; letter-spacing:0; padding:4px 11px; }
+  .badge::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.9; }
+  .badge.inactive::before, .badge.simple::before, .badge.combo::before, .badge.banco::before, .badge.caja::before, .badge.flag::before{ display:none; }
+  .result-select{ text-transform:none; font-size:11.5px; letter-spacing:0; }
+  .day-tab{ border-radius:999px; padding:8px 16px; }
+
+  /* Botones */
+  .btn{
+    border-radius:12px; padding:10px 18px; font-weight:700;
+    background:linear-gradient(180deg,#E7C98C,#CFA457); color:#1A1206;
+    box-shadow:0 10px 24px -12px rgba(212,175,106,.9), inset 0 1px 0 rgba(255,255,255,.4);
+  }
+  .btn:not(.secondary):not(.danger)::after{ display:none; }
+  .btn:hover{ filter:none; box-shadow:0 14px 30px -12px rgba(212,175,106,1), inset 0 1px 0 rgba(255,255,255,.5); }
+  .btn.secondary{ background:rgba(255,255,255,.05); color:var(--text); border:1px solid var(--border); box-shadow:none; }
+  .btn.secondary:hover{ background:rgba(255,255,255,.09); border-color:rgba(212,175,106,.4); box-shadow:none; }
+  .btn.danger{ background:rgba(229,72,77,.06); color:#ff8d92; border:1px solid rgba(229,72,77,.4); box-shadow:none; }
+  .btn.small{ border-radius:10px; }
+  .btn:focus-visible, .day-tab:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* Campos */
+  .field label{ text-transform:none; font-size:12.5px; letter-spacing:.01em; font-weight:500; }
+  .field input, .field select, .field textarea, .search-wrap input, .filters input{
+    background:rgba(0,0,0,.32); border:1px solid var(--border); border-radius:12px; padding:11px 12px; transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  .search-wrap input{ padding-left:40px; border-radius:14px; }
+  .field input:focus, .field select:focus, .field textarea:focus, .search-wrap input:focus, .filters input:focus{
+    outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(212,175,106,.18);
+  }
+
+  /* Ventanas */
+  .modal-overlay{ background:rgba(4,6,10,.72); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  .modal{
+    background:linear-gradient(180deg,#161d28,#0e131b); border:1px solid var(--edge); border-radius:24px; padding:28px;
+    width:min(440px, calc(100vw - 24px)); box-shadow:0 44px 90px -34px #000, inset 0 1px 0 rgba(255,255,255,.06);
+    animation:modalIn .22s ease-out;
+  }
+  .modal h3{ font-family:var(--display); text-transform:none; letter-spacing:0; font-size:21px; font-weight:700; }
+  @keyframes modalIn{ from{ opacity:0; transform:translateY(14px) scale(.98); } to{ opacity:1; transform:none; } }
+  .alert-banner{ border-radius:14px; }
+  .empty{ border:1px dashed rgba(255,255,255,.12); border-radius:16px; margin:6px 0; }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:rgba(212,175,106,.35); border-radius:10px; }
+
+  /* Win: etiquetas visibles en sus iconos */
+  .win-icon-btn{ width:auto; min-width:60px; height:54px; flex-direction:column; gap:3px; padding:6px 6px 5px; }
+  .win-icon-btn::after{ display:none !important; }
+  .win-lbl{ font:600 10.5px var(--body); letter-spacing:.01em; color:var(--muted); white-space:nowrap; }
+  .win-icon-btn:hover .win-lbl{ color:#fff; }
+  .win-icon-badge{ top:3px; right:8px; }
+  .win-corner-icons{ top:calc(env(safe-area-inset-top, 0px) + 14px); }
+  @media (max-width:1180px){ .win-hud{ display:none; } }
+
+  /* ---------- Celular ---------- */
+  @media (max-width:860px){
+    #sidebar{ top:auto; left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom, 0px) + 12px); width:auto; height:auto; transform:none; max-width:none; justify-content:flex-start; padding:6px; box-shadow:0 26px 56px -20px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.07); }
+    #main{ padding:calc(env(safe-area-inset-top, 0px) + 74px) 14px 128px; max-width:100%; }
+    .scoreboard{ grid-template-columns:repeat(2,1fr); gap:10px; }
+    .score-cell{ padding:16px 16px; }
+    .score-value{ font-size:28px; }
+    .grid-2{ grid-template-columns:1fr; }
+    .page-title{ font-size:25px; }
+    .brand-text small{ display:none; }
+    .win-corner-icons{
+      position:fixed; top:calc(env(safe-area-inset-top, 0px) + 66px); left:12px; right:12px; bottom:auto; transform:none;
+      display:grid; grid-template-columns:repeat(4,1fr); gap:2px; padding:5px;
+    }
+    .win-icon-btn{ min-width:0; width:100%; }
+    body.win-locked .win-fullscreen{ padding:200px 12px 96px; }
+  }
 </style>
 
 <div id="loginScreen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);">
@@ -661,26 +840,27 @@
 </div>
 
 <div id="app" style="display:none;">
-  <button class="menu-toggle" id="menuToggleBtn" aria-label="Abrir menú">&#9776;</button>
   <div class="menu-backdrop" id="menuBackdrop"></div>
-  <div id="sidebar">
+  <header class="topbar">
     <div class="brand">
       <img src="logo-paywin.png" alt="Pay Win">
-      <div class="brand-text">Panel<br>Administración<br>Pay Win</div>
+      <div class="brand-text">Pay Win</div>
     </div>
-    <div id="syncStatus" style="display:none; margin:0 24px 16px; font-size:11px; color:var(--loss); border:1px solid var(--loss-dim); border-radius:6px; padding:8px 10px;">⚠ Error de sincronización con Sheets</div>
-    <div class="nav-item active" data-view="dashboard"><span class="nav-icon">&#9635;</span> Dashboard</div>
-    <div class="nav-item" data-view="win"><span class="nav-icon">&#129302;</span> Win <span class="nav-alert" id="navAlert-win" style="display:none;"></span></div>
-    <div class="nav-item" data-view="vips"><span class="nav-icon">&#128100;</span> Miembros VIP <span class="nav-alert" id="navAlert-vips" style="display:none;"></span></div>
-    <div class="nav-item" data-view="freeBets"><span class="nav-icon">&#127919;</span> Apuestas Gratis</div>
-    <div class="nav-item" data-view="vipBets"><span class="nav-icon">&#128142;</span> Apuestas VIP</div>
-    <div class="nav-item" data-view="liveBets"><span class="nav-icon">&#128680;</span> Apuestas Live</div>
-    <div class="nav-item" data-view="stakes"><span class="nav-icon">&#128176;</span> Stakes</div>
-    <div class="nav-item" data-view="stakeSales"><span class="nav-icon">&#128722;</span> Venta de Stakes</div>
-    <div class="nav-item" data-view="gifts"><span class="nav-icon">&#127873;</span> Regalitos</div>
-    <div class="nav-item" data-view="finance"><span class="nav-icon">&#127974;</span> Cuadre Financiero</div>
-    <div class="nav-item" id="logoutBtn" style="margin-top:auto; border-top:1px solid var(--border); padding-top:16px;"><span class="nav-icon">&#128274;</span> Cerrar sesión</div>
-  </div>
+    <div id="syncStatus" style="display:none;">⚠ Error de sincronización con Sheets</div>
+  </header>
+  <nav id="sidebar" aria-label="Secciones">
+    <div class="nav-item active" data-view="dashboard" title="Inicio"><span class="nav-icon" data-ico="dashboard"></span><span class="nav-label">Inicio</span></div>
+    <div class="nav-item" data-view="win" title="Win"><span class="nav-icon" data-ico="win"></span><span class="nav-label">Win</span><span class="nav-alert" id="navAlert-win" style="display:none;"></span></div>
+    <div class="nav-item" data-view="vips" title="Miembros"><span class="nav-icon" data-ico="miembros"></span><span class="nav-label">Miembros</span><span class="nav-alert" id="navAlert-vips" style="display:none;"></span></div>
+    <div class="nav-item" data-view="freeBets" title="Gratis"><span class="nav-icon" data-ico="gratis"></span><span class="nav-label">Gratis</span></div>
+    <div class="nav-item" data-view="vipBets" title="VIP"><span class="nav-icon" data-ico="vip"></span><span class="nav-label">VIP</span></div>
+    <div class="nav-item" data-view="liveBets" title="Live"><span class="nav-icon" data-ico="live"></span><span class="nav-label">Live</span></div>
+    <div class="nav-item" data-view="stakes" title="Stakes"><span class="nav-icon" data-ico="stakes"></span><span class="nav-label">Stakes</span></div>
+    <div class="nav-item" data-view="stakeSales" title="Ventas"><span class="nav-icon" data-ico="ventas"></span><span class="nav-label">Ventas</span></div>
+    <div class="nav-item" data-view="gifts" title="Regalitos"><span class="nav-icon" data-ico="regalitos"></span><span class="nav-label">Regalitos</span></div>
+    <div class="nav-item" data-view="finance" title="Cuadre"><span class="nav-icon" data-ico="cuadre"></span><span class="nav-label">Cuadre</span></div>
+    <div class="nav-item nav-logout" id="logoutBtn" title="Cerrar sesión"><span class="nav-icon" data-ico="salir"></span><span class="nav-label">Salir</span></div>
+  </nav>
   <div id="main"></div>
 </div>
 
@@ -970,6 +1150,25 @@ function exportCSV(key){
 function allowedViewsForRole(){
   return null;
 }
+
+// ---------- Iconos de línea del dock principal ----------
+const NAV_ICON_PATHS = {
+  dashboard:'<rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/>',
+  win:'<rect x="5" y="7.5" width="14" height="11" rx="3.5"/><path d="M12 7.5V4.6M9.5 12.4v1.3M14.5 12.4v1.3M9 18.5v2M15 18.5v2"/><circle cx="12" cy="3.6" r="1"/>',
+  miembros:'<circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.6a3.2 3.2 0 0 1 0 5.8M17.5 14.2a5.5 5.5 0 0 1 3 4.8"/>',
+  gratis:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  vip:'<path d="M6.5 4h11l3 5-8.5 11L3.5 9l3-5z"/><path d="M3.5 9h17M9.5 4l2.5 5 2.5-5M12 20L9.5 9M12 20l2.5-11"/>',
+  live:'<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
+  stakes:'<ellipse cx="12" cy="6.5" rx="7" ry="3"/><path d="M5 6.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5M5 11.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>',
+  ventas:'<path d="M3.5 4.5h2.4l2 10h9.6l2-7.5H7"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="16.5" cy="19" r="1.4"/>',
+  regalitos:'<rect x="3.5" y="9" width="17" height="11" rx="2"/><path d="M12 9v11M3.5 13.5h17"/><path d="M12 9c-2.6 0-4.6-1-4.6-2.9a1.9 1.9 0 0 1 3.5-.9C11.7 6.3 12 9 12 9zm0 0c2.6 0 4.6-1 4.6-2.9a1.9 1.9 0 0 0-3.5-.9C12.3 6.3 12 9 12 9z"/>',
+  cuadre:'<path d="M3.5 9.5L12 4l8.5 5.5M5.5 10v7M10 10v7M14 10v7M18.5 10v7M3.5 20h17"/>',
+  salir:'<path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M15 8l4 4-4 4M19 12H9"/>'
+};
+document.querySelectorAll('.nav-icon[data-ico]').forEach(el=>{
+  el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAV_ICON_PATHS[el.dataset.ico]||''}</svg>`;
+});
+
 function setView(v){
   const allowed = allowedViewsForRole();
   if(allowed && !allowed.includes(v)) return;
@@ -978,6 +1177,7 @@ function setView(v){
   state.view = v;
   document.body.classList.toggle('win-locked', v === 'win');
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===v));
+  const _act = document.querySelector('.nav-item.active'); if(_act && _act.scrollIntoView){ try{ _act.scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' }); }catch(e){} }
   render();
 }
 // Deja visible en el menú solo lo que el rol actual puede ver.
@@ -987,7 +1187,7 @@ function applyRoleToNav(){
     el.style.display = (!allowed || allowed.includes(el.dataset.view)) ? '' : 'none';
   });
   const brandText = document.querySelector('.brand-text');
-  if(brandText) brandText.innerHTML = 'Panel<br>Administración<br>Pay Win';
+  if(brandText) brandText.innerHTML = 'Pay Win<small>Panel de administración</small>';
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(el=>{ el.addEventListener('click', ()=>{ setView(el.dataset.view); closeMobileMenu(); }); });
 
@@ -1004,7 +1204,7 @@ function closeMobileMenu(){
 function toggleMobileMenu(){
   document.getElementById('sidebar').classList.contains('sidebar-open') ? closeMobileMenu() : openMobileMenu();
 }
-document.getElementById('menuToggleBtn').addEventListener('click', toggleMobileMenu);
+const _mt = document.getElementById('menuToggleBtn'); if(_mt) _mt.addEventListener('click', toggleMobileMenu);
 document.getElementById('menuBackdrop').addEventListener('click', closeMobileMenu);
 document.getElementById('logoutBtn').addEventListener('click', closeMobileMenu);
 
@@ -2806,14 +3006,14 @@ function renderWin(){
         </div>
       </div>
       <div class="win-corner-icons">
-        <button class="win-icon-btn" id="winOutboxBtn" data-label="Bandeja de envíos" aria-label="Bandeja de envíos">${winIcon('bandeja')}${pending.length ? `<span class="win-icon-badge">${pending.length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winRemindersBtn" data-label="Recordatorios" aria-label="Recordatorios">${winIcon('reloj')}${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winMemoryBtn" data-label="Lo que Win sabe de ti" aria-label="Lo que Win sabe de ti">${winIcon('memoria')}${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winTemplatesBtn" data-label="Imágenes guardadas" aria-label="Imágenes guardadas">${winIcon('imagen')}${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winDifusionBtn" data-label="Listas de difusión" aria-label="Listas de difusión">${winIcon('difusion')}</button>
-        <button class="win-icon-btn" id="winMicModeBtn" data-label="${winModoManual() ? 'Micrófono manual · toca para pasar a escucha automática' : 'Escucha automática · toca para pasar a micrófono manual'}" aria-label="Cambiar modo del micrófono">${winIcon(winModoManual() ? 'mic' : 'ojo')}</button>
-        <button class="win-icon-btn" id="winGanadasBtn" data-label="Ganadas de ayer" aria-label="Ganadas de ayer">${winIcon('trofeo')}${winGanadasPendientes().length ? `<span class="win-icon-badge">${winGanadasPendientes().length}</span>` : ''}</button>
-        <button class="win-icon-btn" id="winReconsumosBtn" data-label="Reconsumos VIP" aria-label="Reconsumos VIP">${winIcon('campana')}${winReconsumosLista().vencidos.length ? `<span class="win-icon-badge win-badge-alert">${winReconsumosLista().vencidos.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winOutboxBtn" title="Bandeja de envíos" aria-label="Bandeja de envíos">${winIcon('bandeja')}<span class="win-lbl">Bandeja</span>${pending.length ? `<span class="win-icon-badge">${pending.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winRemindersBtn" title="Recordatorios" aria-label="Recordatorios">${winIcon('reloj')}<span class="win-lbl">Recordar</span>${reminderRows.length ? `<span class="win-icon-badge">${reminderRows.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti" aria-label="Lo que Win sabe de ti">${winIcon('memoria')}<span class="win-lbl">Memoria</span>${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winTemplatesBtn" title="Imágenes guardadas" aria-label="Imágenes guardadas">${winIcon('imagen')}<span class="win-lbl">Imágenes</span>${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winDifusionBtn" title="Listas de difusión" aria-label="Listas de difusión">${winIcon('difusion')}<span class="win-lbl">Difusión</span></button>
+        <button class="win-icon-btn" id="winMicModeBtn" title="${winModoManual() ? 'Micrófono manual · toca para pasar a escucha automática' : 'Escucha automática · toca para pasar a micrófono manual'}" aria-label="Cambiar modo del micrófono">${winIcon(winModoManual() ? 'mic' : 'ojo')}<span class="win-lbl">${winModoManual() ? 'Mic manual' : 'Mic auto'}</span></button>
+        <button class="win-icon-btn" id="winGanadasBtn" title="Ganadas de ayer" aria-label="Ganadas de ayer">${winIcon('trofeo')}<span class="win-lbl">Ganadas</span>${winGanadasPendientes().length ? `<span class="win-icon-badge">${winGanadasPendientes().length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winReconsumosBtn" title="Reconsumos VIP" aria-label="Reconsumos VIP">${winIcon('campana')}<span class="win-lbl">Reconsumos</span>${winReconsumosLista().vencidos.length ? `<span class="win-icon-badge win-badge-alert">${winReconsumosLista().vencidos.length}</span>` : ''}</button>
       </div>
       <div class="win-hud" aria-hidden="true">
         <div>Ecuador <b id="winHudClock">--:--</b></div>
