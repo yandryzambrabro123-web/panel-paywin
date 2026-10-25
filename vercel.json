@@ -1,7 +1,6 @@
 {
   "crons": [
-    { "path": "/api/win-protocolo-manana", "schedule": "0 13 * * *" },
-    { "path": "/api/win-vencidos", "schedule": "0 14 * * *" }
+    { "path": "/api/win-protocolo-manana", "schedule": "0 13 * * *" }
   ],
   "headers": [
     {

@@ -128,6 +128,8 @@ async function resolverRegistro(id, aprobar) {
 // ---- Escucha de Telegram (botones y solicitudes de ingreso al canal) ----
 let offset = 0;
 let escuchando = false;
+// Otros módulos (ej. vip.js) registran aquí sus botones de Telegram: prefijo -> función(cq, partes)
+const manejadores = {};
 async function procesarUpdate(u) {
   if (u.callback_query) {
     const cq = u.callback_query;
@@ -140,6 +142,8 @@ async function procesarUpdate(u) {
         const txt = r.error ? `⚠️ ${r.error}` : (accion === 'ap' ? '✅ Aprobado' : '❌ Rechazado');
         await tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt });
         if (cq.message) await tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: txt, callback_data: 'x' }]] } }).catch(() => {});
+      } else if (manejadores[accion]) {
+        await manejadores[accion](cq, [a, b]);
       } else if (accion === 'jo' || accion === 'jn') {
         // solicitud de ingreso sin registro aprobado: a = chat_id del canal, b = user_id
         if (accion === 'jo') await tg('approveChatJoinRequest', { chat_id: a, user_id: Number(b) });
@@ -351,4 +355,4 @@ function montar(app) {
   escuchar().catch((e) => console.error('No arrancó la escucha de Telegram:', e.message));
 }
 
-module.exports = { montar };
+module.exports = { montar, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, TG_ADMIN, TG_TOKEN };

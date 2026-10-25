@@ -111,7 +111,24 @@ iniciarConexion().catch((e) => console.error('Error iniciando la conexión con W
 
 const app = express();
 app.use(express.json({ limit: '15mb' }));
-require('./stakes').montar(app); // registro público del Stake de pago + aprobación por Telegram
+const stakes = require('./stakes');
+stakes.montar(app); // registro público del Stake de pago + aprobación por Telegram
+// Registro público del VIP + salida automática de los vencidos (usa el WhatsApp del bot).
+require('./vip').montar(app, stakes, {
+  conectado: () => connected,
+  sacar: (digitos, grupoIds) => sacarDeGrupos(digitos, grupoIds),
+  // Manda un mensaje PRIVADO a un número (ej. 0999999999 o 593999999999).
+  privado: async (numero, texto) => {
+    let d = String(numero || '').replace(/\D/g, '');
+    if (d.startsWith('0')) d = '593' + d.slice(1);
+    else if (d.length === 9) d = '593' + d;
+    if (d.length < 11) throw new Error('Teléfono inválido');
+    let jid = d + '@s.whatsapp.net';
+    try { const r = await sock.onWhatsApp(d); if (r && r[0] && r[0].exists === false) throw new Error('Ese número no tiene WhatsApp'); if (r && r[0] && r[0].jid) jid = r[0].jid; } catch (e) { if (/no tiene WhatsApp/.test(e.message)) throw e; }
+    await pausaHumana();
+    await sock.sendMessage(jid, { text: texto });
+  }
+});
 
 function requireApiKey(req, res, next) {
   if (!API_KEY) {
@@ -370,15 +387,7 @@ app.post('/revisar-miembros', requireApiKey, async (req, res) => {
 // que ser ADMIN de cada grupo, si no WhatsApp rechaza la acción. Body: { numero, grupoIds: [...] }
 // donde numero va con código de país y solo dígitos (ej: 593991234567). Devuelve el resultado
 // por grupo, así un grupo que falle no tumba al otro.
-app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {
-  if (!connected) {
-    return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
-  }
-  const { numero, grupoIds } = req.body || {};
-  const digitos = String(numero || '').replace(/\D/g, '');
-  if (digitos.length < 8 || !Array.isArray(grupoIds) || !grupoIds.length) {
-    return res.status(400).json({ error: 'Falta numero o grupoIds.' });
-  }
+async function sacarDeGrupos(digitos, grupoIds) {
   const soloDigitos = (x) => String(x || '').split('@')[0].split(':')[0].replace(/\D/g, '');
   const resultados = [];
   for (const grupoId of grupoIds) {
@@ -407,6 +416,19 @@ app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {
       resultados.push({ grupoId, ok: false, error: e.message });
     }
   }
+  return resultados;
+}
+
+app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {
+  if (!connected) {
+    return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
+  }
+  const { numero, grupoIds } = req.body || {};
+  const digitos = String(numero || '').replace(/\D/g, '');
+  if (digitos.length < 8 || !Array.isArray(grupoIds) || !grupoIds.length) {
+    return res.status(400).json({ error: 'Falta numero o grupoIds.' });
+  }
+  const resultados = await sacarDeGrupos(digitos, grupoIds);
   res.json({ ok: resultados.every(r => r.ok), resultados });
 });
 

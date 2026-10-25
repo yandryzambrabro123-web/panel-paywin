@@ -40,6 +40,11 @@ module.exports = async function handler(req, res) {
   const base = botUrl.replace(/\/$/, '');
 
   try {
+    if (modo === 'vip_url') {
+      res.status(200).json({ url: `${base}/vip` });
+      return;
+    }
+
     if (modo === 'stake_url') {
       res.status(200).json({ url: `${base}/stake` });
       return;

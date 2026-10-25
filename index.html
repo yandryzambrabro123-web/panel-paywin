@@ -1039,7 +1039,7 @@ function resultLabel(r){ return r==='won'?'Ganada':r==='lost'?'Perdida':'Pendien
 
 function coerceRow(key, row){
   if(key === 'vips'){
-    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true', removidoVip: String(row.removidoVip||'') };
+    return { id:String(row.id||''), name:row.name||'', contact:row.contact||'', cedula:row.cedula||'', city:row.city||'', plan:row.plan||'mensual', joinDate:row.joinDate||'', notes:row.notes||'', status:row.status||'active', noReconsumo: row.noReconsumo===true||row.noReconsumo==='true', giftPending: row.giftPending===true||row.giftPending==='true', removidoVip: String(row.removidoVip||''), avisoVip: String(row.avisoVip||'') };
   }
   if(key === 'freeBets' || key === 'vipBets' || key === 'liveBets'){
     return { id:String(row.id||''), sport:row.sport||'', event:row.event||'', betType: row.betType==='combo' ? 'combo' : 'simple', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, date:row.date||'', result:row.result||'pending', lines: typeof row.lines==='string' ? row.lines : (row.lines ? JSON.stringify(row.lines) : '[]'), imageUrl:String(row.imageUrl||''), returned:Number(row.returned)||0, ganancia:Number(row.ganancia)||0 };
@@ -1545,6 +1545,7 @@ function renderVipGroup(key, title){
       </div>
       ${dateFilterHTML(key)}
       <div style="display:flex; gap:10px;">
+        <button class="btn secondary" id="copyVipRegLinkBtn">Copiar link de registro</button>
         <button class="btn secondary" id="reconsumosVipBtn">Reconsumos${winReconsumosLista().vencidos.length ? ` (${winReconsumosLista().vencidos.length})` : ''}</button>
         <button class="btn secondary" id="exportVipBtn">Exportar CSV</button>
         <button class="btn" id="addVipBtn">+ Nuevo miembro</button>
@@ -1596,6 +1597,16 @@ function renderVipGroup(key, title){
   };
   document.getElementById('addVipBtn').onclick = ()=>openVipForm(key, rerender);
   document.getElementById('reconsumosVipBtn').onclick = openWinReconsumosModal;
+  document.getElementById('copyVipRegLinkBtn').onclick = async (e)=>{
+    const btn = e.currentTarget;
+    try{
+      const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'vip_url' }) });
+      const d = await r.json();
+      if(!r.ok || !d.url) throw new Error(d.error || 'No se pudo obtener el link.');
+      try{ await navigator.clipboard.writeText(d.url); btn.textContent = 'Copiado ✓'; }
+      catch(err){ prompt('Copia este link:', d.url); }
+    }catch(err){ alert(err.message); }
+  };
   document.getElementById('exportVipBtn').onclick = () => exportCSV(key);
   document.querySelectorAll('[data-edit-vip]').forEach(b=>b.onclick=()=>openVipForm(key, rerender, b.dataset.editVip));
   document.querySelectorAll('[data-toggle-vip]').forEach(b=>b.onclick=()=>toggleVip(key, b.dataset.toggleVip, rerender));
