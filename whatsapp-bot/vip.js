@@ -138,7 +138,9 @@ button:disabled{opacity:.5}.n{font-size:12.5px;color:#D4AF6A;margin-top:6px;min-
 const $=s=>document.querySelector(s);let timer=null;const box=$('#box');
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function hoy(){const d=new Date(Date.now()-5*3600e3);return d.toISOString().slice(0,10)}
-function form(){
+let regId='';
+function form(d,aviso){
+  d=d||{};
   box.innerHTML='<label>Nombre</label><input id="nom" autocomplete="given-name"><label>Apellido</label><input id="ape" autocomplete="family-name">'+
   '<label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off">'+
   '<label>Ciudad</label><input id="ciu" autocomplete="address-level2"><label>Correo electrónico</label><input id="cor" type="email" inputmode="email" autocapitalize="none" autocomplete="email">'+
@@ -146,10 +148,13 @@ function form(){
   '<div class="e" id="err"></div><button id="env">Enviar registro</button>';
   $('#ced').oninput=e=>{e.target.value=e.target.value.replace(/\\D/g,'')};
   $('#env').onclick=enviar;
+  const ids={nom:'nombre',ape:'apellido',ced:'cedula',ciu:'ciudad',cor:'correo',tel:'telefono'};
+  Object.keys(ids).forEach(k=>{if(d[ids[k]])$('#'+k).value=d[ids[k]]});
+  if(aviso)box.insertAdjacentHTML('afterbegin','<p style="color:#D4AF6A;font-size:14.5px;margin:0 0 6px">'+esc(aviso)+'</p>');
 }
 async function enviar(){
   const b=$('#env'),er=$('#err');er.textContent='';
-  const body={cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,ciudad:$('#ciu').value,correo:$('#cor').value,telefono:$('#tel').value};
+  const body={cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,ciudad:$('#ciu').value,correo:$('#cor').value,telefono:$('#tel').value,registroId:regId};
   if(!body.nombre.trim()||!body.apellido.trim()||body.cedula.replace(/\\D/g,'').length!==10||!body.ciudad.trim()||!body.correo.includes('@')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
   b.disabled=true;b.textContent='Enviando…';
   try{const r=await fetch('/vip/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
@@ -159,6 +164,7 @@ function espera(id){
   box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Registro enviado. Estamos revisando tu pago; no cierres esta pantalla.</p>';
   const tick=async()=>{try{const r=await fetch('/vip/estado/'+id);const d=await r.json();
     if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado! Bienvenido al VIP.</p><p>1. Entra al grupo con tu link personal (sirve una sola vez, no lo compartas).</p><a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al grupo VIP</a>'+(d.bot?'<p style="margin-top:18px">2. Activa los avisos de tu membresía (te avisamos antes de que termine).</p><a class="b" style="background:#232a38;color:#f3ead6;margin-top:8px" href="https://t.me/'+esc(d.bot)+'?start=vip_'+esc(id)+'" target="_blank" rel="noopener">Activar avisos</a>':'')}
+    else if(d.estado==='corregir'){clearInterval(timer);regId=id;form(d.datos,'Falta o está mal algún dato. Revísalo y vuelve a enviar.')}
     else if(d.estado==='rechazado'){clearInterval(timer);box.innerHTML='<p style="color:#ff7a7a;font-size:16px">No pudimos aprobar tu registro. Comunícate con la agencia.</p>'}
   }catch(e){}};
   timer=setInterval(tick,4000);
@@ -216,6 +222,15 @@ function montar(app, stakes) {
   H.manejadores.vp = async (cq, [id, p]) => {
     const r = await aprobar(id, PLANES[p] || 'mensual');
     await marcar(cq, r.error ? `⚠️ ${r.error}` : `✅ Aprobado (${PLANES[p] || 'mensual'})`);
+  };
+  H.manejadores.vc = async (cq, [id]) => {
+    let hecho = false, previo = null;
+    await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => {
+      if (String(f.id) !== String(id)) return f;
+      previo = f.estado; if (f.estado !== 'pendiente') return f; hecho = true;
+      return { ...f, estado: 'corregir' };
+    }));
+    await marcar(cq, hecho ? '✏️ Le pedí que corrija' : `⚠️ Ya estaba ${previo || 'resuelto'}`);
   };
   H.manejadores.vr = async (cq, [id]) => {
     let hecho = false, previo = null;
@@ -275,18 +290,25 @@ function montar(app, stakes) {
       if (telefono.length < 9 || telefono.length > 10) return res.status(400).json({ error: 'Revisa tu número de teléfono.' });
       const previo = (await H.leerHoja(HOJA_VIPS)).some((v) => esVigente(v) && !removido(v) && String(v.cedula || '').replace(/\D/g, '') === cedula);
       const hoy = H.hoyEC();
-      let reg = null, repetido = null;
+      let reg = null, repetido = null, corregido = false;
       await H.cambiarHoja(HOJA_REGISTROS, (filas) => {
+        // reenvío tras "Pedir corrección": se actualiza el mismo registro y vuelve a pendiente
+        const idx = b.registroId ? filas.findIndex((f) => String(f.id) === String(b.registroId) && f.estado === 'corregir') : -1;
+        if (idx >= 0) {
+          reg = { ...filas[idx], cedula, nombre, apellido, ciudad, correo, telefono, estado: 'pendiente' };
+          corregido = true;
+          const n = filas.slice(); n[idx] = reg; return n;
+        }
         repetido = filas.find((f) => f.cedula === cedula && f.estado === 'pendiente');
         if (repetido) return filas;
         reg = { id: H.nuevoId(), createdAt: new Date().toISOString(), day: hoy, cedula, nombre, apellido, ciudad, correo, telefono, estado: 'pendiente', plan: '', recurrente: !!previo, resueltoAt: '' };
         return [...filas, reg];
       });
       if (repetido) return res.json({ id: repetido.id, repetido: true });
-      const texto = `🆕 <b>Registro VIP</b>\n\nNombre: <b>${H.esc(nombre)} ${H.esc(apellido)}</b>\nCédula: ${H.esc(cedula)}\nCiudad: ${H.esc(ciudad)}\nCorreo: ${H.esc(correo)}\nTeléfono: ${H.esc(telefono)}\nIngreso: ${hoy}\n${previo ? '🔁 Esa cédula ya es miembro activo (se renueva)' : '✨ Nuevo'}\n\nAprueba con el plan que pagó:`;
+      const texto = `${corregido ? '✏️ <b>Registro VIP corregido</b>' : '🆕 <b>Registro VIP</b>'}\n\nNombre: <b>${H.esc(nombre)} ${H.esc(apellido)}</b>\nCédula: ${H.esc(cedula)}\nCiudad: ${H.esc(ciudad)}\nCorreo: ${H.esc(correo)}\nTeléfono: ${H.esc(telefono)}\nIngreso: ${hoy}\n${previo ? '🔁 Esa cédula ya es miembro activo (se renueva)' : '✨ Nuevo'}\n\nAprueba con el plan que pagó:`;
       await H.tg('sendMessage', {
         chat_id: H.TG_ADMIN(), text: texto, parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: [[{ text: '✅ Mensual', callback_data: 'vp:' + reg.id + ':m' }, { text: '✅ Trimestral', callback_data: 'vp:' + reg.id + ':t' }, { text: '✅ Anual', callback_data: 'vp:' + reg.id + ':a' }], [{ text: '❌ Rechazar', callback_data: 'vr:' + reg.id }]] }
+        reply_markup: { inline_keyboard: [[{ text: '✅ Mensual', callback_data: 'vp:' + reg.id + ':m' }, { text: '✅ Trimestral', callback_data: 'vp:' + reg.id + ':t' }, { text: '✅ Anual', callback_data: 'vp:' + reg.id + ':a' }], [{ text: '✏️ Pedir corrección', callback_data: 'vc:' + reg.id }, { text: '❌ Rechazar', callback_data: 'vr:' + reg.id }]] }
       }).catch((e) => console.error('No pude avisar al jefe (VIP):', e.message));
       res.json({ id: reg.id });
     } catch (e) {
@@ -300,6 +322,7 @@ function montar(app, stakes) {
     try {
       const reg = (await H.leerHoja(HOJA_REGISTROS)).find((f) => String(f.id) === String(req.params.id));
       if (!reg) return res.json({ estado: 'desconocido' });
+      if (reg.estado === 'corregir') return res.json({ estado: 'corregir', datos: { nombre: reg.nombre, apellido: reg.apellido, cedula: reg.cedula, ciudad: reg.ciudad, correo: reg.correo, telefono: reg.telefono } });
       res.json(reg.estado === 'aprobado' ? { estado: 'aprobado', link: reg.link || '', bot: await nombreBot() } : { estado: reg.estado });
     } catch (e) { res.json({ estado: 'pendiente' }); }
   });
