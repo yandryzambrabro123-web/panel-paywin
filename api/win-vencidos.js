@@ -43,6 +43,21 @@ async function telegram(token, chatId, text) {
   if (!r.ok || !data.ok) throw new Error(data.description || 'Telegram rechazó el mensaje.');
 }
 
+// Novedades para la Bandeja del panel: solo situaciones (no cada envío). Se guardan en la hoja
+// "Novedades"; el panel las muestra y marca cuáles faltan por leer. Mejor esfuerzo: si falla, no
+// tumba el envío.
+async function agregarNovedad(tipo, titulo, detalle) {
+  try {
+    const sheet = 'Novedades';
+    let previas = [];
+    try { previas = (await (await fetch(`${SHEETS_API_URL}?sheet=${sheet}`)).json()).data || []; } catch (e) { return; }
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const nueva = { id, tipo, titulo, detalle: detalle || '', createdAt: new Date().toISOString(), leido: false };
+    const todas = [nueva, ...previas].slice(0, 300);
+    await fetch(SHEETS_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ sheet, data: todas }) });
+  } catch (e) { console.error('No se pudo guardar la novedad:', e); }
+}
+
 module.exports = async function handler(req, res) {
   const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
   const chatId = String(process.env.TELEGRAM_CHAT_ID || '').trim();
@@ -91,9 +106,12 @@ module.exports = async function handler(req, res) {
       texto += `\n\n⏳ Por vencer (${porVencer.length}):\n`;
       texto += porVencer.slice(0, 25).map(x => `${nombre(x)} · ${x.dias === 0 ? 'vence hoy' : `en ${x.dias}d`}`).join('\n');
     }
-    texto += '\n\nAbre Win → 🔔 Reconsumos para sacarlos o escribirles.';
+    texto += '\n\nAbre el panel → Miembros VIP → Reconsumos para sacarlos o escribirles.';
 
     await telegram(token, chatId, texto);
+    if (vencidos.length) {
+      await agregarNovedad('vencidos', `${vencidos.length} miembro${vencidos.length > 1 ? 's' : ''} VIP con la membresía vencida`, 'Revísalos en Miembros VIP → Reconsumos para escribirles o sacarlos del grupo.');
+    }
 
     res.status(200).json({ ok: true, enviado: true, vencidos: vencidos.length, porVencer: porVencer.length });
   } catch (e) {

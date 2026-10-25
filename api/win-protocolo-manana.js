@@ -46,6 +46,22 @@ const PROTOCOLO_STEPS = [
 
 const norm = s => (s || '').toLowerCase().trim();
 
+// Novedades para la Bandeja del panel: solo situaciones (no cada envío). Se guardan en la hoja
+// "Novedades"; el panel las muestra y marca cuáles faltan por leer. Mejor esfuerzo: si falla, no
+// tumba el envío.
+async function agregarNovedad(tipo, titulo, detalle) {
+  try {
+    const sheet = 'Novedades';
+    let previas = [];
+    try { previas = (await (await fetch(`${SHEETS_API_URL}?sheet=${sheet}`)).json()).data || []; } catch (e) { return; }
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const nueva = { id, tipo, titulo, detalle: detalle || '', createdAt: new Date().toISOString(), leido: false };
+    const todas = [nueva, ...previas].slice(0, 300);
+    await fetch(SHEETS_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ sheet, data: todas }) });
+  } catch (e) { console.error('No se pudo guardar la novedad:', e); }
+}
+
+
 // Ecuador siempre es UTC-5, sin horario de verano -- no hace falta ninguna librería de zonas.
 function ecuadorDateStr() {
   return new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -155,6 +171,7 @@ module.exports = async function handler(req, res) {
       }
       sentSteps.add(norm(step.nombre));
       await setDedupeState(today, sentSteps);
+      if (sentSteps.size === PROTOCOLO_STEPS.length) await agregarNovedad('protocolo', 'Protocolo de la mañana completo', 'Ya salieron las 4 piezas del día (buenos días, recargas y retiros, beneficios y apuesta gratis).');
       res.status(200).json({ ok: true, skipped: false, paso: step.nombre });
       return;
     }
@@ -192,6 +209,15 @@ module.exports = async function handler(req, res) {
     }
 
     await setDedupeState(today, sentSteps);
+    if (sentSteps.size === PROTOCOLO_STEPS.length && enviadosAhora.length) {
+      await agregarNovedad('protocolo', 'Protocolo de la mañana enviado', 'Salieron las 4 piezas del día: buenos días, recargas y retiros, beneficios y apuesta gratis.');
+    } else if (fallidos.length || missing.length) {
+      const partes = [];
+      if (enviadosAhora.length) partes.push('Enviado: ' + enviadosAhora.join(', '));
+      if (fallidos.length) partes.push('Falló: ' + fallidos.map(f => f.paso).join(', '));
+      if (missing.length) partes.push('Falta guardar la publicidad: ' + missing.join(', '));
+      await agregarNovedad('alerta', 'El protocolo de la mañana quedó incompleto', partes.join(' · '));
+    }
     res.status(200).json({ ok: true, skipped: false, enviadosAhora, yaEstaban, missing, fallidos, totalSteps: PROTOCOLO_STEPS.length });
   } catch (e) {
     console.error('Error en el protocolo de la mañana:', e);
