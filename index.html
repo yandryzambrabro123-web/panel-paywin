@@ -1528,6 +1528,25 @@ function updateNavBadges(){
 
 
 
+// Vuelve a traer de Google Sheets los miembros (para ver los que entran por el link de registro).
+// Si falla la lectura, NO toca lo que ya se está mostrando.
+async function refreshVipGroup(key, title){
+  const ico = document.getElementById('refreshVipsIco');
+  const btn = document.getElementById('refreshVipsBtn');
+  if(btn) btn.disabled = true;
+  if(ico) ico.animate([{transform:'rotate(0)'},{transform:'rotate(360deg)'}], { duration: 800, iterations: Infinity });
+  try{
+    const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
+    const json = await res.json();
+    if(!Array.isArray(json.data)) throw new Error('Respuesta inválida');
+    state[key] = filtrarCorte(key, json.data.map(row => coerceRow(key, row)));
+  }catch(e){
+    console.error('Error actualizando miembros', e);
+    alert('No se pudo actualizar. Revisa tu conexión e intenta de nuevo.');
+  }
+  if(state.view === 'vips') renderVipGroup(key, title);
+}
+
 function renderVipGroup(key, title){
   const q = (state.vipSearch[key] || '').trim();
   const norm = t => String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -1546,6 +1565,7 @@ function renderVipGroup(key, title){
       </div>
       ${dateFilterHTML(key)}
       <div style="display:flex; gap:10px;">
+        <button class="btn secondary" id="refreshVipsBtn" title="Actualizar miembros" aria-label="Actualizar" style="width:42px; padding:0; height:42px; display:inline-flex; align-items:center; justify-content:center;"><svg id="refreshVipsIco" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
         <button class="btn secondary" id="copyVipRegLinkBtn">Copiar link de registro</button>
         <button class="btn secondary" id="exportVipBtn">Exportar CSV</button>
         <button class="btn" id="addVipBtn">+ Nuevo miembro</button>
@@ -1596,6 +1616,7 @@ function renderVipGroup(key, title){
     el.focus(); el.setSelectionRange(el.value.length, el.value.length);
   };
   document.getElementById('addVipBtn').onclick = ()=>openVipForm(key, rerender);
+  document.getElementById('refreshVipsBtn').onclick = ()=>refreshVipGroup(key, title);
   document.getElementById('copyVipRegLinkBtn').onclick = async (e)=>{
     const btn = e.currentTarget;
     try{

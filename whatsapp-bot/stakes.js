@@ -24,6 +24,9 @@ const HOJA_SECCIONES = 'SeccionesStakes';
 const TG_TOKEN = () => String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const TG_ADMIN = () => String(process.env.TELEGRAM_CHAT_ID || '').trim();
 
+// Mensaje de bienvenida que recibe por privado quien entra al canal del stake de pago.
+const MENSAJE_STAKE = (nombre) => `Hola${nombre ? ' ' + nombre : ''} 👋 ¿Qué tal?\n\nAcabas de adquirir el stake de pago de hoy. ¡Mucha suerte! 🍀\n\nRecuerda apostar siempre con responsabilidad y solo lo que puedas permitirte perder.`;
+
 const hoyEC = () => new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const nuevoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const soloDigitos = (s) => String(s || '').replace(/\D/g, '');
@@ -164,16 +167,20 @@ async function procesarUpdate(u) {
   if (u.chat_join_request) {
     const jr = u.chat_join_request;
     const usuario = normUser(jr.from && jr.from.username);
-    let ok = false;
+    let ok = false, regMatch = null;
     try {
       const hoy = hoyEC();
       const filas = await leerHoja(HOJA_REGISTROS);
       const limite48 = Date.now() - 48 * 3600e3;
-      ok = !!usuario && filas.some((f) => f.estado === 'aprobado' && new Date(f.resueltoAt || f.createdAt || 0).getTime() >= limite48 && normUser(f.telegram) === usuario);
+      regMatch = !!usuario && filas.find((f) => f.estado === 'aprobado' && new Date(f.resueltoAt || f.createdAt || 0).getTime() >= limite48 && normUser(f.telegram) === usuario);
+      ok = !!regMatch;
     } catch (e) { console.error('No pude revisar registros para la solicitud de ingreso:', e.message); }
     try {
       if (ok) {
         await tg('approveChatJoinRequest', { chat_id: jr.chat.id, user_id: jr.from.id });
+        // Mensaje de bienvenida por privado (Telegram deja escribirle a quien pidió entrar, hasta 5 minutos después)
+        try { await tg('sendMessage', { chat_id: jr.user_chat_id || jr.from.id, text: MENSAJE_STAKE(regMatch && regMatch.nombre) }); }
+        catch (e) { console.error('No pude mandar la bienvenida del stake:', e.message); }
         await tg('sendMessage', { chat_id: TG_ADMIN(), text: `✅ Entró al canal @${jr.from.username} (ya estaba aprobado).` }).catch(() => {});
       } else {
         const quien = `${jr.from.first_name || ''} ${jr.from.last_name || ''}`.trim() + (jr.from.username ? ` (@${jr.from.username})` : ' (sin usuario)');

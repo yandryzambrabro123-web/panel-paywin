@@ -35,6 +35,8 @@ const HOJA_REGISTROS = 'RegistrosVip';
 const HOJA_CONFIG = 'ConfigVip';
 const CORTE_MS = 1792930800000; // mismo corte que el panel (PANEL_CORTE_MS en index.html)
 const PLAN_MESES = { mensual: 1, trimestral: 3, anual: 12 };
+// Mensaje de bienvenida que recibe por Telegram quien entra al grupo VIP (cámbialo aquí si quieres otro texto).
+const MENSAJE_VIP = (nombre) => `Hola${nombre ? ' ' + nombre : ''} 👋 ¡Bienvenido al grupo VIP!\n\nDesde hoy recibes aquí nuestras apuestas. Te pedimos apostar siempre con responsabilidad y solo lo que puedas permitirte perder.\n\nCualquier duda, escríbenos al 0963852803.`;
 const TELEFONO_AGENCIA = '0963852803';
 const MAX_POR_DIA = 10;
 const HORA_SALIDA_MIN = 9 * 60; // 9:00 Ecuador
@@ -180,6 +182,19 @@ async function nombreBot() {
 }
 
 // Guarda el id de Telegram de la persona (en su registro y en su fila de VIPs) para poder sacarla y avisarle después.
+// Bienvenida por Telegram: una sola vez por registro. Solo le llega si la persona ya activó los avisos
+// (Telegram no deja que un bot le escriba primero a nadie); si todavía no, se manda cuando los active.
+async function enviarBienvenida(regId, userId) {
+  if (!regId || !userId) return;
+  let reg = null;
+  try { reg = (await H.leerHoja(HOJA_REGISTROS)).find((f) => String(f.id) === String(regId)); } catch (e) { return; }
+  if (!reg || reg.bienvenida === 'si' || reg.estado !== 'aprobado') return;
+  try {
+    await H.tg('sendMessage', { chat_id: userId, text: MENSAJE_VIP(reg.nombre) });
+    await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => String(f.id) === String(regId) ? { ...f, bienvenida: 'si' } : f));
+  } catch (e) { /* todavía no activó los avisos: se manda cuando lo haga */ }
+}
+
 async function vincularTelegram(regId, userId) {
   if (!regId || !userId) return;
   await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => String(f.id) === String(regId) ? { ...f, telegramId: String(userId) } : f));
@@ -204,12 +219,14 @@ function montar(app, stakes) {
       if (st && m.chat.type === 'private' && m.from) {
         await vincularTelegram(st[1], m.from.id);
         await H.tg('sendMessage', { chat_id: m.chat.id, text: '✅ Listo. Aquí te voy a avisar cuando tu membresía VIP esté por terminar.' }).catch(() => {});
+        await enviarBienvenida(st[1], m.from.id);
         return;
       }
     }
     const cm = u.chat_member;
     if (cm && cm.invite_link && /^vip:/.test(cm.invite_link.name || '') && ['member', 'administrator'].includes(cm.new_chat_member && cm.new_chat_member.status)) {
       await vincularTelegram(cm.invite_link.name.slice(4), cm.new_chat_member.user.id);
+      await enviarBienvenida(cm.invite_link.name.slice(4), cm.new_chat_member.user.id);
     }
   });
 
