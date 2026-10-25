@@ -23,6 +23,7 @@
 //   anotación en la Bandeja del panel. Medidas de seguridad:
 //     - Solo toca miembros creados DESPUÉS del corte del panel (los anteriores están "ocultos").
 //     - Máximo MAX_POR_DIA personas por día.
+//     - Al salir se ELIMINAN todos sus datos (fila de VIPs y registros); para volver tiene que registrarse de nuevo.
 //     - Si el bot no es admin del grupo o no tiene el id de Telegram de la persona, no marca nada
 //       y deja un aviso en la Bandeja.
 //     - Interruptor de emergencia: variable de Railway VIP_AUTO_OFF=1 (apaga las salidas automáticas).
@@ -102,10 +103,14 @@ async function procesarVencidos() {
         // 2) sacarlo del grupo (ban + unban: queda fuera pero puede volver a entrar si renueva)
         await H.tg('banChatMember', { chat_id: cfg.chatId, user_id: Number(tid) });
         await H.tg('unbanChatMember', { chat_id: cfg.chatId, user_id: Number(tid), only_if_banned: true });
-        // 3) marcarlo como removido (igual que el botón del panel)
-        await cambiarHojaSafe(HOJA_VIPS, (filas) => filas.map((f) => String(f.id) === String(v.id) ? { ...f, removidoVip: String(f.joinDate), status: 'inactive' } : f));
+        // 3) ELIMINAR todos sus datos del sistema (su fila de VIPs y sus registros). Si la persona
+        //    quiere volver, tiene que hacer todo el registro otra vez.
+        const ced = String(v.cedula || '').replace(/\D/g, '');
+        await cambiarHojaSafe(HOJA_VIPS, (filas) => filas.filter((f) => String(f.id) !== String(v.id)));
+        await cambiarHojaSafe(HOJA_REGISTROS, (filas) => filas.filter((f) => String(f.id) !== String(v.registroId || '') && !(ced && String(f.cedula || '').replace(/\D/g, '') === ced)));
         salidasHoy.n++;
-        await novedad('vip', `${nombre} salió del VIP por vencimiento`, 'Se le avisó por Telegram (si activó los avisos) y se le sacó del grupo VIP.');
+        const primero = String(v.name || '').split(' ')[0] || 'Un miembro';
+        await novedad('vip', `${primero} salió del VIP por vencimiento`, 'Se le avisó por Telegram (si activó los avisos), se le sacó del grupo y se borraron sus datos.');
       } catch (e) {
         console.error('Error sacando vencido', nombre, e.message);
         const n = (intentosFallidos.get(v.id) || 0) + 1;
@@ -119,13 +124,6 @@ async function procesarVencidos() {
 }
 
 // ---------- Registro público ----------
-async function buscarVip(cedula) {
-  const ced = String(cedula || '').replace(/\D/g, '');
-  if (ced.length < 8) return null;
-  const filas = (await H.leerHoja(HOJA_VIPS)).filter((v) => String(v.cedula || '').replace(/\D/g, '') === ced);
-  filas.sort((a, b) => idMs(b.id) - idMs(a.id));
-  return filas[0] || null;
-}
 
 const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Registro VIP</title><style>
@@ -141,27 +139,18 @@ const $=s=>document.querySelector(s);let timer=null;const box=$('#box');
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function hoy(){const d=new Date(Date.now()-5*3600e3);return d.toISOString().slice(0,10)}
 function form(){
-  box.innerHTML='<label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off"><div class="n" id="nota"></div>'+
-  '<div id="resto" style="display:none"><label>Nombre</label><input id="nom" autocomplete="given-name"><label>Apellido</label><input id="ape" autocomplete="family-name">'+
+  box.innerHTML='<label>Nombre</label><input id="nom" autocomplete="given-name"><label>Apellido</label><input id="ape" autocomplete="family-name">'+
+  '<label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off">'+
   '<label>Ciudad</label><input id="ciu" autocomplete="address-level2"><label>Correo electrónico</label><input id="cor" type="email" inputmode="email" autocapitalize="none" autocomplete="email">'+
   '<label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999"><label>Fecha de ingreso</label><input id="fec" disabled value="'+hoy()+'">'+
-  '<div class="e" id="err"></div><button id="env">Enviar registro</button></div>';
-  let t=null;$('#ced').oninput=e=>{const v=e.target.value.replace(/\\D/g,'');e.target.value=v;clearTimeout(t);$('#nota').textContent='';
-    if(v.length===10){t=setTimeout(()=>buscar(v),250)}else{$('#resto').style.display='none'}};
+  '<div class="e" id="err"></div><button id="env">Enviar registro</button>';
+  $('#ced').oninput=e=>{e.target.value=e.target.value.replace(/\\D/g,'')};
   $('#env').onclick=enviar;
-}
-async function buscar(c){
-  $('#nota').textContent='Buscando…';
-  try{const r=await fetch('/vip/cedula/'+c);const d=await r.json();
-    if(d.found){$('#nom').value=d.nombre||'';$('#ape').value=d.apellido||'';$('#ciu').value=d.ciudad||'';$('#cor').value=d.correo||'';$('#tel').value=d.telefono||'';$('#nota').textContent='Ya estás registrado. Revisa tus datos y envía.'}
-    else{['nom','ape','ciu','cor','tel'].forEach(i=>$('#'+i).value='');$('#nota').textContent='Primera vez: completa tus datos.'}
-    $('#resto').style.display='block';
-  }catch(e){$('#nota').textContent='No pude buscar. Completa tus datos.';$('#resto').style.display='block'}
 }
 async function enviar(){
   const b=$('#env'),er=$('#err');er.textContent='';
   const body={cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,ciudad:$('#ciu').value,correo:$('#cor').value,telefono:$('#tel').value};
-  if(!body.nombre.trim()||!body.apellido.trim()||!body.ciudad.trim()||!body.correo.includes('@')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
+  if(!body.nombre.trim()||!body.apellido.trim()||body.cedula.replace(/\\D/g,'').length!==10||!body.ciudad.trim()||!body.correo.includes('@')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
   b.disabled=true;b.textContent='Enviando…';
   try{const r=await fetch('/vip/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}
@@ -273,17 +262,6 @@ function montar(app, stakes) {
 
   app.get('/vip', (req, res) => { res.set('Cache-Control', 'no-store').type('html').send(PAGINA); });
 
-  app.get('/vip/cedula/:ced', async (req, res) => {
-    if (!H.limite(req, res, 3000, 10 * 60 * 1000)) return;
-    try {
-      const v = await buscarVip(req.params.ced);
-      if (!v) return res.json({ found: false });
-      const partes = String(v.name || '').trim().split(' ');
-      const correo = (String(v.notes || '').match(/Correo:\s*(\S+)/) || [])[1] || '';
-      res.json({ found: true, nombre: partes[0] || '', apellido: partes.slice(1).join(' '), ciudad: v.city || '', correo, telefono: v.contact || '' });
-    } catch (e) { res.json({ found: false }); }
-  });
-
   app.post('/vip/registro', async (req, res) => {
     if (!H.limite(req, res, 3000, 10 * 60 * 1000)) return;
     try {
@@ -295,7 +273,7 @@ function montar(app, stakes) {
       if (!nombre || !apellido || !ciudad) return res.status(400).json({ error: 'Completa nombre, apellido y ciudad.' });
       if (!/^\S+@\S+\.\S+$/.test(correo)) return res.status(400).json({ error: 'Revisa tu correo electrónico.' });
       if (telefono.length < 9 || telefono.length > 10) return res.status(400).json({ error: 'Revisa tu número de teléfono.' });
-      const previo = await buscarVip(cedula);
+      const previo = (await H.leerHoja(HOJA_VIPS)).some((v) => esVigente(v) && !removido(v) && String(v.cedula || '').replace(/\D/g, '') === cedula);
       const hoy = H.hoyEC();
       let reg = null, repetido = null;
       await H.cambiarHoja(HOJA_REGISTROS, (filas) => {
@@ -305,7 +283,7 @@ function montar(app, stakes) {
         return [...filas, reg];
       });
       if (repetido) return res.json({ id: repetido.id, repetido: true });
-      const texto = `🆕 <b>Registro VIP</b>\n\nNombre: <b>${H.esc(nombre)} ${H.esc(apellido)}</b>\nCédula: ${H.esc(cedula)}\nCiudad: ${H.esc(ciudad)}\nCorreo: ${H.esc(correo)}\nTeléfono: ${H.esc(telefono)}\nIngreso: ${hoy}\n${previo ? '🔁 Ya había estado antes (se renueva)' : '✨ Cliente nuevo'}\n\nAprueba con el plan que pagó:`;
+      const texto = `🆕 <b>Registro VIP</b>\n\nNombre: <b>${H.esc(nombre)} ${H.esc(apellido)}</b>\nCédula: ${H.esc(cedula)}\nCiudad: ${H.esc(ciudad)}\nCorreo: ${H.esc(correo)}\nTeléfono: ${H.esc(telefono)}\nIngreso: ${hoy}\n${previo ? '🔁 Esa cédula ya es miembro activo (se renueva)' : '✨ Nuevo'}\n\nAprueba con el plan que pagó:`;
       await H.tg('sendMessage', {
         chat_id: H.TG_ADMIN(), text: texto, parse_mode: 'HTML',
         reply_markup: { inline_keyboard: [[{ text: '✅ Mensual', callback_data: 'vp:' + reg.id + ':m' }, { text: '✅ Trimestral', callback_data: 'vp:' + reg.id + ':t' }, { text: '✅ Anual', callback_data: 'vp:' + reg.id + ':a' }], [{ text: '❌ Rechazar', callback_data: 'vr:' + reg.id }]] }
