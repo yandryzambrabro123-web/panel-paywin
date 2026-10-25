@@ -692,7 +692,7 @@
   #sidebar{
     position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); transform:translateX(-50%); z-index:45;
     width:auto; max-width:calc(100vw - 24px); padding:7px; border-radius:24px; border-right:none;
-    flex-direction:row; align-items:stretch; gap:2px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; scroll-snap-type:x proximity;
+    flex-direction:row; align-items:stretch; gap:2px; padding-top:12px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; scroll-snap-type:x proximity;
     background:var(--glass); border:1px solid var(--edge);
     -webkit-backdrop-filter:blur(18px) saturate(1.3); backdrop-filter:blur(18px) saturate(1.3);
     box-shadow:0 26px 56px -20px rgba(0,0,0,.95), 0 0 0 1px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.07);
@@ -702,9 +702,10 @@
   .nav-item{
     flex:0 0 auto; flex-direction:column; justify-content:center; gap:4px; min-width:62px; padding:9px 8px 7px;
     border-left:none; border-radius:17px; font-size:10.5px; font-weight:600; letter-spacing:.01em; color:var(--muted);
-    scroll-snap-align:center; text-shadow:none; box-shadow:none; transition:background .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease;
+    scroll-snap-align:center; text-shadow:none; box-shadow:none; transform:translateY(var(--ty,0px)) scale(var(--s,1)); transform-origin:50% 100%;
+    transition:background .18s ease, color .18s ease, transform .14s ease-out, box-shadow .18s ease;
   }
-  .nav-item:hover{ color:var(--text); background:rgba(255,255,255,.06); transform:translateY(-2px); text-shadow:none; }
+  .nav-item:hover{ color:var(--text); background:rgba(255,255,255,.06); text-shadow:none; }
   .nav-item.active{
     color:#1A1206; border-left:none; text-shadow:none;
     background:linear-gradient(180deg,#E7C98C,#C99B4A);
@@ -720,7 +721,8 @@
   .nav-item:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
 
   #main{ flex:1; width:100%; max-width:1380px; margin:0 auto; padding:88px 32px 132px; }
-  td.row-actions{ flex-wrap:wrap; min-width:230px; max-width:330px; }
+  td.row-actions{ display:table-cell; min-width:230px; max-width:330px; }
+  td.row-actions .btn{ margin:2px 6px 2px 0; }
   body.win-locked #main{ max-width:none; padding:0; margin:0; }
   body.win-locked .win-fullscreen{ padding:70px 16px 104px; }
 
@@ -766,7 +768,8 @@
     background:linear-gradient(180deg,#E7C98C,#CFA457); color:#1A1206;
     box-shadow:0 10px 24px -12px rgba(212,175,106,.9), inset 0 1px 0 rgba(255,255,255,.4);
   }
-  .btn:not(.secondary):not(.danger)::after{ display:none; }
+  .btn:not(.secondary):not(.danger)::after{ display:block; content:''; position:absolute; top:0; left:-60%; width:40%; height:100%; transform:skewX(-18deg); animation:none; background:linear-gradient(120deg, transparent, rgba(255,255,255,.55), transparent); transition:left .6s ease; pointer-events:none; }
+  .btn:not(.secondary):not(.danger):hover::after{ left:130%; }
   .btn:hover{ filter:none; box-shadow:0 14px 30px -12px rgba(212,175,106,1), inset 0 1px 0 rgba(255,255,255,.5); }
   .btn.secondary{ background:rgba(255,255,255,.05); color:var(--text); border:1px solid var(--border); box-shadow:none; }
   .btn.secondary:hover{ background:rgba(255,255,255,.09); border-color:rgba(212,175,106,.4); box-shadow:none; }
@@ -807,6 +810,34 @@
   .win-icon-badge{ top:3px; right:8px; }
   .win-corner-icons{ top:calc(env(safe-area-inset-top, 0px) + 14px); }
   @media (max-width:1180px){ .win-hud{ display:none; } }
+
+
+  /* ---------- Efectos suaves (v2.1) ---------- */
+  .score-cell, .finance-acc-card{ position:relative; }
+  .card > .score-cell{ flex:0 0 auto !important; min-width:140px; padding:14px 18px; border-radius:16px; background:rgba(255,255,255,.03); box-shadow:none; }
+  .card > .score-cell::before{ left:18px; right:18px; }
+  /* luz que sigue al cursor dentro de cada tarjeta */
+  .card::after, .score-cell::after, .finance-acc-card::after{
+    content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none; opacity:0; transition:opacity .3s ease;
+    background:radial-gradient(240px circle at var(--mx,50%) var(--my,0%), rgba(212,175,106,.15), transparent 65%);
+  }
+  .card:hover::after, .score-cell:hover::after, .finance-acc-card:hover::after{ opacity:1; }
+  tbody tr:hover td:first-child{ box-shadow:inset 2px 0 0 var(--accent); }
+  /* aurora lenta de fondo + halo que sigue al cursor */
+  body::after{
+    content:''; position:fixed; inset:-20%; z-index:-1; pointer-events:none; will-change:transform;
+    background:radial-gradient(40% 35% at 20% 25%, rgba(212,175,106,.12), transparent 70%), radial-gradient(35% 30% at 80% 70%, rgba(255,196,120,.08), transparent 70%);
+    animation:auroraDrift 30s ease-in-out infinite alternate;
+  }
+  @keyframes auroraDrift{ from{ transform:translate3d(-3%,-2%,0) scale(1); } to{ transform:translate3d(4%,3%,0) scale(1.08); } }
+  #cursorGlow{
+    position:fixed; left:0; top:0; width:560px; height:560px; margin:-280px 0 0 -280px; border-radius:50%; z-index:-1; pointer-events:none;
+    background:radial-gradient(circle, rgba(212,175,106,.09), transparent 62%); will-change:transform;
+  }
+  /* entrada suave al cambiar de sección */
+  #main.view-enter{ animation:viewIn .3s ease-out; }
+  @keyframes viewIn{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:none; } }
+  @media (prefers-reduced-motion: reduce){ body::after{ animation:none; } #main.view-enter{ animation:none; } .nav-item{ transform:none !important; } }
 
   /* ---------- Celular ---------- */
   @media (max-width:860px){
@@ -1054,6 +1085,7 @@ async function loadAll(){
   await migrateStakeSales();
   state.loaded = true;
   render();
+  animateCounts(document.getElementById('main'));
 }
 
 // IMPORTANTE (varios dispositivos a la vez): antes esto mandaba SIEMPRE el arreglo completo
@@ -1169,6 +1201,57 @@ document.querySelectorAll('.nav-icon[data-ico]').forEach(el=>{
   el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAV_ICON_PATHS[el.dataset.ico]||''}</svg>`;
 });
 
+// ---------- Efectos suaves: lupa del dock, luz del cursor, números que suben, entrada de sección ----------
+(function(){
+  const fino = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  if(fino){
+    const dock = document.getElementById('sidebar');
+    const items = ()=>Array.prototype.slice.call(dock.querySelectorAll('.nav-item'));
+    dock.addEventListener('pointermove', (e)=>{
+      if(window.innerWidth <= 860) return;
+      items().forEach(it=>{
+        const r = it.getBoundingClientRect(), c = r.left + r.width/2;
+        const k = Math.max(0, 1 - Math.abs(e.clientX - c)/120), q = k*k;
+        it.style.setProperty('--s', (1 + 0.2*q).toFixed(3));
+        it.style.setProperty('--ty', (-5*q).toFixed(1) + 'px');
+      });
+    }, { passive:true });
+    dock.addEventListener('pointerleave', ()=>items().forEach(it=>{ it.style.removeProperty('--s'); it.style.removeProperty('--ty'); }));
+    const glow = document.createElement('div'); glow.id = 'cursorGlow'; document.body.appendChild(glow);
+    let gx = window.innerWidth/2, gy = window.innerHeight*0.4, raf = 0;
+    glow.style.transform = `translate3d(${gx}px,${gy}px,0)`;
+    window.addEventListener('pointermove', (e)=>{
+      gx = e.clientX; gy = e.clientY;
+      if(!raf) raf = requestAnimationFrame(()=>{ raf = 0; glow.style.transform = `translate3d(${gx}px,${gy}px,0)`; });
+      const t = e.target && e.target.closest ? e.target.closest('.card, .score-cell, .finance-acc-card') : null;
+      if(t){ const r = t.getBoundingClientRect(); t.style.setProperty('--mx', (e.clientX - r.left) + 'px'); t.style.setProperty('--my', (e.clientY - r.top) + 'px'); }
+    }, { passive:true });
+  }
+})();
+// Los números grandes del tablero suben de 0 hasta su valor (una vez por cambio de sección).
+function animateCounts(root){
+  if(!root || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+  root.querySelectorAll('.score-value').forEach(el=>{
+    const txt = el.textContent.trim();
+    const m = txt.match(/^(\D*?)(\d[\d,]*(?:\.\d+)?)(\D*)$/);
+    if(!m) return;
+    const target = parseFloat(m[2].replace(/,/g,'')); if(!isFinite(target) || target === 0) return;
+    const dec = (m[2].split('.')[1] || '').length, t0 = performance.now(), dur = 650;
+    const step = (now)=>{
+      const k = Math.min(1, (now - t0)/dur), v = target * (1 - Math.pow(1 - k, 3));
+      if(k < 1){ el.textContent = m[1] + v.toLocaleString('en-US', { minimumFractionDigits:dec, maximumFractionDigits:dec }) + m[3]; requestAnimationFrame(step); }
+      else el.textContent = txt;
+    };
+    requestAnimationFrame(step);
+  });
+}
+function winEntradaSeccion(){
+  const m = document.getElementById('main'); if(!m) return;
+  m.classList.remove('view-enter'); void m.offsetWidth; m.classList.add('view-enter');
+  setTimeout(()=>m.classList.remove('view-enter'), 400);
+  animateCounts(m);
+}
+
 function setView(v){
   const allowed = allowedViewsForRole();
   if(allowed && !allowed.includes(v)) return;
@@ -1179,6 +1262,7 @@ function setView(v){
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active', el.dataset.view===v));
   const _act = document.querySelector('.nav-item.active'); if(_act && _act.scrollIntoView){ try{ _act.scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' }); }catch(e){} }
   render();
+  winEntradaSeccion();
 }
 // Deja visible en el menú solo lo que el rol actual puede ver.
 function applyRoleToNav(){
