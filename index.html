@@ -1033,6 +1033,8 @@ function renderDashboard(){
 async function borronYCuentaNueva(){
   const MARCA = 'borron-2026-10-25';
   const CLAVES_BORRON = ['vips','freeBets','vipBets','liveBets','gifts','financeMovements'];
+  // Caducidad: solo puede correr HOY (25-oct-2026, hora de Ecuador). Desde mañana queda inerte aunque no se haya abierto el panel hoy.
+  if(new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10) !== '2026-10-25') return;
   if(!state.loaded || CLAVES_BORRON.some(k=>(state.failedKeys||[]).includes(k))) return; // si algo no cargó bien, NO se hace nada
   try{
     const m = (await (await fetch(`${SHEETS_API_URL}?sheet=ReinicioPanel&t=${Date.now()}`)).json()).data || [];
