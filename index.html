@@ -1049,10 +1049,10 @@ function coerceRow(key, row){
     // guardado como número (ej. un nombre que es puro dígitos), JSON.parse los trae como number,
     // no como string -- y un .trim() más adelante (ver getKnownBuyers) tronaba con "no es una
     // función" sobre ese valor, dejando sin cargar a TODOS los compradores, no solo a ese.
-    return { id:String(row.id||''), sectionId:String(row.sectionId||''), day:row.day||'', name:String(row.name||''), phone:String(row.phone||''), amount:Number(row.amount)||0, status:row.status||'paid' };
+    return { id:String(row.id||''), sectionId:String(row.sectionId||''), day:row.day||'', name:String(row.name||''), phone:String(row.phone||''), amount:Number(row.amount)||0, status:row.status||'paid', cedula:String(row.cedula||''), telegram:String(row.telegram||''), apellido:String(row.apellido||'') };
   }
   if(key === 'stakeSections'){
-    return { id:String(row.id||''), day:row.day||'', title:row.title||'Stake', price:Number(row.price)||0 };
+    return { id:String(row.id||''), day:row.day||'', title:row.title||'Stake', price:Number(row.price)||0, telegramLink:String(row.telegramLink||'') };
   }
   if(key === 'stakes'){
     return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending', imageUrl:String(row.imageUrl||'') };
@@ -2066,6 +2066,7 @@ function renderStakeSales(){
           <button class="btn danger small" id="delSectionBtn">Eliminar sección</button>
         </div>`}
       </div>
+      ${cur.telegramLink ? `<div class="card" style="margin-bottom:16px; font-size:13px; word-break:break-all;"><span style="color:var(--muted);">Canal de Telegram de esta sección:</span> <a href="${esc(cur.telegramLink)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(cur.telegramLink)}</a></div>` : ''}
       <div class="card">
         ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Monto</th><th>Estado</th>${readOnly ? '' : '<th></th>'}</tr></thead><tbody>
           ${rows.map(s=>`<tr>
@@ -5321,6 +5322,7 @@ function openStakePagoUploadModal(){
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="field"><label>Link del canal de Telegram de hoy</label><input id="f-stakeTgLink" placeholder="https://t.me/+..." autocomplete="off"><div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se guarda en la sección de hoy en Venta de Stakes. Es el que recibirá cada cliente que apruebes.</div></div>
     <div class="field"><label>¿A qué grupo va la publicidad?</label>${winGroupPickerHTML('f-stakeGroups', ['Gratis 1','Gratis 2','Gratis 3'])}</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -5331,11 +5333,30 @@ function openStakePagoUploadModal(){
   document.getElementById('submitStakePagoBtn').onclick = submitStakePago;
 }
 
+const STAKE_PAGO_PRECIO = 20;
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+async function winCrearSeccionStakePagoHoy(tgLink){
+  const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
+  const [y,m,d] = hoy.split('-').map(Number);
+  const titulo = `Stake de pago ${d} de ${MESES_ES[m-1]}`;
+  let sec = state.stakeSections.find(x=>x.day===hoy && x.title===titulo);
+  if(sec){
+    if(tgLink) sec.telegramLink = tgLink;
+  } else {
+    sec = { id: uid(), day: hoy, title: titulo, price: STAKE_PAGO_PRECIO, telegramLink: tgLink || '' };
+    state.stakeSections.push(sec);
+  }
+  state.stakeSectionId = sec.id;
+  await persist('stakeSections');
+  winNovedad && winNovedad('stake', `Sección creada: ${titulo}`, `Precio $${STAKE_PAGO_PRECIO}. ${sec.telegramLink ? 'Con link de Telegram.' : 'Sin link de Telegram todavía.'}`);
+}
+
 async function submitStakePago(){
   const grupos = getCheckedWinGroups('f-stakeGroups');
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   if(!winPendingFile){ alert('Sube la captura primero.'); return; }
   const file = winPendingFile;
+  const tgLink = ((document.getElementById('f-stakeTgLink')||{}).value || '').trim();
   openModal(`<h3>Leyendo...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
   try{
     const { base64, mediaType, previewUrl } = await fileToCompressedImage(file);
@@ -5350,6 +5371,9 @@ async function submitStakePago(){
     const hora = result.hora || '-';
     const valor = result.valor || '-';
     const caption = STAKE_PAGO_TEXT_BASE.replace('{cuota}', cuota).replace('{hora}', hora).replace('{valor}', valor);
+
+    // Sección de venta del día (una sola por fecha): "Stake de pago 25 de octubre" a $20.
+    try{ await winCrearSeccionStakePagoHoy(tgLink); }catch(e){ console.error(e); alert('No pude crear la sección de hoy en Venta de Stakes. Créala a mano.'); }
 
     // Ya NO se mandan avisos automáticos a los compradores por el bot (eso causaba bloqueos del
     // WhatsApp). Si quieres avisarles uno por uno: Win -> 📢 Listas de difusión -> Stakes -> 💬 Manual.
