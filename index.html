@@ -6544,6 +6544,30 @@ function renderFactory(){
   initPayPanel();
 }
 
+// Una selección puede venir como objeto {partido,pick,cuota,hora} o como texto "Partido: pick @cuota".
+function payNormSel(s){
+  if(s && typeof s === 'object') return { partido: s.partido||'', pick: s.pick||s.seleccion||'', cuota: s.cuota||'', hora: s.hora||'' };
+  const t = String(s||'');
+  const m = t.match(/^(.*?):\s*(.*?)\s*@\s*([\d.,]+)\s*$/);
+  return m ? { partido:m[1], pick:m[2], cuota:m[3], hora:'' } : { partido:'', pick:t, cuota:'', hora:'' };
+}
+function payLineasHTML(x){
+  const sel = (x.selecciones||[]).map(payNormSel);
+  if(!sel.length) return `<div style="font-size:14px; margin-bottom:4px;">${esc(x.pick||'')}</div>`;
+  return sel.map((l,i)=>`
+    <div style="display:flex; gap:10px; align-items:baseline; padding:8px 0; border-top:1px solid var(--border);">
+      <div style="flex:none; font-weight:700; color:var(--gold, #D4AF6A); min-width:58px;">Línea ${i+1}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:13px; color:var(--muted);">${esc(l.partido)}${l.hora ? ' · ' + esc(l.hora) : ''}</div>
+        <div style="font-size:14.5px; font-weight:600;">${esc(l.pick)}</div>
+      </div>
+      <div style="flex:none; font-weight:700;">@ ${esc(String(l.cuota))}</div>
+    </div>`).join('') + `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--border); font-weight:800;"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${esc(String(x.cuota||''))}</span></div>`;
+}
+function payTextoSel(x){
+  return (x.selecciones||[]).map(payNormSel).map((l,i)=>`Línea ${i+1}: ${l.partido ? l.partido + ' — ' : ''}${l.pick} @${l.cuota}`).join('\n');
+}
+
 const PAY_CUPOS = {
   'VIP':          { min:1.80, max:2.00, grupos:['VIP'] },
   'Gratis':       { min:1.75, max:1.90, grupos:['Gratis 1','Gratis 2'] },
@@ -6588,8 +6612,7 @@ async function cargarPayAuto(){
         <strong>${esc(x.cupo||'Pick')} · ${esc(x.partido||'')}</strong><span style="color:var(--gold, #D4AF6A); font-weight:700;">@ ${esc(String(x.cuota||''))}</span>
       </div>
       <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
-      <div style="font-size:14px; margin-bottom:4px;">${esc(x.pick||'')}</div>
-      ${x.selecciones.length ? `<div style="font-size:12.5px; color:var(--muted);">${x.selecciones.map(esc).join('<br>')}</div>` : ''}
+      ${payLineasHTML(x)}
       <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
       <button class="btn" data-pay-auto="${i}" type="button">La tomo</button>
     </div>`).join('');
@@ -6622,8 +6645,7 @@ function pintarPay(){
         <strong>${esc(x.partido||'')}</strong><span style="color:var(--gold, #D4AF6A); font-weight:700;">@ ${esc(String(x.cuota||''))}</span>
       </div>
       <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
-      <div style="font-size:14px; margin-bottom:4px;">${esc(x.pick||'')}</div>
-      ${(x.selecciones||[]).length ? `<div style="font-size:12.5px; color:var(--muted);">${x.selecciones.map(esc).join(' + ')}</div>` : ''}
+      ${payLineasHTML(x)}
       <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
       <button class="btn" data-pay-tomar="${i}" type="button">La tomo</button>
     </div>`).join('');
@@ -6633,8 +6655,8 @@ function pintarPay(){
 let payChatMsgs = [], payChatBusy = false, payRec = null, payRecChunks = [], payStream = null, payAudioEl = null, payVozOn = true;
 function payChatContexto(){
   const l = [];
-  (payAutoLista||[]).slice(0,6).forEach(x=>l.push(`[${x.cupo||'Pick'}] ${x.partido||''} | ${x.pick||''} | cuota ${x.cuota||''} | ${(x.selecciones||[]).join(' + ')} | ${x.analisis||''}`));
-  (paySugerencias||[]).slice(0,5).forEach(x=>l.push(`[${x.cupo||'Pick'}] ${x.partido||''} | ${x.pick||''} | cuota ${x.cuota||''} | ${(x.selecciones||[]).join(' + ')} | ${x.analisis||''}`));
+  (payAutoLista||[]).slice(0,6).forEach(x=>l.push(`[${x.cupo||'Pick'}] ${x.partido||''} | ${x.pick||''} | cuota ${x.cuota||''} | ${payTextoSel(x).replace(/\n/g,' ; ')} | ${x.analisis||''}`));
+  (paySugerencias||[]).slice(0,5).forEach(x=>l.push(`[${x.cupo||'Pick'}] ${x.partido||''} | ${x.pick||''} | cuota ${x.cuota||''} | ${payTextoSel(x).replace(/\n/g,' ; ')} | ${x.analisis||''}`));
   return l.join('\n');
 }
 function payOrb(estado, texto){
@@ -6766,7 +6788,7 @@ async function payMicToggle(){
 
 function tomarPay(i){
   const x = typeof i === 'object' ? i : paySugerencias[i]; if(!x) return;
-  const texto = `${x.partido||''} — ${x.pick||''}${(x.selecciones||[]).length ? ' (' + x.selecciones.join(' + ') + ')' : ''} @ ${x.cuota||''}`;
+  const texto = (x.selecciones||[]).length ? `${payTextoSel(x)}\nCuota total: @${x.cuota||''}` : `${x.partido||''} — ${x.pick||''} @ ${x.cuota||''}`;
   const cfg = PAY_CUPOS[x.cupo] || {};
   if(x.cupo === 'Regalito'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openRegalitoDiaModal(); return; }
   if(x.cupo === 'Stake de pago'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openStakePagoUploadModal(); return; }

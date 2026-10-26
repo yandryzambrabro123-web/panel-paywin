@@ -71,32 +71,50 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
 // ---------- Pay: analista deportivo de la Fábrica de apuestas ----------
 // modo "pay": { modo:'pay', cupo, cuotaMin, cuotaMax, cantidad, instruccion? } -> { sugerencias:[...], fuente }
 // Con ODDS_API_KEY (the-odds-api.com) usa cuotas reales; sin ella, busca los próximos partidos en la web.
-const PAY_LIGAS = (process.env.ODDS_SPORTS || 'soccer_spain_la_liga,soccer_epl,soccer_uefa_champs_league,basketball_nba').split(',');
+// Deportes y ligas por prioridad (se usan las que estén activas hoy en The Odds API, hasta ODDS_MAX_LIGAS).
+// Se puede fijar una lista propia con la variable ODDS_SPORTS en Vercel (separada por comas).
+const PAY_PRIORIDAD = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'basketball_nba', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_europa_league', 'soccer_conmebol_copa_libertadores', 'soccer_brazil_campeonato', 'soccer_argentina_primera_division', 'soccer_mexico_ligamx', 'soccer_usa_mls', 'tennis_atp', 'tennis_wta', 'mma_mixed_martial_arts', 'basketball_euroleague', 'icehockey_nhl', 'baseball_mlb', 'americanfootball_nfl', 'soccer_netherlands_eredivisie', 'soccer_portugal_primeira_liga', 'soccer_turkey_super_league', 'soccer_efl_champ', 'soccer_colombia_primera_a', 'soccer_chile_campeonato'];
+const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 10;
 
-// Caché de 30 min: cada consulta gasta créditos del plan (500 al mes en el gratis).
+// Caché de 3 horas: cada consulta gasta créditos del plan (500 al mes en el gratis).
 let cacheCuotas = { t: 0, datos: null };
 async function cuotasReales() {
   const key = process.env.ODDS_API_KEY;
   if (!key) return null;
-  if (cacheCuotas.datos && Date.now() - cacheCuotas.t < 30 * 60 * 1000) return cacheCuotas.datos;
-  const eventos = [];
-  for (const liga of PAY_LIGAS) {
+  if (cacheCuotas.datos && Date.now() - cacheCuotas.t < 3 * 3600 * 1000) return cacheCuotas.datos;
+  // Lista de deportes activos hoy (esta consulta no gasta créditos)
+  let ligas = [];
+  if (process.env.ODDS_SPORTS) ligas = process.env.ODDS_SPORTS.split(',').map((x) => x.trim()).filter(Boolean);
+  else {
     try {
-      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=h2h,totals&oddsFormat=decimal`);
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${key}`);
+      const activos = r.ok ? (await r.json()).filter((x) => x.active && !x.has_outrights).map((x) => x.key) : [];
+      for (const p of PAY_PRIORIDAD) for (const k of activos) if ((k === p || k.startsWith(p + '_')) && !ligas.includes(k)) ligas.push(k);
+    } catch (e) { /* sin lista: se usan las principales */ }
+    if (!ligas.length) ligas = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'basketball_nba'];
+  }
+  ligas = ligas.slice(0, PAY_MAX_LIGAS);
+  const limite = Date.now() + 40 * 3600 * 1000; // solo partidos de las próximas 40 horas
+  const eventos = [];
+  for (const liga of ligas) {
+    try {
+      const mercados = /^(soccer|basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals' : 'h2h';
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${mercados}&oddsFormat=decimal`);
       if (!r.ok) continue;
       const lista = await r.json();
       for (const e of lista) {
-        const mercados = {};
+        if (Date.parse(e.commence_time) > limite) continue;
+        const mk = {};
         for (const b of e.bookmakers || []) for (const m of b.markets || []) for (const o of m.outcomes || []) {
           const k = `${m.key}|${o.name}${o.point != null ? ' ' + o.point : ''}`;
-          (mercados[k] = mercados[k] || []).push(o.price);
+          (mk[k] = mk[k] || []).push(o.price);
         }
-        const resumen = Object.entries(mercados).map(([k, v]) => `${k}: ${(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2)}`);
+        const resumen = Object.entries(mk).map(([k, v]) => `${k}: ${(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2)}`);
         eventos.push(`${liga} | ${e.home_team} vs ${e.away_team} | ${e.commence_time} | ${resumen.join(' ; ')}`);
       }
     } catch (e) { /* esa liga no respondió: se sigue con las demás */ }
   }
-  cacheCuotas = { t: Date.now(), datos: eventos.slice(0, 80) };
+  cacheCuotas = { t: Date.now(), datos: eventos.slice(0, 140) };
   return cacheCuotas.datos;
 }
 
@@ -157,12 +175,12 @@ async function modoPay(apiKey, body, res) {
   const conDatos = datos && datos.length;
   const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). Tu trabajo es armar apuestas de BAJO RIESGO para un cupo concreto, con análisis breve y honesto. El dueño revisa y analiza cada pick antes de apostar.
 Estilo de apuesta (obligatorio): COMBINADAS de selecciones seguras. Cada selección individual debe tener cuota entre 1.15 y 1.50 (mejor 1.20 a 1.40). Elige cuántas selecciones (2 a 5) para que la cuota TOTAL (el producto de las cuotas) quede entre ${cuotaMin} y ${cuotaMax}. Muestra la cuota de cada selección y la cuota total.
-Deportes y mercados que puedes usar, todos: fútbol (goles, corners, tarjetas, remates, faltas, ganador, doble oportunidad), baloncesto/NBA (puntos totales, puntos/rebotes/asistencias de jugador), tenis (ganador, sets, juegos/puntos), tenis de mesa (total de puntos del partido, por ejemplo más de 74.5), UFC/MMA, e-sports. Mezcla deportes si eso baja el riesgo.
+Deportes y mercados que puedes usar, todos: fútbol (goles, corners, tarjetas, remates, faltas, ganador, doble oportunidad), baloncesto/NBA (puntos totales, puntos/rebotes/asistencias de jugador), tenis (ganador, sets, juegos/puntos), tenis de mesa (total de puntos del partido, por ejemplo más de 74.5), UFC/MMA, e-sports. Usa VARIEDAD de deportes y ligas de todo el mundo (no te quedes en un solo deporte ni en una sola liga); mezcla deportes si eso baja el riesgo. Si en los datos hay fútbol, tenis, UFC u otros deportes, inclúyelos, no solo NBA.
 Reglas:
 - Solo partidos que se juegan en las próximas 36 horas y que existan de verdad (en los datos${conDatos ? ' que te doy o' : ''} que encuentres buscando en la web). NUNCA inventes partidos, horarios, líneas ni cuotas. Si no confirmas una cuota, di que es aproximada.
 - Baja el riesgo: prefiere líneas con margen amplio (por ejemplo un total que el equipo o jugador supera con holgura en sus últimos partidos), evita partidos con bajas importantes, rotaciones, finales parejas o información dudosa. Si una selección no te convence, no la pongas.
 - Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
-- Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de textos, uno por selección, con partido, línea y cuota, ej. "Lakers vs Suns: más de 215.5 puntos @1.30")${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
+- Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de OBJETOS, uno por línea, cada uno con: partido ("Local vs Visitante"), pick (la selección clara, ej. "Más de 215.5 puntos" o "Gana Sevilla"), cuota (número) y hora (hora de Ecuador))${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
   const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Dame ${cantidad} combinada(s) distintas.`}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web los partidos de hoy y mañana con sus cuotas aproximadas.'}`;
   const payload = { model: 'claude-sonnet-5', max_tokens: 6000, system, messages: [{ role: 'user', content: userMsg }] };
   // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
