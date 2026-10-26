@@ -71,11 +71,14 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
 // ---------- Pay: analista deportivo de la Fábrica de apuestas ----------
 // modo "pay": { modo:'pay', cupo, cuotaMin, cuotaMax, cantidad, instruccion? } -> { sugerencias:[...], fuente }
 // Con ODDS_API_KEY (the-odds-api.com) usa cuotas reales; sin ella, busca los próximos partidos en la web.
-const PAY_LIGAS = (process.env.ODDS_SPORTS || 'soccer_epl,soccer_spain_la_liga,soccer_italy_serie_a,soccer_germany_bundesliga,soccer_france_ligue_one,soccer_uefa_champs_league,soccer_conmebol_libertadores,soccer_brazil_campeonato,soccer_argentina_primera_division,basketball_nba').split(',');
+const PAY_LIGAS = (process.env.ODDS_SPORTS || 'soccer_spain_la_liga,soccer_epl,soccer_uefa_champs_league').split(',');
 
+// Caché de 30 min: cada consulta gasta créditos del plan (500 al mes en el gratis).
+let cacheCuotas = { t: 0, datos: null };
 async function cuotasReales() {
   const key = process.env.ODDS_API_KEY;
   if (!key) return null;
+  if (cacheCuotas.datos && Date.now() - cacheCuotas.t < 30 * 60 * 1000) return cacheCuotas.datos;
   const eventos = [];
   for (const liga of PAY_LIGAS) {
     try {
@@ -93,7 +96,8 @@ async function cuotasReales() {
       }
     } catch (e) { /* esa liga no respondió: se sigue con las demás */ }
   }
-  return eventos.slice(0, 80);
+  cacheCuotas = { t: Date.now(), datos: eventos.slice(0, 80) };
+  return cacheCuotas.datos;
 }
 
 async function modoPay(apiKey, body, res) {
