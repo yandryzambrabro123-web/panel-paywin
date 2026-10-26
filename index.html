@@ -5364,7 +5364,7 @@ async function submitCollage(opts){
     try{
       const res2 = await withTimeout(fetch('/api/win-redactar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefono: WIN_TELEFONO, kind: 'collage', destino: grupos.join(', ') })
+        body: JSON.stringify({ telefono: winTelPara(grupos), kind: 'collage', destino: grupos.join(', ') })
       }), 20000);
       const data2 = await res2.json().catch(()=>({}));
       if(data2 && data2.caption) caption = data2.caption;
@@ -5600,7 +5600,7 @@ async function submitPartidosDia(){
     const thumbs = await Promise.all(winPartidosFiles.map(f=>fileToThumbnail(f).catch(()=>'')));
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ telefono: WIN_TELEFONO, kind: 'partidos_dia', destino: grupos.join(', '), images })
+      body: JSON.stringify({ telefono: winTelPara(grupos), kind: 'partidos_dia', destino: grupos.join(', '), images })
     });
     const result = await res.json().catch(()=>({}));
     const caption = (result && result.caption) || 'Estos son los partidos de hoy. 🔥⚽';
@@ -5709,7 +5709,7 @@ async function submitWinBet(kind, opts){
     const thumb = censurada ? censurada.thumb : await fileToThumbnail(winPendingFile).catch(()=> '');
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ telefono: WIN_TELEFONO, kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType })
+      body: JSON.stringify({ telefono: winTelPara(grupos), kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType })
     });
     const result = await res.json();
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
@@ -5860,6 +5860,9 @@ async function openWinGanadasAyerModal(){
 // en api/win-redactar.js) y, por si el texto sale sin él (o lo editas), aquí se agrega uno
 // estándar al final. No aplica a los regalitos ni a los mensajes de difusión uno a uno.
 const WIN_TELEFONO = '0987264212';
+// Si el texto va SOLO a grupos VIP, no lleva CTA ("entra al VIP", teléfono): ya están dentro.
+const winSoloVip = (g)=>{ const l = Array.isArray(g) ? g : String(g||'').split(','); const n = l.map(x=>String(x).trim()).filter(Boolean); return n.length > 0 && n.every(x=>/vip/i.test(x)); };
+const winTelPara = (g)=> winSoloVip(g) ? '' : WIN_TELEFONO;
 const WIN_CTA_POR_TIPO = {
   nueva_apuesta: n => `📲 ¿Quieres entrar al VIP? Escríbenos al ${n}`,
   ganada: n => `📲 Súmate y gana con nosotros: escríbenos al ${n}`,
@@ -5868,8 +5871,8 @@ const WIN_CTA_POR_TIPO = {
   stake_pago: n => `📲 Pide tu stake escribiéndonos al ${n}`,
   contenido: n => `📲 Escríbenos al ${n}`
 };
-function winAsegurarCTA(texto, kind){
-  const tel = String(WIN_TELEFONO || '').trim();
+function winAsegurarCTA(texto, kind, grupos){
+  const tel = winSoloVip(grupos) ? '' : String(WIN_TELEFONO || '').trim();
   const t = String(texto || '').trim();
   if(!tel || !t || kind === 'regalito') return t;
   const digitos = tel.replace(/\D/g, '');
@@ -5900,7 +5903,7 @@ async function winRegenerateCaption(redactCtx, ajuste){
   const btn = document.getElementById('winCaptionRegenBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Generando...'; }
   try{
-    const bodyReq = { kind: redactCtx.kind, destino: redactCtx.destino, code: redactCtx.code, anterior, telefono: WIN_TELEFONO };
+    const bodyReq = { kind: redactCtx.kind, destino: redactCtx.destino, code: redactCtx.code, anterior, telefono: winTelPara(redactCtx.destino) };
     if(ajuste) bodyReq.ajuste = ajuste;
     if(redactCtx.images) bodyReq.images = redactCtx.images;
     else if(redactCtx.imageBase64) { bodyReq.imageBase64 = redactCtx.imageBase64; bodyReq.mediaType = redactCtx.mediaType; }
@@ -5910,7 +5913,7 @@ async function winRegenerateCaption(redactCtx, ajuste){
     }), 20000);
     const data = await res.json().catch(()=>({}));
     if(!res.ok || !data.caption) throw new Error((data && data.error) || 'No se pudo generar el texto.');
-    if(box) box.value = winAsegurarCTA(data.caption, redactCtx.kind);
+    if(box) box.value = winAsegurarCTA(data.caption, redactCtx.kind, redactCtx.destino);
   }catch(e){
     console.error(e);
     alert('No se pudo generar otro texto. Intenta de nuevo.');
@@ -6084,7 +6087,7 @@ async function winMarcarGanada(key, id, invertido, cobrado, sendImage){
 }
 
 function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCtx, onBack){
-  caption = winAsegurarCTA(caption, kind);
+  caption = winAsegurarCTA(caption, kind, grupos);
   let winRegistrado = false; // se registra una sola vez por pantalla, aunque mandes a varios grupos
   const groupButtonsHTML = grupos.map((g, i) => {
     const jid = winGroupJid(g);
@@ -6190,6 +6193,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       if(link) window.open(link, '_blank');
       else alert(`Todavía no tengo el link de "${grupo}". El texto ya quedó copiado -- mándalo a mano por esta vez.`);
       pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado').then(()=>persist('winOutbox'));
+      if(kind === 'nueva_apuesta') payGuardarEnvio(finalCaption);
       winRegistrarSiToca(finalCaption);
       btn.textContent = link ? 'Copiado y grupo abierto ✓' : 'Texto copiado ✓';
       btn.disabled = true;
@@ -6220,6 +6224,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
         if(!res.ok || !result.ok) throw new Error(result.error || 'No se pudo mandar.');
         await pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado');
         await persist('winOutbox');
+        if(kind === 'nueva_apuesta') payGuardarEnvio(finalCaption);
         await winRegistrarSiToca(finalCaption);
         btn.textContent = `Mandado a "${grupo}" ✓`;
         btn.classList.add('secondary');
@@ -6270,7 +6275,7 @@ async function submitWinContent(){
     }
     const res = await fetch('/api/win-redactar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ telefono: WIN_TELEFONO, kind: 'contenido', destino: grupos.join(', '), code: nota, imageBase64: base64, mediaType })
+      body: JSON.stringify({ telefono: winTelPara(grupos), kind: 'contenido', destino: grupos.join(', '), code: nota, imageBase64: base64, mediaType })
     });
     const result = await res.json();
     const caption = (result && result.caption) || nota || 'Nuevo contenido.';
@@ -6574,6 +6579,7 @@ function payLineasHTML(x, origen, idx){
         <div style="font-size:14.5px; font-weight:600;">${esc(l.pick)}</div>
       </div>
       <div style="flex:none; font-weight:700;">@ ${esc(String(l.cuota))}</div>
+      <button type="button" class="btn secondary" data-pay-bajar="${origen}:${idx}:${i}" title="Bajar el riesgo de esta línea" style="flex:none; padding:6px 9px; font-size:12px;">↓ Riesgo</button>
       <button type="button" class="btn ${on ? '' : 'secondary'}" data-pay-like="${origen}:${idx}:${i}" title="Me gusta esta línea" style="flex:none; padding:6px 10px;">${on ? '♥' : '♡'}</button>
     </div>`;}).join('') + `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--border); font-weight:800;"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${esc(String(x.cuota||''))}</span></div>`;
 }
@@ -6601,7 +6607,7 @@ function pintarBandejaPay(){
   el.innerHTML = `
     <div style="border:1px solid var(--gold, #D4AF6A); border-radius:12px; padding:12px 14px; margin:12px 0;">
       <div style="font-weight:800; margin-bottom:6px;">♥ Mis líneas elegidas (${paySeleccion.length})</div>
-      ${paySeleccion.map((s,i)=>`<div style="display:flex; gap:8px; align-items:center; padding:5px 0; border-top:1px solid var(--border);"><div style="flex:1; min-width:0;"><div style="font-size:12px; color:var(--muted);">${esc(s.partido)}</div><div style="font-size:14px; font-weight:600;">${esc(s.pick)}</div></div><div style="font-weight:700;">@ ${esc(String(s.cuota))}</div><button type="button" class="btn secondary" data-pay-quitar="${i}" style="padding:4px 9px;">✕</button></div>`).join('')}
+      ${paySeleccion.map((s,i)=>`<div style="display:flex; gap:8px; align-items:center; padding:5px 0; border-top:1px solid var(--border);"><div style="flex:1; min-width:0;"><div style="font-size:12px; color:var(--muted);">${esc(s.partido)}</div><div style="font-size:14px; font-weight:600;">${esc(s.pick)}</div></div><div style="font-weight:700;">@ ${esc(String(s.cuota))}</div><button type="button" class="btn secondary" data-pay-bajar-sel="${i}" title="Bajar el riesgo de esta línea" style="padding:4px 8px; font-size:12px;">↓ Riesgo</button><button type="button" class="btn secondary" data-pay-quitar="${i}" style="padding:4px 9px;">✕</button></div>`).join('')}
       <div style="display:flex; justify-content:space-between; padding:8px 0 4px; font-weight:800; border-top:1px solid var(--border);"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${total.toFixed(2)}</span></div>
       ${repetido ? '<div style="font-size:12px; color:#ff7a7a;">⚠️ Tienes dos líneas del mismo partido: están relacionadas y la casa puede no dejarte combinarlas.</div>' : ''}
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
@@ -6610,11 +6616,49 @@ function pintarBandejaPay(){
         <button class="btn secondary" id="payVaciarBtn" type="button">Vaciar</button>
       </div>
     </div>`;
+  el.querySelectorAll('[data-pay-bajar-sel]').forEach(b=>b.onclick=()=>payBajarRiesgo(paySeleccion[+b.dataset.payBajarSel], paySeleccion[+b.dataset.payBajarSel].k));
   el.querySelectorAll('[data-pay-quitar]').forEach(b=>b.onclick=()=>{ paySeleccion.splice(+b.dataset.payQuitar,1); pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); });
   document.getElementById('payVaciarBtn').onclick = ()=>{ paySeleccion = []; pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); };
   const combi = ()=>({ cupo: payCupo, partido: `Combinada de ${paySeleccion.length}`, pick: 'Mi combinada', cuota: total.toFixed(2), selecciones: paySeleccion.map(s=>({ partido:s.partido, pick:s.pick, cuota:s.cuota, hora:s.hora })) });
   document.getElementById('payQuedarmeBtn').onclick = ()=>tomarPay(combi());
   document.getElementById('payResenaSelBtn').onclick = ()=>payResena(combi());
+}
+// ---- Bajar el riesgo de una línea: Pay propone alternativas más seguras (cuota menor) del mismo partido ----
+function payBajarDesde(ref){
+  const [origen, idx, i] = ref.split(':');
+  const x = (origen === 'auto' ? payAutoLista : paySugerencias)[+idx]; if(!x) return;
+  const l = (x.selecciones||[]).map(payNormSel)[+i]; if(!l) return;
+  payBajarRiesgo({ ...l, cupo: x.cupo || payCupo }, payClaveLinea(l));
+}
+async function payBajarRiesgo(linea, claveOriginal){
+  openModal(`<h3>Bajar el riesgo</h3><div style="font-size:13px; color:var(--muted); margin-bottom:8px;">${esc(linea.partido||'')}<br><b style="color:var(--text);">${esc(linea.pick)}</b> @ ${esc(String(linea.cuota))}</div><div id="payBajarOut" style="font-size:13.5px;">Pay está buscando opciones más seguras…</div><div style="margin-top:12px;"><button class="btn secondary" type="button" onclick="closeModal()">Cerrar</button></div>`);
+  const out = document.getElementById('payBajarOut');
+  try{
+    const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_bajar', linea, evitar: payEvitar(false) }) }), 50000);
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error || 'Pay no pudo responder.');
+    const alts = j.alternativas || [];
+    if(!alts.length){ out.textContent = j.aviso || 'No encontré alternativas más seguras.'; return; }
+    out.innerHTML = alts.map((a,n)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;"><div style="display:flex; gap:8px; align-items:center;"><div style="flex:1; font-weight:700;">${esc(a.pick)}</div><div style="font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(String(a.cuota))}${a.aprox ? ' <span style="font-size:11px; color:var(--muted);">aprox</span>' : ''}</div></div>${a.nota ? `<div style="font-size:12.5px; color:var(--muted); margin:4px 0 8px;">${esc(a.nota)}</div>` : ''}<button class="btn" type="button" data-pay-alt="${n}">Usar esta línea</button></div>`).join('') + '<div style="font-size:11.5px; color:var(--muted);">Verifica la cuota en tu casa: las "aprox" son estimadas.</div>';
+    out.querySelectorAll('[data-pay-alt]').forEach(b=>b.onclick=()=>{
+      const a = alts[+b.dataset.payAlt];
+      const nueva = { partido: a.partido || linea.partido, pick: a.pick, cuota: a.cuota, hora: a.hora || linea.hora || '', cupo: linea.cupo || payCupo };
+      nueva.k = payClaveLinea(nueva);
+      const pos = paySeleccion.findIndex(s=>s.k === claveOriginal);
+      if(pos >= 0) paySeleccion[pos] = nueva; else if(!paySeleccion.some(s=>s.k === nueva.k)) paySeleccion.push(nueva);
+      closeModal(); pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
+    });
+  }catch(e){ out.textContent = 'No se pudo: ' + e.message; }
+}
+// Guarda el texto de una apuesta que ya mandaste, para que Pay no la vuelva a proponer hoy
+async function payGuardarEnvio(texto){
+  const t = String(texto||'').replace(/\s+/g,' ').trim().slice(0,300); if(!t) return;
+  payTomadasHoy.push(t);
+  try{
+    const r = await fetch(`${SHEETS_API_URL}?sheet=PayTomadas`); const j = await r.json();
+    const previas = (Array.isArray(j.data) ? j.data : []).filter(f=>f.day === payHoyEC());
+    await fetch(SHEETS_API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet:'PayTomadas', data:[...previas, { id: uid(), day: payHoyEC(), partido:'', pick:t, cuota:'', cupo:'enviada' }] }) });
+  }catch(e){ console.error('No se pudo guardar el envío para Pay:', e); }
 }
 function payTextoSel(x){
   return (x.selecciones||[]).map(payNormSel).map((l,i)=>`Línea ${i+1}: ${l.partido ? l.partido + ' — ' : ''}${l.pick} @${l.cuota}`).join('\n');
@@ -6777,6 +6821,7 @@ function cargarPayAutoPintar(){
   el.querySelectorAll('[data-pay-auto]').forEach(b=>b.onclick=()=>tomarPay(payAutoLista[+b.dataset.payAuto]));
   el.querySelectorAll('[data-pay-resenaauto]').forEach(b=>b.onclick=()=>payResena(payAutoLista[+b.dataset.payResenaauto]));
   el.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
+  el.querySelectorAll('[data-pay-bajar]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBajar));
 }
 async function generarPay(otras){
   const out = document.getElementById('payOut'), btn = document.getElementById('payGenBtn');
@@ -6814,6 +6859,7 @@ function pintarPay(){
   out.querySelectorAll('[data-pay-tomar]').forEach(b=>b.onclick=()=>tomarPay(+b.dataset.payTomar));
   out.querySelectorAll('[data-pay-resena]').forEach(b=>b.onclick=()=>payResena(paySugerencias[+b.dataset.payResena]));
   out.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
+  out.querySelectorAll('[data-pay-bajar]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBajar));
   const otras = document.getElementById('payOtrasBtn'); if(otras) otras.onclick = ()=>generarPay(true);
 }
 // ---------- Pay: chat por voz y texto ----------

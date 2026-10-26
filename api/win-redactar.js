@@ -279,6 +279,30 @@ function nivelPay(cupo) {
   return `NIVEL MODERADO (${cupo}): selecciones de cuota 1.20 a 1.60, buena información y valor; puedes usar más variedad de mercados. No tiene que ser ultra segura.`;
 }
 
+// Bajar el riesgo de UNA línea: misma selección/partido pero más segura (cuota menor).
+async function modoPayBajar(apiKey, body, res) {
+  const l = body.linea || {};
+  const partido = String(l.partido || '').slice(0, 120), pick = String(l.pick || '').slice(0, 160), cuota = Number(String(l.cuota || '').replace(',', '.')) || 0;
+  if (!pick) { res.status(400).json({ error: 'Falta la línea.' }); return; }
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  let datos = null;
+  try { datos = await cuotasReales(); } catch (e) { datos = null; }
+  const palabras = (partido + ' ' + pick).toLowerCase().split(/[^a-záéíóúñ]+/).filter((w) => w.length > 3);
+  const delPartido = (datos || []).filter((x) => { const t = x.toLowerCase(); return palabras.filter((w) => t.includes(w)).length >= 2; }).slice(0, 6);
+  const evitar = (Array.isArray(body.evitar) ? body.evitar : []).slice(0, 40).join(' ; ').slice(0, 2500);
+  const system = `Eres Pay, el analista deportivo de PayWin. Hoy es ${hoy} (hora de Ecuador). El jefe tiene esta línea: "${pick}" en ${partido || 'un partido de hoy'}, cuota ${cuota || '?'}. Quiere BAJARLE EL RIESGO a esa misma línea: darle 3 alternativas del MISMO partido/jugador (o muy relacionadas) que sean más fáciles de que salgan, con cuota MENOR que ${cuota || 'la actual'} (ideal entre 1.12 y 1.40), ordenadas de menos a más conservadora. Ejemplos: en tenis, "gana el partido" -> "gana al menos 1 set" o "más de X juegos del jugador"; en fútbol, "gana el equipo" -> "doble oportunidad" o "más de 0.5 goles del equipo"; en NBA, "más de 3.5 triples" -> "más de 1.5 triples" o puntos más bajos; en totales, una línea más baja.
+Honestidad: usa las cuotas reales que te doy cuando existan; si una alternativa no está en los datos, pon tu cuota estimada y márcala con "aprox". No inventes que es seguro. ${evitar ? 'NO repitas estas líneas ya usadas hoy: ' + evitar + '.' : ''}
+${delPartido.length ? 'Cuotas promedio de ese partido (liga | partido | inicio UTC | mercado: cuota):\n' + delPartido.join('\n') : 'No tengo cuotas reales de ese partido; estima con tu conocimiento y márcalas "aprox".'}
+Responde SOLO con un arreglo JSON: [{"pick":"texto claro de la línea","cuota":1.20,"nota":"por qué es más segura, 1 frase","aprox":true|false}]`;
+  const r = await llamarPay(apiKey, { model: 'claude-sonnet-5', max_tokens: 1500, system, messages: [{ role: 'user', content: 'Dame las 3 alternativas más seguras.' }] }, 30000);
+  if (!r.ok) { res.status(502).json({ error: `Pay no pudo responder (IA ${r.status}).` }); return; }
+  let lista = [];
+  try { lista = JSON.parse(r.texto.slice(r.texto.indexOf('['), r.texto.lastIndexOf(']') + 1)); } catch (e) { lista = []; }
+  lista = (Array.isArray(lista) ? lista : []).filter((a) => a && a.pick && Number(a.cuota) > 1).slice(0, 4).map((a) => ({ partido, hora: l.hora || '', pick: String(a.pick).slice(0, 160), cuota: Number(a.cuota).toFixed(2), nota: String(a.nota || '').slice(0, 200), aprox: !!a.aprox }));
+  if (!lista.length) { res.status(200).json({ alternativas: [], aviso: 'Pay no encontró alternativas más seguras. Intenta de nuevo.' }); return; }
+  res.status(200).json({ alternativas: lista });
+}
+
 async function modoPay(apiKey, body, res) {
   const cuotaMin = Number(body.cuotaMin) || 1.8, cuotaMax = Number(body.cuotaMax) || 2;
   const lote = Array.isArray(body.cupos) && body.cupos.length ? body.cupos.slice(0, 6) : null; // revisión automática: una combinada por cupo
@@ -341,7 +365,16 @@ Reglas:
   sugerencias = sugerencias.filter((x) => x && x.pick);
   const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
   const usadas = new Set((Array.isArray(body.evitar) ? body.evitar : []).map(norm));
-  const sinRepetir = sugerencias.filter((x) => !(x.selecciones || []).some((l) => l && typeof l === 'object' && usadas.has(norm((l.partido || '') + (l.pick || '')))));
+  // Repetida si es exacta o si el mismo partido/jugador ya aparece en algo que el jefe mandó o registró hoy
+  const palabrasDe = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !/^(gana|mas|menos|mayor|menor|total|juegos|goles|sets|partido|equipo|apuesta|cuota|linea|combinada)$/.test(w));
+  const textosUsados = (Array.isArray(body.evitar) ? body.evitar : []).map((e) => new Set(palabrasDe(e)));
+  const yaUsada = (l) => {
+    if (!l || typeof l !== 'object') return false;
+    if (usadas.has(norm((l.partido || '') + (l.pick || '')))) return true;
+    const pw = [...new Set(palabrasDe(l.partido))];
+    return pw.length >= 2 && textosUsados.some((set) => pw.filter((w) => set.has(w)).length >= 2);
+  };
+  const sinRepetir = sugerencias.filter((x) => !(x.selecciones || []).some(yaUsada));
   const hubo = sugerencias.length;
   sugerencias = sinRepetir.slice(0, cantidad);
   if (hubo && !sugerencias.length && !lote) { res.status(502).json({ error: 'Pay solo encontró combinadas con líneas que ya usaste hoy. Toca generar de nuevo para que busque otras.' }); return; }
@@ -382,6 +415,12 @@ module.exports = async function handler(req, res) {
 
   if (body.modo === 'pay_diag') {
     res.status(200).json({ odds: !!process.env.ODDS_API_KEY, eventosEnCaché: cacheCuotas.datos ? cacheCuotas.datos.length : null });
+    return;
+  }
+
+  if (body.modo === 'pay_bajar') {
+    try { await modoPayBajar(apiKey, body, res); }
+    catch (e) { console.error('Pay bajar:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
     return;
   }
 
@@ -438,6 +477,10 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
     // CTA con el número de teléfono: siempre, adaptado a lo que se publica (no aplica a regalitos
     // ni a la base de difusión). Si el modelo igual lo omite, el panel lo agrega (winAsegurarCTA).
     const telefono = String(body.telefono || '').trim();
+    const dests = String(destino || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (dests.length && dests.every((x) => /vip/i.test(x))) {
+      systemPrompt += `\n\nIMPORTANTE: este texto va SOLO a miembros que YA están dentro del grupo VIP. NO incluyas ningún llamado a la acción, NO invites a entrar, unirse, escribir o pagar por el VIP, y NO pongas teléfono. Solo da la información (pick, cuota, ganada, etc.) en tono directo de equipo.`;
+    }
     if (telefono && kind !== 'regalito' && kind !== 'difusion_preview') {
       systemPrompt += `\n\nIMPORTANTE: termina el texto con una línea breve de llamado a la acción (CTA), adaptada a lo que se está publicando (apuesta nueva, ganada, testimonio, partidos, etc.), que incluya SIEMPRE este número de teléfono tal cual: ${telefono}. Una sola línea, con un emoji.`;
     }
