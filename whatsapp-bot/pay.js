@@ -49,12 +49,28 @@ async function historialGanadas() {
   try { return (await H.leerHoja('PayGanadas')).slice(-40).map((f) => `${f.deporte || ''} ${f.partido || ''} ${f.pick || ''} @${f.cuota || ''} (${f.mercado || ''})`.replace(/\s+/g, ' ').trim()); } catch (e) { return []; }
 }
 
+// Estadística real y perdidas del panel (hojas de apuestas) para que Pay evite lo que le falla al jefe.
+async function perdidasYResumen() {
+  const r = { perdidas: [], resumen: '' };
+  const partes = [];
+  for (const [hoja, tag] of [['ApuestasVIP', 'VIP'], ['ApuestasGratis', 'Gratis'], ['ApuestasLive', 'Live']]) {
+    try {
+      const f = await H.leerHoja(hoja);
+      const g = f.filter((b) => b.result === 'won').length, p = f.filter((b) => b.result === 'lost');
+      if (g + p.length) partes.push(`${tag}: ${g} ganadas y ${p.length} perdidas (${Math.round(100 * g / (g + p.length))}% de acierto)`);
+      p.slice(-15).forEach((b) => r.perdidas.push(`${tag} ${b.sport || ''} ${b.event || ''} ${b.pick || ''} @${b.odds || ''}`.replace(/\s+/g, ' ').trim()));
+    } catch (e) { /* sin esa hoja */ }
+  }
+  r.resumen = partes.join(' | ');
+  return r;
+}
+
 async function revisar(motivo) {
   const CUPOS = await faltantes();
   if (!CUPOS.length) return { n: 0, completo: true };
   const r = await fetch(`${PANEL}/api/win-redactar`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ modo: 'pay', cupos: CUPOS, evitar: await evitarHoy(), historial: await historialGanadas() })
+    body: JSON.stringify({ modo: 'pay', cupos: CUPOS, evitar: await evitarHoy(), historial: await historialGanadas(), ...(await perdidasYResumen()) })
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));

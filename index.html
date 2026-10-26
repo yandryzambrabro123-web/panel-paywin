@@ -6528,6 +6528,7 @@ function renderFactory(){
           <button class="btn secondary" id="payAprBtn" type="button">📸 Enseñarle a Pay</button>
         </div>
         <div id="payAprendeInfo" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
+        <div id="payStatsInfo" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
         <div id="payEstado" style="font-size:12px; color:var(--muted); margin-top:10px;"></div>
         <div id="payOut" style="margin-top:14px;"></div>
       </div>
@@ -6599,6 +6600,14 @@ function payEvitar(incluirSugeridas){
   (payAutoLista||[]).filter(x=>String(x.createdAt||'').slice(0,10) >= hoy || true).forEach(x=>(x.selecciones||[]).map(payNormSel).forEach(s=>{ if(s.pick) l.push(`${s.partido}: ${s.pick}`); }));
   if(incluirSugeridas) (paySugerencias||[]).forEach(x=>(x.selecciones||[]).map(payNormSel).forEach(s=>{ if(s.pick) l.push(`${s.partido}: ${s.pick}`); }));
   return [...new Set(l)].slice(0, 60);
+}
+// Perdidas y estadística real del panel (apuestas marcadas como Ganada / Perdida).
+function payPerdidasYResumen(){
+  const todas = [...(state.vipBets||[]).map(b=>({...b,_t:'VIP'})), ...(state.freeBets||[]).map(b=>({...b,_t:'Gratis'})), ...(state.liveBets||[]).map(b=>({...b,_t:'Live'}))];
+  const ganadas = todas.filter(b=>b.result==='won'), perdidas = todas.filter(b=>b.result==='lost');
+  const txt = (b)=>`${b._t} ${b.sport||''} ${b.event||''} ${b.pick||''} @${b.odds||''}`.replace(/\s+/g,' ').trim();
+  const resumen = ['VIP','Gratis','Live'].map(t=>{ const g = ganadas.filter(b=>b._t===t).length, p = perdidas.filter(b=>b._t===t).length; return (g+p) ? `${t}: ${g} ganadas y ${p} perdidas (${Math.round(100*g/(g+p))}% de acierto)` : ''; }).filter(Boolean).join(' | ');
+  return { perdidas: perdidas.sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,40).map(txt), resumen, g: ganadas.length, p: perdidas.length };
 }
 function payHistorial(){
   const db = (payGanadasDB||[]).slice(-40).map(f=>`${f.deporte||''} ${f.partido||''} ${f.pick||''} @${f.cuota||''} (${f.mercado||''})`.replace(/\s+/g,' ').trim());
@@ -6685,6 +6694,7 @@ function initPayPanel(){
   }).catch(()=>{});
   pintarPay();
   document.getElementById('payAprBtn').onclick = openPayAprender;
+  { const r = payPerdidasYResumen(); const el = document.getElementById('payStatsInfo'); if(el) el.textContent = (r.g + r.p) ? `Tu historial en el panel: ${r.g} ganadas y ${r.p} perdidas. Pay lo usa para evitar lo que te falla.` : 'Marca tus apuestas como Ganada o Perdida en el panel y Pay aprende también de lo que te falla.'; }
   payCargarGanadasDB();
   payCargarTomadas();
   cargarPayAuto();
@@ -6722,7 +6732,7 @@ async function generarPay(otras){
     const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       modo:'pay', cupo: payCupo, cuotaMin: document.getElementById('payMin').value, cuotaMax: document.getElementById('payMax').value,
       cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value,
-      evitar: payEvitar(otras === true), historial: payHistorial(), web: !!(document.getElementById('payWebChk')||{}).checked
+      evitar: payEvitar(otras === true), historial: payHistorial(), perdidas: payPerdidasYResumen().perdidas, resumen: payPerdidasYResumen().resumen, web: !!(document.getElementById('payWebChk')||{}).checked
     }) });
     const raw = await r.text();
     let d = {}; try{ d = JSON.parse(raw); }catch(e){}
@@ -6816,7 +6826,7 @@ async function payChatEnviar(texto){
   payChatMsgs.push({ role:'user', content: texto }); payChatPintar();
   payChatBusy = true; payOrb('thinking', 'Pay está pensando…');
   try{
-    const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_chat', mensajes: payChatMsgs, contexto: payChatContexto() }) });
+    const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_chat', mensajes: payChatMsgs, contexto: payChatContexto(), resumen: payPerdidasYResumen().resumen }) });
     const raw = await r.text(); let d = {}; try{ d = JSON.parse(raw); }catch(e){}
     if(!r.ok) throw new Error(d.error || `Pay no pudo responder (código ${r.status}).`);
     payChatMsgs.push({ role:'assistant', content: d.respuesta }); payChatPintar();
