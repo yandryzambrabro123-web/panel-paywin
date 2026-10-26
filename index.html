@@ -6586,7 +6586,7 @@ function initPayPanel(){
   document.querySelectorAll('[data-pay-cupo]').forEach(b=>b.onclick=()=>setCupo(b.dataset.payCupo));
   setCupo(payCupo);
   document.getElementById('payGenBtn').onclick = generarPay;
-  document.getElementById('payTalkBtn').onclick = openPayChat;
+  document.getElementById('payTalkBtn').onclick = ()=>openPayChat();
   fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_diag' }) }).then(r=>r.json()).then(d=>{
     const el = document.getElementById('payEstado'); if(!el) return;
     el.innerHTML = d.odds ? '🟢 Cuotas reales conectadas (The Odds API).' : '🔴 Sin cuotas reales: falta <b>ODDS_API_KEY</b> en Vercel (o falta hacer Redeploy). Sin eso Pay depende de la web y casi no arma picks.';
@@ -6614,23 +6614,26 @@ async function cargarPayAuto(){
       <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
       ${payLineasHTML(x)}
       <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
-      <button class="btn" data-pay-auto="${i}" type="button">La tomo</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn" data-pay-auto="${i}" type="button">La tomo</button><button class="btn secondary" data-pay-resenaauto="${i}" type="button">🎙 Reseña: ¿por qué?</button></div>
     </div>`).join('');
   el.querySelectorAll('[data-pay-auto]').forEach(b=>b.onclick=()=>tomarPay(payAutoLista[+b.dataset.payAuto]));
+  el.querySelectorAll('[data-pay-resenaauto]').forEach(b=>b.onclick=()=>payResena(payAutoLista[+b.dataset.payResenaauto]));
 }
-async function generarPay(){
+async function generarPay(otras){
   const out = document.getElementById('payOut'), btn = document.getElementById('payGenBtn');
   btn.disabled = true; btn.textContent = 'Pay está analizando…';
   out.innerHTML = '<div style="color:var(--muted); font-size:13px;">Revisando partidos y cuotas, toma unos segundos.</div>';
   try{
     const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       modo:'pay', cupo: payCupo, cuotaMin: document.getElementById('payMin').value, cuotaMax: document.getElementById('payMax').value,
-      cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value
+      cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value,
+      evitar: otras === true ? paySugerencias.flatMap(x=>(x.selecciones||[]).map(payNormSel).map(l=>`${l.partido}: ${l.pick}`)) : []
     }) });
     const raw = await r.text();
     let d = {}; try{ d = JSON.parse(raw); }catch(e){}
     if(!r.ok) throw new Error(d.error || `Pay no pudo responder (código ${r.status}${r.status===504||r.status===500 ? ', se agotó el tiempo' : ''}). ${d.error ? '' : raw.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)}`);
-    paySugerencias = d.sugerencias.map(x=>({ ...x, cupo: payCupo })); paySugerencias.fuente = d.fuente;
+    const fuente = d.fuente;
+    paySugerencias = d.sugerencias.map(x=>({ ...x, cupo: payCupo })); paySugerencias.fuente = fuente;
     pintarPay();
   }catch(e){
     out.innerHTML = `<div style="color:#ff7a7a; font-size:13px;">${esc(e.message)}</div>`;
@@ -6638,7 +6641,7 @@ async function generarPay(){
 }
 function pintarPay(){
   const out = document.getElementById('payOut'); if(!out || !paySugerencias.length) return;
-  out.innerHTML = `<div style="font-size:11.5px; color:var(--muted); margin-bottom:8px;">Fuente: ${esc(paySugerencias.fuente||'')} · Verifica la cuota en tu casa antes de apostar.</div>` +
+  out.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;"><div style="font-size:11.5px; color:var(--muted);">Fuente: ${esc(paySugerencias.fuente||'')} · Verifica la cuota en tu casa antes de apostar.</div><button class="btn secondary" id="payOtrasBtn" type="button" title="Generar otras" style="flex:none; padding:8px 12px;">↻ Otras</button></div>` +
     paySugerencias.map((x,i)=>`
     <div style="border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
@@ -6647,9 +6650,11 @@ function pintarPay(){
       <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
       ${payLineasHTML(x)}
       <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
-      <button class="btn" data-pay-tomar="${i}" type="button">La tomo</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn" data-pay-tomar="${i}" type="button">La tomo</button><button class="btn secondary" data-pay-resena="${i}" type="button">🎙 Reseña: ¿por qué?</button></div>
     </div>`).join('');
   out.querySelectorAll('[data-pay-tomar]').forEach(b=>b.onclick=()=>tomarPay(+b.dataset.payTomar));
+  out.querySelectorAll('[data-pay-resena]').forEach(b=>b.onclick=()=>payResena(paySugerencias[+b.dataset.payResena]));
+  const otras = document.getElementById('payOtrasBtn'); if(otras) otras.onclick = ()=>generarPay(true);
 }
 // ---------- Pay: chat por voz y texto ----------
 let payChatMsgs = [], payChatBusy = false, payRec = null, payRecChunks = [], payStream = null, payAudioEl = null, payVozOn = true;
@@ -6663,8 +6668,15 @@ function payOrb(estado, texto){
   const o = document.getElementById('payOrb'); if(o) o.dataset.estado = estado;
   const t = document.getElementById('payOrbTxt'); if(t) t.textContent = texto || '';
 }
-function openPayChat(){
+function payResena(x){
+  if(!x) return;
+  const detalle = (x.selecciones||[]).length ? payTextoSel(x) + `\nCuota total @${x.cuota||''}` : `${x.partido||''} — ${x.pick||''} @ ${x.cuota||''}`;
+  openPayChat(`Dame la reseña de esta apuesta del cupo ${x.cupo||''}: explícame por qué la elegiste, cuál es tu hipótesis en cada línea y qué podría salir mal.\n${detalle}`);
+}
+function openPayChat(pregunta){
   payChatMsgs = [];
+  // el toque del botón desbloquea el audio en el celular
+  try{ if(!payAudioEl){ payAudioEl = new Audio(); payAudioEl.setAttribute('playsinline','true'); } payAudioEl.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA='; payAudioEl.play().catch(()=>{}); }catch(e){}
   openModal(`
     <style>
       #payOrb{ width:96px; height:96px; border-radius:50%; margin:4px auto 6px; background:radial-gradient(circle at 35% 30%, #fff3cf, #D4AF6A 45%, #7a5a1c 100%); box-shadow:0 0 22px rgba(212,175,106,.45); transition:transform .3s, box-shadow .3s; }
@@ -6694,6 +6706,7 @@ function openPayChat(){
   document.getElementById('payMicBtn').onclick = payMicToggle;
   document.getElementById('payVozChk').onchange = (e)=>{ payVozOn = e.target.checked; if(!payVozOn) payDetenerVoz(); };
   document.getElementById('payChatCloseBtn').onclick = ()=>{ payDetenerVoz(); payCerrarMic(); closeModal(); };
+  if(typeof pregunta === 'string' && pregunta) setTimeout(()=>payChatEnviar(pregunta), 150);
 }
 function payChatPintar(){
   const log = document.getElementById('payChatLog'); if(!log) return;
