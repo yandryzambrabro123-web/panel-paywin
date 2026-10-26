@@ -205,6 +205,7 @@ async function modoPayChat(apiKey, body, res) {
   const contexto = String(body.contexto || '').slice(0, 4000);
   const system = `Eres Pay, el analista deportivo de PayWin (agencia de pronósticos de Ecuador). Eres hombre. Hablas con el dueño ("jefe") por voz, en vivo, así que respondes en español natural, directo y seguro, en 3 a 6 frases cortas, sin listas ni markdown ni emojis. Hoy es ${hoy} (hora de Ecuador).
 Tu trabajo: explicar tus picks con una hipótesis clara (por qué crees que pasa: forma, historial, bajas, ritmo del partido, estadísticas de la línea), decir también qué podría salir mal y cuándo NO apostarías, y responder lo que te pregunte sobre partidos, mercados (goles, corners, tarjetas, remates, puntos, rebotes, asistencias, tenis, tenis de mesa, UFC, e-sports) y cómo bajar el riesgo. Ayudas a armar combinadas de selecciones de cuota baja (1.15 a 1.50 cada una).
+${PAY_PERFIL}
 Honestidad: nunca prometas ganancia segura; no inventes partidos, estadísticas ni cuotas. Si no tienes el dato, dilo o búscalo. Las cuotas son aproximadas y el jefe las verifica en su casa de apuestas. Él también analiza cada pick.
 ${contexto ? '\nPicks que tienes ahora mismo en pantalla:\n' + contexto : ''}${datos && datos.length ? '\n\nCuotas promedio actuales (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : ''}`;
   // Por defecto responde rápido con lo que sabe y con las cuotas reales; busca en la web solo si el jefe lo pide ("busca...").
@@ -216,6 +217,31 @@ ${contexto ? '\nPicks que tienes ahora mismo en pantalla:\n' + contexto : ''}${d
   if (!r.ok) { res.status(502).json({ error: `Pay no pudo responder (IA ${r.status}). ${r.detalle || ''}` }); return; }
   res.status(200).json({ respuesta: r.texto || 'Pay no devolvió respuesta (fin: ' + (r.stop || '-') + '). Intenta de nuevo.' });
 }
+
+// Lo que Pay ya sabe de las apuestas GANADAS del jefe (capturas del 20 al 24 de octubre, casa Mas1x2).
+// Sirve de base: lo que el jefe suba con "Enseñarle a Pay" se suma a esto.
+const PAY_PERFIL = `Perfil del jefe (aprendido de sus apuestas ganadas): apuesta en la casa Mas1x2. Casi siempre combinadas de 2 a 3 líneas con cuota total de 1.50 a 2.15, y cada línea entre 1.20 y 1.47. Mercados que le han ganado: triples de jugadores NBA "más de 1.5 triples" (cuotas 1.20 a 1.47), tiros de esquina totales (más de 5.5, 7.5 y 9.5), remates totales de un equipo (más de 14.5), ambos equipos marcan "Sí", más de 1.5 goles, más de 2.5 goles, doble oportunidad (empate o el favorito) y favoritos grandes 1x2 (cuota 1.22 a 1.26). También usa "crear apuesta" (ambos marcan + total de goles o de corners en el mismo partido). Arma líneas de ligas grandes (Champions, Premier, Bundesliga, Eredivisie, Liga Saudí, NBA). Prefiere líneas con mucho margen y cuotas bajas.`;
+const PAY_SEMILLA = [
+  'baloncesto CHI Bulls vs WAS Wizards: Trae Young más de 1.5 triples @1.20 (triples de jugador)',
+  'baloncesto CLE Cavaliers vs BKN Nets: Donovan Mitchell más de 1.5 triples @1.29 (triples de jugador)',
+  'baloncesto PHI 76ers vs MIL Bucks: Tyrese Maxey más de 1.5 triples @1.23 (triples de jugador)',
+  'baloncesto SA Spurs vs HOU Rockets: Julian Champagnie más de 1.5 triples @1.47 (triples de jugador)',
+  'baloncesto LA Lakers vs LA Clippers: Rui Hachimura más de 1.5 triples @1.45 (triples de jugador)',
+  'futbol Atlante FC vs Atlético San Luis: Atlante más de 14.5 remates totales @1.63 (remates de equipo)',
+  'futbol Al Qadisiyah vs Al Hilal: Ambos equipos marcan Sí + más de 2.5 goles @1.64 (crear apuesta)',
+  'futbol FC Eindhoven vs PSV Eindhoven: Ambos equipos marcan Sí @1.40',
+  'futbol Ipswich vs Nottingham Forest: Empate o Nottingham Forest @1.33 (doble oportunidad)',
+  'futbol Hoffenheim vs Olympique Lyon: más de 9.5 tiros de esquina @1.66 (corners)',
+  'futbol Bournemouth vs AC Milan: más de 1.5 goles @1.22',
+  'futbol AC Omonia vs SL Benfica: más de 7.5 tiros de esquina @1.25 (corners)',
+  'futbol OFI vs Bayer Leverkusen: gana Bayer Leverkusen @1.22 (1x2)',
+  'futbol Real Madrid vs RB Leipzig: gana Real Madrid @1.26 (1x2)',
+  'futbol Bayern Munich vs Arsenal: Bayern o empate @1.42 (doble oportunidad)',
+  'futbol Lille vs Galatasaray: más de 1.5 goles @1.20',
+  'futbol Lille vs Galatasaray: Ambos equipos marcan Sí @1.55',
+  'futbol Inter Milan vs Shakhtar Donetsk: gana Inter @1.26 (1x2)',
+  'futbol VfB Stuttgart vs Atlético de Madrid: Ambos marcan Sí + más de 5.5 tiros de esquina @1.53 (crear apuesta)'
+];
 
 // Nivel de seguridad por cupo (qué tan conservadora debe ser la combinada)
 function nivelPay(cupo) {
@@ -243,8 +269,9 @@ async function modoPay(apiKey, body, res) {
     res.status(502).json({ error: 'Ya no quedan partidos de hoy por empezar en las ligas que reviso. Pay solo arma apuestas del día.' });
     return;
   }
-  const historial = Array.isArray(body.historial) ? body.historial.slice(0, 30).map((x) => String(x).slice(0, 140)) : [];
-  const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). Tu trabajo es armar apuestas de BAJO RIESGO para un cupo concreto, con análisis breve y honesto. El dueño revisa y analiza cada pick antes de apostar.
+  const historial = [...(Array.isArray(body.historial) ? body.historial.slice(0, 30).map((x) => String(x).slice(0, 140)) : []), ...PAY_SEMILLA];
+  const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). ${PAY_PERFIL}
+Tu trabajo es armar apuestas de BAJO RIESGO para un cupo concreto, con análisis breve y honesto. El dueño revisa y analiza cada pick antes de apostar.
 ${lote ? 'Cada cupo tiene su NIVEL DE SEGURIDAD, que manda sobre el resto de reglas de cuota por selección:\n' + lote.map((c) => nivelPay(c.cupo)).join('\n') : nivelPay(cupo)}
 Estilo de apuesta (obligatorio): COMBINADAS de selecciones seguras. Cada selección individual debe respetar el rango del nivel de su cupo (por defecto 1.15 a 1.50). Elige cuántas selecciones (2 a 5) para que la cuota TOTAL (el producto de las cuotas) quede entre ${cuotaMin} y ${cuotaMax}. Muestra la cuota de cada selección y la cuota total.
 Deportes y mercados que puedes usar, todos: fútbol (goles, corners, tarjetas, remates, faltas, ganador, doble oportunidad), baloncesto/NBA (puntos totales, puntos/rebotes/asistencias de jugador), tenis (ganador, sets, juegos/puntos), tenis de mesa (total de puntos del partido, por ejemplo más de 74.5), UFC/MMA, e-sports. Usa VARIEDAD de mercados además del ganador: goles, corners, tarjetas, remates/tiros al arco de jugadores, asistencias, rebotes, triples y puntos de jugadores, totales, hándicaps, sets/juegos de tenis. Usa las líneas de jugadores SOLO si aparecen en los datos (líneas que empiezan con JUGADORES) o si las confirmas en la web; si no, no las inventes. Usa VARIEDAD de deportes y ligas de todo el mundo (no te quedes en un solo deporte ni en una sola liga); mezcla deportes si eso baja el riesgo. Si en los datos hay fútbol, tenis, UFC u otros deportes, inclúyelos, no solo NBA.
