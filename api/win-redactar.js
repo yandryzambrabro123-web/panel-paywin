@@ -196,6 +196,25 @@ No inventes nada que no se lea; si un dato no se ve, pon null o "". Si no es una
   res.status(200).json(data);
 }
 
+// Pay verifica resultados de apuestas pendientes buscando en la web. Nunca marca nada: solo opina; el jefe confirma.
+async function modoPayResultados(apiKey, body, res) {
+  const apuestas = (Array.isArray(body.apuestas) ? body.apuestas : []).slice(0, 6);
+  if (!apuestas.length) { res.status(400).json({ error: 'No hay apuestas.' }); return; }
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  const system = `Eres Pay, el analista de PayWin, y verificas el RESULTADO de apuestas deportivas ya jugadas. Hoy es ${hoy} (hora de Ecuador). Para cada apuesta busca en la web el resultado final real de cada línea (marcadores, estadísticas finales de jugadores, corners, etc.).
+Reglas: una apuesta combinada es "ganada" solo si TODAS sus líneas ganaron; es "perdida" si AL MENOS UNA línea perdió (aunque otras estén pendientes); es "pendiente" si algún partido aún no termina y ninguna línea ya perdió; es "no_confirmo" si no encuentras un dato claro y confiable de alguna línea (por ejemplo estadística de un jugador). NUNCA adivines ni supongas: si no puedes confirmar con una fuente clara, usa "no_confirmo".
+Responde SOLO con un arreglo JSON dentro de <json></json>: [{"id":"el id que te di","estado":"ganada|perdida|pendiente|no_confirmo","detalle":"máximo 2 frases con los marcadores o datos que viste"}]`;
+  const lista = apuestas.map((a) => `ID ${a.id} | ${a.tag || ''} | ${a.date || ''} | ${a.event || ''} | ${a.pick || ''} @${a.odds || ''}${(a.lines || []).length ? ' | líneas: ' + a.lines.map((l) => `${l.pick || ''} @${l.odds || ''}`).join(' + ') : ''}`).join('\n');
+  const payload = { model: 'claude-sonnet-5', max_tokens: 3000, system, messages: [{ role: 'user', content: 'Verifica estas apuestas:\n' + lista }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }] };
+  const ia = await llamarPay(apiKey, payload, 45000);
+  if (!ia.ok) { res.status(502).json({ error: `Pay no pudo verificar (IA ${ia.status}).` }); return; }
+  let resultados = [];
+  const tag = ia.texto.match(/<json>([\s\S]*?)<\/json>/i);
+  try { resultados = JSON.parse(tag ? tag[1] : ia.texto.slice(ia.texto.indexOf('['), ia.texto.lastIndexOf(']') + 1)); } catch (e) { resultados = []; }
+  resultados = (Array.isArray(resultados) ? resultados : []).filter((r) => r && r.id && ['ganada', 'perdida', 'pendiente', 'no_confirmo'].includes(r.estado)).map((r) => ({ id: String(r.id), estado: r.estado, detalle: String(r.detalle || '').slice(0, 300) }));
+  res.status(200).json({ resultados });
+}
+
 async function modoPayChat(apiKey, body, res) {
   const mensajes = (Array.isArray(body.mensajes) ? body.mensajes : []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 1500) })).filter((m) => m.content);
   if (!mensajes.length || mensajes[0].role !== 'user') { res.status(400).json({ error: 'Falta el mensaje.' }); return; }
@@ -344,6 +363,12 @@ module.exports = async function handler(req, res) {
   if (body.modo === 'pay_aprender') {
     try { await modoPayAprender(apiKey, body, res); }
     catch (e) { console.error('Pay aprender:', e); res.status(500).json({ error: 'No pude leer la captura.' }); }
+    return;
+  }
+
+  if (body.modo === 'pay_resultados') {
+    try { await modoPayResultados(apiKey, body, res); }
+    catch (e) { console.error('Pay resultados:', e); res.status(500).json({ error: 'No pude verificar los resultados.' }); }
     return;
   }
 

@@ -972,10 +972,13 @@ const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'Apuest
 // cada guardado lo conserva. Todos los ids se generan con uid() (hora en base 36 + 5 letras), así
 // que la fecha de creación sale del propio id. Lo nuevo (registrado después del corte) sí se ve.
 const PANEL_CORTE_MS = 1792930800000;
+// Apuestas (gratis, VIP, live): historial limpio desde el 26/oct 00:00 (hora de Ecuador). Tampoco se borra nada: sigue en el Excel.
+const CORTE_APUESTAS_MS = 1792990800000;
 const CLAVES_CORTE = ['vips','freeBets','vipBets','liveBets','gifts','financeMovements'];
 function idCreadoMs(id){ const n = parseInt(String(id||'').slice(0,-5), 36); return Number.isFinite(n) ? n : 0; }
-function esAnteriorAlCorte(item){ return idCreadoMs(item && item.id) < PANEL_CORTE_MS; }
-function filtrarCorte(key, arr){ return CLAVES_CORTE.includes(key) ? (arr||[]).filter(x=>!esAnteriorAlCorte(x)) : arr; }
+function corteDe(key){ return (key==='freeBets' || key==='vipBets' || key==='liveBets') ? CORTE_APUESTAS_MS : PANEL_CORTE_MS; }
+function esAnteriorAlCorte(item, key){ return idCreadoMs(item && item.id) < corteDe(key); }
+function filtrarCorte(key, arr){ return CLAVES_CORTE.includes(key) ? (arr||[]).filter(x=>!esAnteriorAlCorte(x, key)) : arr; }
 // "Publicidades" guardadas de Win: imagen + texto FIJOS, identificados por nombre (ej: "publicidad
 // de recargas"). Cuando el jefe pide una por nombre, Win la reconoce y la manda directo a la
 // bandeja con ese mismo texto de siempre -- sin redactar nada nuevo con IA.
@@ -1158,7 +1161,7 @@ async function persist(key, options = {}){
       if(CLAVES_CORTE.includes(key)){
         // lo anterior al corte NO se pisa nunca: se vuelve a guardar junto con lo nuevo
         const r = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
-        const viejos = ((await r.json()).data || []).map(row => coerceRow(key, row)).filter(esAnteriorAlCorte);
+        const viejos = ((await r.json()).data || []).map(row => coerceRow(key, row)).filter(x=>esAnteriorAlCorte(x, key));
         aGuardar = viejos.concat(state[key]);
       }
       await fetch(SHEETS_API_URL, {

@@ -29,6 +29,10 @@ async function faltantes() {
   return lista.slice(0, MAX_POR_REVISION);
 }
 
+const CORTE_APUESTAS_MS = 1792990800000; // el panel muestra apuestas desde el 26/oct 00:00 (Ecuador)
+const idMs = (id) => { const n = parseInt(String(id || '').slice(0, -5), 36); return Number.isFinite(n) ? n : 0; };
+const HOJAS_APUESTAS = [['ApuestasVIP', 'VIP'], ['ApuestasGratis', 'Gratis'], ['ApuestasLive', 'Live']];
+
 const horasEC = () => String(process.env.PAY_HORAS || '9,15').split(',').map((x) => Number(x.trim())).filter((n) => n >= 0 && n < 24);
 const ahoraEC = () => new Date(Date.now() - 5 * 3600e3);
 
@@ -53,9 +57,9 @@ async function historialGanadas() {
 async function perdidasYResumen() {
   const r = { perdidas: [], resumen: '' };
   const partes = [];
-  for (const [hoja, tag] of [['ApuestasVIP', 'VIP'], ['ApuestasGratis', 'Gratis'], ['ApuestasLive', 'Live']]) {
+  for (const [hoja, tag] of HOJAS_APUESTAS) {
     try {
-      const f = await H.leerHoja(hoja);
+      const f = (await H.leerHoja(hoja)).filter((b) => idMs(b.id) >= CORTE_APUESTAS_MS);
       const g = f.filter((b) => b.result === 'won').length, p = f.filter((b) => b.result === 'lost');
       if (g + p.length) partes.push(`${tag}: ${g} ganadas y ${p.length} perdidas (${Math.round(100 * g / (g + p.length))}% de acierto)`);
       p.slice(-15).forEach((b) => r.perdidas.push(`${tag} ${b.sport || ''} ${b.event || ''} ${b.pick || ''} @${b.odds || ''}`.replace(/\s+/g, ' ').trim()));
@@ -91,6 +95,59 @@ async function revisar(motivo) {
   return { n: nuevas.length };
 }
 
+// ---- Resultados: Pay revisa si las apuestas pendientes ya se ganaron o perdieron y te avisa ----
+// Nunca marca nada solo: te manda un mensaje con botones y tú confirmas. Horas (Ecuador): PAY_RESULT_HORAS, por defecto "18,23,8".
+const HOJA_RES = 'PayResultados';
+const horasRes = () => String(process.env.PAY_RESULT_HORAS || '18,23,8').split(',').map((x) => Number(x.trim())).filter((n) => n >= 0 && n < 24);
+
+async function pendientes() {
+  const lista = [];
+  const desde = Date.now() - 3 * 86400e3;
+  for (const [hoja, tag] of HOJAS_APUESTAS) {
+    try {
+      (await H.leerHoja(hoja)).filter((b) => b.result === 'pending' && idMs(b.id) >= CORTE_APUESTAS_MS && idMs(b.id) >= desde)
+        .forEach((b) => { let lines = []; try { lines = JSON.parse(b.lines || '[]'); } catch (e) { lines = []; } lista.push({ id: String(b.id), tag, hoja, date: b.date, event: b.event, pick: b.pick, odds: b.odds, lines }); });
+    } catch (e) { /* sin esa hoja */ }
+  }
+  return lista;
+}
+
+async function revisarResultados() {
+  if (process.env.PAY_AUTO_OFF === '1') return { n: 0 };
+  const todas = await pendientes();
+  if (!todas.length) return { n: 0 };
+  let ya = [];
+  try { ya = (await H.leerHoja(HOJA_RES)).filter((f) => f.notificado === 'si').map((f) => String(f.betId)); } catch (e) { ya = []; }
+  const lista = todas.filter((a) => !ya.includes(a.id)).slice(0, 12);
+  let avisos = 0;
+  for (let i = 0; i < lista.length; i += 6) {
+    const lote = lista.slice(i, i + 6);
+    const r = await fetch(`${PANEL}/api/win-redactar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modo: 'pay_resultados', apuestas: lote }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { console.error('Pay resultados:', d.error || r.status); continue; }
+    for (const x of d.resultados || []) {
+      if (x.estado !== 'ganada' && x.estado !== 'perdida') continue;
+      const a = lote.find((b) => b.id === x.id); if (!a) continue;
+      const gano = x.estado === 'ganada';
+      const texto = `${gano ? '🏆 <b>Pay cree que se GANÓ</b>' : '❌ <b>Pay cree que se PERDIÓ</b>'}\n\n[${H.esc(a.tag)}] ${H.esc(a.event || '')}\n${H.esc(a.pick || '')} @${H.esc(String(a.odds || ''))}\n\n${H.esc(x.detalle)}\n\nPay puede equivocarse: confírmalo tú.`;
+      await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), parse_mode: 'HTML', text: texto, reply_markup: { inline_keyboard: [[gano ? { text: '✅ Marcar ganada', callback_data: 'rw:' + a.id } : { text: '❌ Marcar perdida', callback_data: 'rl:' + a.id }, { text: '🕒 Aún no', callback_data: 'rx:' + a.id }]] } }).catch((e) => console.error('Aviso de resultado:', e.message));
+      await H.cambiarHoja(HOJA_RES, (fs) => [...fs.filter((f) => String(f.betId) !== a.id), { betId: a.id, estado: x.estado, notificado: 'si', at: new Date().toISOString() }]);
+      avisos++;
+      await new Promise((ok) => setTimeout(ok, 400));
+    }
+  }
+  return { n: avisos };
+}
+
+async function marcarResultado(id, result) {
+  let hecho = false;
+  for (const [hoja] of HOJAS_APUESTAS) {
+    await H.cambiarHoja(hoja, (filas) => filas.map((b) => { if (String(b.id) !== String(id)) return b; hecho = true; return { ...b, result }; }));
+    if (hecho) break;
+  }
+  return hecho;
+}
+
 function montar(app, stakes, extra) {
   H = stakes;
   const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
@@ -105,8 +162,34 @@ function montar(app, stakes, extra) {
     ultima = clave;
     try { await revisar('auto'); } catch (e) { console.error('Pay (auto):', e.message); }
   };
-  setInterval(ciclo, 5 * 60 * 1000);
+  let ultimaRes = '';
+  const cicloRes = async () => {
+    const d = ahoraEC(), hora = d.getUTCHours(), clave = `${d.toISOString().slice(0, 10)}-${hora}`;
+    if (!horasRes().includes(hora) || ultimaRes === clave) return;
+    ultimaRes = clave;
+    try { await revisarResultados(); } catch (e) { console.error('Pay (resultados):', e.message); }
+  };
+  setInterval(() => { ciclo(); cicloRes(); }, 5 * 60 * 1000);
 
+  const marcar = async (cq, txt) => {
+    await H.tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt }).catch(() => {});
+    if (cq.message) await H.tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: txt, callback_data: 'x' }]] } }).catch(() => {});
+  };
+  H.manejadores.rw = async (cq, [id]) => {
+    const ok = await marcarResultado(id, 'won');
+    await marcar(cq, ok ? '✅ Marcada como ganada' : '⚠️ No encontré esa apuesta');
+    if (ok) await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: '🏆 Listo. Para publicarla: en el panel, Win → "Mandar apuesta ganada" y sube la captura.' }).catch(() => {});
+  };
+  H.manejadores.rl = async (cq, [id]) => { const ok = await marcarResultado(id, 'lost'); await marcar(cq, ok ? '❌ Marcada como perdida' : '⚠️ No encontré esa apuesta'); };
+  H.manejadores.rx = async (cq, [id]) => {
+    await H.cambiarHoja(HOJA_RES, (fs) => fs.filter((f) => String(f.betId) !== String(id))); // se vuelve a revisar en la próxima ronda
+    await marcar(cq, '🕒 Lo reviso más tarde');
+  };
+
+  // Para probar a mano:  POST /pay/resultados  (con la clave del bot)
+  app.post('/pay/resultados', requireApiKey, async (req, res) => {
+    try { res.json(await revisarResultados()); } catch (e) { res.status(502).json({ error: e.message }); }
+  });
   // Para probar a mano:  POST /pay/revisar  (con la clave del bot)
   app.post('/pay/revisar', requireApiKey, async (req, res) => {
     try { res.json(await revisar('manual')); } catch (e) { res.status(502).json({ error: e.message }); }
