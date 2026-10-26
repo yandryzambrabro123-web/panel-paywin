@@ -44,12 +44,17 @@ async function evitarHoy() {
   return [...new Set(l)].slice(0, 60);
 }
 
+// Lo que Pay aprendió de las capturas de ganadas del jefe (hoja PayGanadas).
+async function historialGanadas() {
+  try { return (await H.leerHoja('PayGanadas')).slice(-40).map((f) => `${f.deporte || ''} ${f.partido || ''} ${f.pick || ''} @${f.cuota || ''} (${f.mercado || ''})`.replace(/\s+/g, ' ').trim()); } catch (e) { return []; }
+}
+
 async function revisar(motivo) {
   const CUPOS = await faltantes();
   if (!CUPOS.length) return { n: 0, completo: true };
   const r = await fetch(`${PANEL}/api/win-redactar`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ modo: 'pay', cupos: CUPOS, evitar: await evitarHoy() })
+    body: JSON.stringify({ modo: 'pay', cupos: CUPOS, evitar: await evitarHoy(), historial: await historialGanadas() })
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));

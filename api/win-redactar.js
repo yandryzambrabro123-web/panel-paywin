@@ -176,6 +176,26 @@ async function llamarPay(apiKey, payload, maxMs) {
   return { ok: true, texto: texto.trim(), stop };
 }
 
+// Pay aprende de capturas de apuestas GANADAS del jefe: lee cada línea (deporte, partido, selección, cuota).
+async function modoPayAprender(apiKey, body, res) {
+  if (!body.imageBase64) { res.status(400).json({ error: 'Falta la imagen.' }); return; }
+  const system = `Lees capturas de apuestas deportivas GANADAS de una casa de apuestas (simples o combinadas). Extrae cada línea/selección de la apuesta. Responde SOLO con un JSON (sin texto extra) con esta forma:
+{"tipo":"simple|combinada","cuotaTotal":numero_o_null,"lineas":[{"deporte":"futbol|baloncesto|tenis|tenis de mesa|mma|esports|otro","partido":"Local vs Visitante","mercado":"ej. ganador, total de goles, remates de jugador, asistencias, triples, corners, tarjetas, handicap","pick":"la selección tal cual (ej. Más de 2.5 goles, Gana Sevilla, Haaland más de 2.5 remates)","cuota":numero_o_null}]}
+No inventes nada que no se lea; si un dato no se ve, pon null o "". Si no es una apuesta, responde {"tipo":"","lineas":[]}.`;
+  const payload = { model: 'claude-sonnet-5', max_tokens: 1500, system, messages: [{ role: 'user', content: [
+    { type: 'image', source: { type: 'base64', media_type: body.mediaType || 'image/jpeg', data: body.imageBase64 } },
+    { type: 'text', text: 'Lee esta apuesta ganada.' }
+  ] }] };
+  const ia = await llamarPay(apiKey, payload, 40000);
+  if (!ia.ok) { res.status(502).json({ error: `No pude leer la captura (IA ${ia.status}).` }); return; }
+  const t = ia.texto, i = t.indexOf('{'), j = t.lastIndexOf('}');
+  let data = null;
+  try { data = JSON.parse(t.slice(i, j + 1)); } catch (e) { data = null; }
+  if (!data || !Array.isArray(data.lineas)) { res.status(502).json({ error: 'No pude entender esa captura.' }); return; }
+  data.lineas = data.lineas.filter((l) => l && l.pick).slice(0, 12);
+  res.status(200).json(data);
+}
+
 async function modoPayChat(apiKey, body, res) {
   const mensajes = (Array.isArray(body.mensajes) ? body.mensajes : []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 1500) })).filter((m) => m.content);
   if (!mensajes.length || mensajes[0].role !== 'user') { res.status(400).json({ error: 'Falta el mensaje.' }); return; }
@@ -292,6 +312,12 @@ module.exports = async function handler(req, res) {
   }
 
   const body = req.body || {};
+
+  if (body.modo === 'pay_aprender') {
+    try { await modoPayAprender(apiKey, body, res); }
+    catch (e) { console.error('Pay aprender:', e); res.status(500).json({ error: 'No pude leer la captura.' }); }
+    return;
+  }
 
   if (body.modo === 'pay_diag') {
     res.status(200).json({ odds: !!process.env.ODDS_API_KEY, eventosEnCaché: cacheCuotas.datos ? cacheCuotas.datos.length : null });

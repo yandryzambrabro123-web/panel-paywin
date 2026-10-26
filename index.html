@@ -6525,7 +6525,9 @@ function renderFactory(){
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
           <button class="btn secondary" id="payTalkBtn" type="button">🎙 Hablar con Pay</button>
+          <button class="btn secondary" id="payAprBtn" type="button">📸 Enseñarle a Pay</button>
         </div>
+        <div id="payAprendeInfo" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
         <div id="payEstado" style="font-size:12px; color:var(--muted); margin-top:10px;"></div>
         <div id="payOut" style="margin-top:14px;"></div>
       </div>
@@ -6599,8 +6601,63 @@ function payEvitar(incluirSugeridas){
   return [...new Set(l)].slice(0, 60);
 }
 function payHistorial(){
-  return [...(state.vipBets||[]), ...(state.freeBets||[]), ...(state.liveBets||[])].filter(b=>b.result==='won').sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,25)
-    .map(b=>`${b.sport||''} ${b.event||''} ${b.pick||''} @${b.odds||''}`.replace(/\s+/g,' ').trim());
+  const db = (payGanadasDB||[]).slice(-40).map(f=>`${f.deporte||''} ${f.partido||''} ${f.pick||''} @${f.cuota||''} (${f.mercado||''})`.replace(/\s+/g,' ').trim());
+  return db.concat([...(state.vipBets||[]), ...(state.freeBets||[]), ...(state.liveBets||[])].filter(b=>b.result==='won').sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,25)
+    .map(b=>`${b.sport||''} ${b.event||''} ${b.pick||''} @${b.odds||''}`.replace(/\s+/g,' ').trim())).slice(0,60);
+}
+
+// ---------- Pay aprende de tus apuestas ganadas (capturas) ----------
+let payGanadasDB = [];
+async function payCargarGanadasDB(){
+  try{ const r = await fetch(`${SHEETS_API_URL}?sheet=PayGanadas`); const j = await r.json(); payGanadasDB = Array.isArray(j.data) ? j.data : []; }catch(e){ payGanadasDB = []; }
+  const el = document.getElementById('payAprendeInfo');
+  if(el) el.textContent = payGanadasDB.length ? `Pay ya aprendió de ${payGanadasDB.length} líneas ganadas.` : 'Pay todavía no ha aprendido de tus ganadas.';
+}
+function openPayAprender(){
+  let lecturas = []; // { lineas, tipo, cuotaTotal }
+  openModal(`
+    <h3>Enseñarle a Pay</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube capturas de tus apuestas ganadas (puedes elegir varias a la vez). Pay lee cada línea y aprende qué mercados y cuotas te funcionan. Los datos de la persona o de la cuenta no se guardan, solo las líneas.</div>
+    <input id="payAprFiles" type="file" accept="image/*" multiple style="display:none;">
+    <button class="btn" id="payAprPick" type="button" style="width:100%;">📸 Elegir capturas</button>
+    <div id="payAprOut" style="margin-top:12px; font-size:13px;"></div>
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button><button class="btn" id="payAprSave" type="button" disabled>Guardar lo que aprendió</button></div>
+  `);
+  const out = document.getElementById('payAprOut'), save = document.getElementById('payAprSave');
+  document.getElementById('payAprPick').onclick = ()=>document.getElementById('payAprFiles').click();
+  document.getElementById('payAprFiles').onchange = async (e)=>{
+    const files = [...e.target.files]; if(!files.length) return;
+    lecturas = []; save.disabled = true;
+    for(let i=0;i<files.length;i++){
+      out.innerHTML = `<div style="color:var(--muted);">Leyendo ${i+1} de ${files.length}…</div>` + payAprResumen(lecturas);
+      try{
+        const comp = await fileToCompressedImage(files[i]);
+        const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_aprender', imageBase64: comp.base64, mediaType: comp.mediaType }) });
+        const d = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(d.error || 'No se pudo leer');
+        if((d.lineas||[]).length) lecturas.push(d); else lecturas.push({ lineas:[], error:'No vi una apuesta en esa imagen.', _n:i+1 });
+      }catch(err){ lecturas.push({ lineas:[], error: err.message, _n:i+1 }); }
+    }
+    out.innerHTML = payAprResumen(lecturas);
+    save.disabled = !lecturas.some(l=>l.lineas.length);
+  };
+  save.onclick = async ()=>{
+    save.disabled = true; save.textContent = 'Guardando…';
+    const hoy = payHoyEC();
+    const filas = lecturas.flatMap(l=>l.lineas.map(x=>({ id: uid(), day: hoy, tipo: l.tipo||'', cuotaTotal: l.cuotaTotal||'', deporte: x.deporte||'', partido: x.partido||'', mercado: x.mercado||'', pick: x.pick||'', cuota: x.cuota||'' })));
+    try{
+      const r = await fetch(`${SHEETS_API_URL}?sheet=PayGanadas`); const j = await r.json();
+      const previas = Array.isArray(j.data) ? j.data : [];
+      await fetch(SHEETS_API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet:'PayGanadas', data:[...previas, ...filas] }) });
+      await payCargarGanadasDB();
+      alert(`Listo: Pay aprendió ${filas.length} líneas.`); closeModal();
+    }catch(err){ alert('No pude guardar: ' + err.message); save.disabled = false; save.textContent = 'Guardar lo que aprendió'; }
+  };
+}
+function payAprResumen(lecturas){
+  return lecturas.map((l,i)=> l.lineas.length
+    ? `<div style="border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-top:8px;"><div style="color:var(--muted); font-size:12px;">Captura ${i+1} · ${esc(l.tipo||'')}${l.cuotaTotal ? ' · total @' + esc(String(l.cuotaTotal)) : ''}</div>${l.lineas.map(x=>`<div>• ${esc(x.partido||'')} — <b>${esc(x.pick||'')}</b> ${x.cuota ? '@' + esc(String(x.cuota)) : ''} <span style="color:var(--muted);">(${esc(x.mercado||x.deporte||'')})</span></div>`).join('')}</div>`
+    : `<div style="margin-top:8px; color:#ff7a7a;">Captura ${i+1}: ${esc(l.error||'sin líneas')}</div>`).join('');
 }
 
 const PAY_CUPOS = {
@@ -6627,6 +6684,8 @@ function initPayPanel(){
     el.innerHTML = d.odds ? '🟢 Cuotas reales conectadas (The Odds API).' : '🔴 Sin cuotas reales: falta <b>ODDS_API_KEY</b> en Vercel (o falta hacer Redeploy). Sin eso Pay depende de la web y casi no arma picks.';
   }).catch(()=>{});
   pintarPay();
+  document.getElementById('payAprBtn').onclick = openPayAprender;
+  payCargarGanadasDB();
   payCargarTomadas();
   cargarPayAuto();
 }
