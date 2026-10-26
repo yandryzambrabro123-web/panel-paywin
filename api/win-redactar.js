@@ -107,9 +107,14 @@ async function llamarPay(apiKey, payload, maxMs) {
   let texto = '', stop = '';
   for (let i = 0; i < 4; i++) {
     if (i > 0 && Date.now() - inicio > (maxMs || 35000)) break;
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
+    let r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ ...payload, thinking: { type: 'disabled' } })
     });
+    if (r.status === 400) { // por si ese modelo no acepta apagar el "pensar largo": se manda sin eso
+      r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
+      });
+    }
     if (!r.ok) { const t = await r.text(); console.error('Pay IA:', r.status, t.slice(0, 400)); return { ok: false, status: r.status, detalle: t.slice(0, 200) }; }
     const data = await r.json();
     stop = data.stop_reason || '';
@@ -133,7 +138,7 @@ Honestidad: nunca prometas ganancia segura; no inventes partidos, estadísticas 
 ${contexto ? '\nPicks que tienes ahora mismo en pantalla:\n' + contexto : ''}${datos && datos.length ? '\n\nCuotas promedio actuales (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : ''}`;
   // Por defecto responde rápido con lo que sabe y con las cuotas reales; busca en la web solo si el jefe lo pide ("busca...").
   const pideWeb = /\b(busca|buscar|búscame|investiga|internet|web)\b/i.test(mensajes[mensajes.length - 1].content);
-  const payload = { model: 'claude-sonnet-5', max_tokens: 700, system, messages: mensajes };
+  const payload = { model: 'claude-sonnet-5', max_tokens: 2500, system, messages: mensajes };
   if (pideWeb) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }];
   let r = await llamarPay(apiKey, payload, 40000);
   if (r.ok && !r.texto && payload.tools) { delete payload.tools; r = await llamarPay(apiKey, payload, 20000); } // reintento sin web
@@ -159,7 +164,7 @@ Reglas:
 - Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
 - Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de textos, uno por selección, con partido, línea y cuota, ej. "Lakers vs Suns: más de 215.5 puntos @1.30")${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
   const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Dame ${cantidad} combinada(s) distintas.`}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web los partidos de hoy y mañana con sus cuotas aproximadas.'}`;
-  const payload = { model: 'claude-sonnet-5', max_tokens: 2200, system, messages: [{ role: 'user', content: userMsg }] };
+  const payload = { model: 'claude-sonnet-5', max_tokens: 6000, system, messages: [{ role: 'user', content: userMsg }] };
   // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
   if (!conDatos || body.web) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }];
   const ia = await llamarPay(apiKey, payload, 35000);
