@@ -206,6 +206,14 @@ try {
 } catch (e) {
   console.error('No se encontró el sticker separador en', SEPARADOR_STICKER_PATH, '-- se usará una línea de texto de respaldo.', e.message);
 }
+// Banner "APUESTA GRATIS": se manda ANTES de la apuesta, solo en los grupos gratis (sin sticker en medio).
+let bannerGratisBuffer = null;
+try { bannerGratisBuffer = fs.readFileSync(path.join(__dirname, 'assets', 'banner-gratis.jpg')); } catch (e) { console.error('No se encontró el banner de apuesta gratis:', e.message); }
+async function mandarBannerGratis(grupoId) {
+  if (!bannerGratisBuffer) return;
+  try { await sock.sendMessage(grupoId, { image: bannerGratisBuffer, mimetype: 'image/jpeg' }); }
+  catch (e) { console.error('No se pudo mandar el banner a', grupoId, '--', e && e.message); }
+}
 async function mandarSeparador(grupoId) {
   try {
     await pausaHumana();
@@ -246,12 +254,13 @@ app.post('/enviar', requireApiKey, async (req, res) => {
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
   }
-  const { grupoId, texto, imagenBase64, imagenUrl, mediaType, sinSeparador } = req.body || {};
+  const { grupoId, texto, imagenBase64, imagenUrl, mediaType, sinSeparador, banner } = req.body || {};
   if (!grupoId || !texto) {
     return res.status(400).json({ error: 'Falta grupoId o texto.' });
   }
   try {
     await pausaHumana();
+    if (banner) await mandarBannerGratis(grupoId);
     if (imagenUrl) {
       await sock.sendMessage(grupoId, { image: { url: imagenUrl }, caption: texto });
     } else if (imagenBase64) {

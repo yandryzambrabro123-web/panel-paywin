@@ -146,7 +146,7 @@ module.exports = async function handler(req, res) {
     }
 
     // modo "directo" (por defecto)
-    const { grupoId, texto, imagenBase64, imagenUrl, mediaType } = body;
+    const { grupoId, texto, imagenBase64, imagenUrl, mediaType, banner } = body;
     if (!grupoId || !texto) {
       res.status(400).json({ error: 'Falta grupoId o texto.' });
       return;
@@ -154,7 +154,7 @@ module.exports = async function handler(req, res) {
     const botRes = await fetch(`${base}/enviar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
-      body: JSON.stringify({ grupoId, texto, imagenBase64, imagenUrl, mediaType })
+      body: JSON.stringify({ grupoId, texto, imagenBase64, imagenUrl, mediaType, banner: !!banner })
     });
     const data = await botRes.json().catch(() => ({}));
     if (!botRes.ok) {

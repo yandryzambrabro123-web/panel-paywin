@@ -6210,6 +6210,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             modo: 'directo', grupoId: jid, texto: finalCaption,
+            banner: kind === 'nueva_apuesta' && /^gratis/i.test(grupo),
             imagenBase64: sendImage && !sendImage.url ? sendImage.base64 : '',
             imagenUrl: sendImage && sendImage.url ? sendImage.url : '',
             mediaType: sendImage ? sendImage.mediaType : ''
