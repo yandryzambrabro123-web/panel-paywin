@@ -74,7 +74,7 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
 // Deportes y ligas por prioridad (se usan las que estén activas hoy en The Odds API, hasta ODDS_MAX_LIGAS).
 // Se puede fijar una lista propia con la variable ODDS_SPORTS en Vercel (separada por comas).
 const PAY_PRIORIDAD = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'basketball_nba', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_europa_league', 'soccer_conmebol_copa_libertadores', 'soccer_brazil_campeonato', 'soccer_argentina_primera_division', 'soccer_mexico_ligamx', 'soccer_usa_mls', 'tennis_atp', 'tennis_wta', 'mma_mixed_martial_arts', 'basketball_euroleague', 'icehockey_nhl', 'baseball_mlb', 'americanfootball_nfl', 'soccer_netherlands_eredivisie', 'soccer_portugal_primeira_liga', 'soccer_turkey_super_league', 'soccer_efl_champ', 'soccer_colombia_primera_a', 'soccer_chile_campeonato'];
-const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 10;
+const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 16;
 
 // Caché de 3 horas: cada consulta gasta créditos del plan (500 al mes en el gratis).
 let cacheCuotas = { t: 0, datos: null };
@@ -118,7 +118,13 @@ async function cuotasReales() {
     try {
       const r = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${key}`);
       const activos = r.ok ? (await r.json()).filter((x) => x.active && !x.has_outrights).map((x) => x.key) : [];
-      for (const p of PAY_PRIORIDAD) for (const k of activos) if ((k === p || k.startsWith(p + '_')) && !ligas.includes(k)) ligas.push(k);
+      const orden = [];
+      for (const p of PAY_PRIORIDAD) for (const k of activos) if ((k === p || k.startsWith(p + '_')) && !orden.includes(k)) orden.push(k);
+      // Reparto por deporte (fútbol, básquet, tenis, UFC, béisbol, hockey, NFL): una liga de cada deporte por vuelta, para que no se llene todo de fútbol
+      const grupos = {};
+      for (const k of orden) (grupos[k.split('_')[0]] = grupos[k.split('_')[0]] || []).push(k);
+      const cola = Object.values(grupos);
+      while (cola.some((g) => g.length)) for (const g of cola) if (g.length) ligas.push(g.shift());
     } catch (e) { /* sin lista: se usan las principales */ }
     if (!ligas.length) ligas = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'basketball_nba'];
   }
@@ -132,6 +138,7 @@ async function cuotasReales() {
       const r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${mercados}&oddsFormat=decimal`);
       if (!r.ok) continue;
       const lista = await r.json();
+      let porLiga = 0;
       for (const e of lista) {
         if (Date.parse(e.commence_time) > limite) continue;
         const mk = {};
@@ -140,6 +147,7 @@ async function cuotasReales() {
           (mk[k] = mk[k] || []).push(o.price);
         }
         const resumen = Object.entries(mk).map(([k, v]) => `${k}: ${(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2)}`);
+        if (++porLiga > 12) continue;
         eventos.push(`${liga} | ${e.home_team} vs ${e.away_team} | ${e.commence_time} | ${resumen.join(' ; ')}`);
         evs.push({ liga, id: e.id, casa: e.home_team, fuera: e.away_team, inicio: e.commence_time });
       }
@@ -147,7 +155,7 @@ async function cuotasReales() {
   }
   let extra = [];
   if (process.env.ODDS_PROPS === '1') { try { extra = await lineasJugadores(key, evs, limite); } catch (e) { extra = []; } }
-  cacheCuotas = { t: Date.now(), datos: [...eventos.slice(0, 120), ...extra] };
+  cacheCuotas = { t: Date.now(), datos: [...eventos.slice(0, 220), ...extra] };
   return cacheCuotas.datos;
 }
 
