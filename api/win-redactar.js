@@ -71,7 +71,7 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
 // ---------- Pay: analista deportivo de la Fábrica de apuestas ----------
 // modo "pay": { modo:'pay', cupo, cuotaMin, cuotaMax, cantidad, instruccion? } -> { sugerencias:[...], fuente }
 // Con ODDS_API_KEY (the-odds-api.com) usa cuotas reales; sin ella, busca los próximos partidos en la web.
-const PAY_LIGAS = (process.env.ODDS_SPORTS || 'soccer_spain_la_liga,soccer_epl,soccer_uefa_champs_league').split(',');
+const PAY_LIGAS = (process.env.ODDS_SPORTS || 'soccer_spain_la_liga,soccer_epl,soccer_uefa_champs_league,basketball_nba').split(',');
 
 // Caché de 30 min: cada consulta gasta créditos del plan (500 al mes en el gratis).
 let cacheCuotas = { t: 0, datos: null };
@@ -108,16 +108,17 @@ async function modoPay(apiKey, body, res) {
   let datos = null;
   try { datos = await cuotasReales(); } catch (e) { datos = null; }
   const conDatos = datos && datos.length;
-  const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). Propones apuestas para un cupo concreto, con análisis breve y honesto.
+  const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). Tu trabajo es armar apuestas de BAJO RIESGO para un cupo concreto, con análisis breve y honesto. El dueño revisa y analiza cada pick antes de apostar.
+Estilo de apuesta (obligatorio): COMBINADAS de selecciones seguras. Cada selección individual debe tener cuota entre 1.15 y 1.50 (mejor 1.20 a 1.40). Elige cuántas selecciones (2 a 5) para que la cuota TOTAL (el producto de las cuotas) quede entre ${cuotaMin} y ${cuotaMax}. Muestra la cuota de cada selección y la cuota total.
+Deportes y mercados que puedes usar, todos: fútbol (goles, corners, tarjetas, remates, faltas, ganador, doble oportunidad), baloncesto/NBA (puntos totales, puntos/rebotes/asistencias de jugador), tenis (ganador, sets, juegos/puntos), tenis de mesa (total de puntos del partido, por ejemplo más de 74.5), UFC/MMA, e-sports. Mezcla deportes si eso baja el riesgo.
 Reglas:
-- Solo propones partidos que se juegan en las próximas 36 horas y que aparezcan en los datos${conDatos ? ' que te doy' : ' que encuentres buscando en la web'}. NUNCA inventes partidos, horarios ni cuotas.
-- La cuota de cada sugerencia debe quedar entre ${cuotaMin} y ${cuotaMax}. Si ningún pick simple cae en ese rango, arma una combinada de 2 o 3 selecciones y multiplica las cuotas.
-- Prioriza valor: forma reciente, historial, bajas y contexto. Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta".
-- Las cuotas vienen de un promedio de casas, así que avisa que se verifique en la casa donde se apuesta.
-- Responde SOLO con un arreglo JSON de ${cantidad} objetos (sin texto extra, sin markdown) con estos campos: partido (o "Combinada"), liga, hora (hora de Ecuador, texto corto), pick (texto claro, ej. "Más de 2.5 goles"), cuota (número), confianza, analisis (máximo 2 frases), selecciones (arreglo de textos si es combinada, si no vacío).`;
-  const userMsg = `Cupo: ${cupo}. Rango de cuota: ${cuotaMin} a ${cuotaMax}. Dame ${cantidad} sugerencia(s).${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web los partidos de hoy y mañana con sus cuotas aproximadas.'}`;
-  const payload = { model: 'claude-sonnet-5', max_tokens: 1800, system, messages: [{ role: 'user', content: userMsg }] };
-  if (!conDatos) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }];
+- Solo partidos que se juegan en las próximas 36 horas y que existan de verdad (en los datos${conDatos ? ' que te doy o' : ''} que encuentres buscando en la web). NUNCA inventes partidos, horarios, líneas ni cuotas. Si no confirmas una cuota, di que es aproximada.
+- Baja el riesgo: prefiere líneas con margen amplio (por ejemplo un total que el equipo o jugador supera con holgura en sus últimos partidos), evita partidos con bajas importantes, rotaciones, finales parejas o información dudosa. Si una selección no te convence, no la pongas.
+- Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
+- Responde SOLO con un arreglo JSON de ${cantidad} objetos (sin texto extra, sin markdown) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de textos, uno por selección, con partido, línea y cuota, ej. "Lakers vs Suns: más de 215.5 puntos @1.30").`;
+  const userMsg = `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Dame ${cantidad} combinada(s) distintas.${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web los partidos de hoy y mañana con sus cuotas aproximadas.'}`;
+  const payload = { model: 'claude-sonnet-5', max_tokens: 3000, system, messages: [{ role: 'user', content: userMsg }] };
+  payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }]; // los datos de cuotas cubren lo principal; la web completa tenis de mesa, e-sports y mercados de jugadores
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
   });
@@ -133,7 +134,7 @@ Reglas:
   try { sugerencias = JSON.parse(m ? m[0] : '[]'); } catch (e) { sugerencias = []; }
   sugerencias = sugerencias.filter((x) => x && x.pick).slice(0, cantidad);
   if (!sugerencias.length) { res.status(502).json({ error: 'Pay no encontró una apuesta clara en ese rango. Prueba con otro rango o más tarde.' }); return; }
-  res.status(200).json({ sugerencias, fuente: conDatos ? 'cuotas reales (The Odds API)' : 'búsqueda en la web (cuotas aproximadas)' });
+  res.status(200).json({ sugerencias, fuente: conDatos ? 'cuotas reales (The Odds API) + búsqueda web para otros deportes' : 'búsqueda en la web (cuotas aproximadas)' });
 }
 
 module.exports = async function handler(req, res) {

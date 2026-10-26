@@ -6486,13 +6486,13 @@ function renderFactory(){
     <div class="grid-2">
       <div class="card" style="grid-column:1/-1;">
         <div class="card-title">Pay · analista deportivo</div>
-        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Elige para qué es la apuesta y Pay te arma sugerencias con los próximos partidos. Tú decides cuál tomas.</div>
+        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Pay arma combinadas de líneas seguras (cada una de cuota baja) en todos los deportes. Pon la cuota total que quieres. Revisa siempre antes de apostar.</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
           ${Object.keys(PAY_CUPOS).map(k=>`<button class="btn secondary" data-pay-cupo="${k}" type="button">${k}</button>`).join('')}
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
-          <div class="field" style="margin:0; width:90px;"><label>Cuota mín.</label><input id="payMin" inputmode="decimal"></div>
-          <div class="field" style="margin:0; width:90px;"><label>Cuota máx.</label><input id="payMax" inputmode="decimal"></div>
+          <div class="field" style="margin:0; width:90px;"><label>Total mín.</label><input id="payMin" inputmode="decimal"></div>
+          <div class="field" style="margin:0; width:90px;"><label>Total máx.</label><input id="payMax" inputmode="decimal"></div>
           <div class="field" style="margin:0; width:80px;"><label>Cantidad</label><input id="payCant" inputmode="numeric" value="3"></div>
           <div class="field" style="margin:0; flex:1; min-width:160px;"><label>Indicación (opcional)</label><input id="payNota" placeholder="Ej: solo fútbol, evitar combinadas"></div>
         </div>
