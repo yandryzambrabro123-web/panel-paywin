@@ -6533,6 +6533,7 @@ function renderFactory(){
         <div id="payAprendeInfo" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
         <div id="payStatsInfo" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
         <div id="payEstado" style="font-size:12px; color:var(--muted); margin-top:10px;"></div>
+        <div id="payBandeja"></div>
         <div id="payOut" style="margin-top:14px;"></div>
       </div>
       <div class="card" style="grid-column:1/-1;">
@@ -6558,18 +6559,61 @@ function payNormSel(s){
   const m = t.match(/^(.*?):\s*(.*?)\s*@\s*([\d.,]+)\s*$/);
   return m ? { partido:m[1], pick:m[2], cuota:m[3], hora:'' } : { partido:'', pick:t, cuota:'', hora:'' };
 }
-function payLineasHTML(x){
+function payLineasHTML(x, origen, idx){
   const sel = (x.selecciones||[]).map(payNormSel);
   if(!sel.length) return `<div style="font-size:14px; margin-bottom:4px;">${esc(x.pick||'')}</div>`;
-  return sel.map((l,i)=>`
-    <div style="display:flex; gap:10px; align-items:baseline; padding:8px 0; border-top:1px solid var(--border);">
-      <div style="flex:none; font-weight:700; color:var(--gold, #D4AF6A); min-width:58px;">Línea ${i+1}</div>
+  return sel.map((l,i)=>{
+    const k = payClaveLinea(l);
+    const on = paySeleccion.some(s=>s.k===k);
+    return `
+    <div style="display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid var(--border);">
+      <div style="flex:none; font-weight:700; color:var(--gold, #D4AF6A); min-width:52px;">Línea ${i+1}</div>
       <div style="flex:1; min-width:0;">
         <div style="font-size:13px; color:var(--muted);">${esc(l.partido)}${l.hora ? ' · ' + esc(l.hora) : ''}</div>
         <div style="font-size:14.5px; font-weight:600;">${esc(l.pick)}</div>
       </div>
       <div style="flex:none; font-weight:700;">@ ${esc(String(l.cuota))}</div>
-    </div>`).join('') + `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--border); font-weight:800;"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${esc(String(x.cuota||''))}</span></div>`;
+      <button type="button" class="btn ${on ? '' : 'secondary'}" data-pay-like="${origen}:${idx}:${i}" title="Me gusta esta línea" style="flex:none; padding:6px 10px;">${on ? '♥' : '♡'}</button>
+    </div>`;}).join('') + `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--border); font-weight:800;"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${esc(String(x.cuota||''))}</span></div>`;
+}
+// ---- Mis líneas elegidas: las que me gustaron de distintas generaciones, con la cuota total corriendo ----
+let paySeleccion = []; // { k, partido, pick, cuota, hora, cupo }
+const payClaveLinea = (l)=>String((l.partido||'')+'|'+(l.pick||'')).toLowerCase().replace(/[^a-z0-9|]/g,'');
+function payCuotaSel(){ return paySeleccion.reduce((a,l)=>a*(Number(String(l.cuota).replace(',','.'))||1),1); }
+function payToggleLinea(ref){
+  const [origen, idx, i] = ref.split(':');
+  const lista = origen === 'auto' ? payAutoLista : paySugerencias;
+  const x = lista[+idx]; if(!x) return;
+  const l = (x.selecciones||[]).map(payNormSel)[+i]; if(!l) return;
+  const k = payClaveLinea(l);
+  const pos = paySeleccion.findIndex(s=>s.k===k);
+  if(pos >= 0) paySeleccion.splice(pos,1); else paySeleccion.push({ k, ...l, cupo: x.cupo || payCupo });
+  pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
+}
+function pintarAutoSiHay(){ if(typeof cargarPayAutoPintar === 'function') cargarPayAutoPintar(); }
+function pintarBandejaPay(){
+  const el = document.getElementById('payBandeja'); if(!el) return;
+  if(!paySeleccion.length){ el.innerHTML = ''; return; }
+  const total = payCuotaSel();
+  const partidos = paySeleccion.map(s=>s.partido).filter(Boolean);
+  const repetido = partidos.length !== new Set(partidos).size;
+  el.innerHTML = `
+    <div style="border:1px solid var(--gold, #D4AF6A); border-radius:12px; padding:12px 14px; margin:12px 0;">
+      <div style="font-weight:800; margin-bottom:6px;">♥ Mis líneas elegidas (${paySeleccion.length})</div>
+      ${paySeleccion.map((s,i)=>`<div style="display:flex; gap:8px; align-items:center; padding:5px 0; border-top:1px solid var(--border);"><div style="flex:1; min-width:0;"><div style="font-size:12px; color:var(--muted);">${esc(s.partido)}</div><div style="font-size:14px; font-weight:600;">${esc(s.pick)}</div></div><div style="font-weight:700;">@ ${esc(String(s.cuota))}</div><button type="button" class="btn secondary" data-pay-quitar="${i}" style="padding:4px 9px;">✕</button></div>`).join('')}
+      <div style="display:flex; justify-content:space-between; padding:8px 0 4px; font-weight:800; border-top:1px solid var(--border);"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${total.toFixed(2)}</span></div>
+      ${repetido ? '<div style="font-size:12px; color:#ff7a7a;">⚠️ Tienes dos líneas del mismo partido: están relacionadas y la casa puede no dejarte combinarlas.</div>' : ''}
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+        <button class="btn" id="payQuedarmeBtn" type="button">Quedarme con esta combinada</button>
+        <button class="btn secondary" id="payResenaSelBtn" type="button">🎙 Reseña</button>
+        <button class="btn secondary" id="payVaciarBtn" type="button">Vaciar</button>
+      </div>
+    </div>`;
+  el.querySelectorAll('[data-pay-quitar]').forEach(b=>b.onclick=()=>{ paySeleccion.splice(+b.dataset.payQuitar,1); pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); });
+  document.getElementById('payVaciarBtn').onclick = ()=>{ paySeleccion = []; pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); };
+  const combi = ()=>({ cupo: payCupo, partido: `Combinada de ${paySeleccion.length}`, pick: 'Mi combinada', cuota: total.toFixed(2), selecciones: paySeleccion.map(s=>({ partido:s.partido, pick:s.pick, cuota:s.cuota, hora:s.hora })) });
+  document.getElementById('payQuedarmeBtn').onclick = ()=>tomarPay(combi());
+  document.getElementById('payResenaSelBtn').onclick = ()=>payResena(combi());
 }
 function payTextoSel(x){
   return (x.selecciones||[]).map(payNormSel).map((l,i)=>`Línea ${i+1}: ${l.partido ? l.partido + ' — ' : ''}${l.pick} @${l.cuota}`).join('\n');
@@ -6698,6 +6742,7 @@ function initPayPanel(){
   pintarPay();
   document.getElementById('payAprBtn').onclick = openPayAprender;
   { const r = payPerdidasYResumen(); const el = document.getElementById('payStatsInfo'); if(el) el.textContent = (r.g + r.p) ? `Tu historial en el panel: ${r.g} ganadas y ${r.p} perdidas. Pay lo usa para evitar lo que te falla.` : 'Marca tus apuestas como Ganada o Perdida en el panel y Pay aprende también de lo que te falla.'; }
+  pintarBandejaPay();
   payCargarGanadasDB();
   payCargarTomadas();
   cargarPayAuto();
@@ -6713,6 +6758,10 @@ async function cargarPayAuto(){
       .sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)))
       .map(x=>{ let sel=[]; try{ sel = JSON.parse(x.selecciones||'[]'); }catch(e){} return { ...x, selecciones: sel }; });
   }catch(e){ payAutoLista = []; }
+  cargarPayAutoPintar();
+}
+function cargarPayAutoPintar(){
+  const el = document.getElementById('payAuto'); if(!el) return;
   if(!payAutoLista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">Todavía no hay picks de Pay. Revisa a las 9am y 3pm (hora de Ecuador).</div>'; return; }
   el.innerHTML = payAutoLista.map((x,i)=>`
     <div style="border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;">
@@ -6720,12 +6769,13 @@ async function cargarPayAuto(){
         <strong>${esc(x.cupo||'Pick')} · ${esc(x.partido||'')}</strong><span style="color:var(--gold, #D4AF6A); font-weight:700;">@ ${esc(String(x.cuota||''))}</span>
       </div>
       <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
-      ${payLineasHTML(x)}
+      ${payLineasHTML(x, 'auto', i)}
       <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn" data-pay-auto="${i}" type="button">La tomo</button><button class="btn secondary" data-pay-resenaauto="${i}" type="button">🎙 Reseña: ¿por qué?</button></div>
     </div>`).join('');
   el.querySelectorAll('[data-pay-auto]').forEach(b=>b.onclick=()=>tomarPay(payAutoLista[+b.dataset.payAuto]));
   el.querySelectorAll('[data-pay-resenaauto]').forEach(b=>b.onclick=()=>payResena(payAutoLista[+b.dataset.payResenaauto]));
+  el.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
 }
 async function generarPay(otras){
   const out = document.getElementById('payOut'), btn = document.getElementById('payGenBtn');
@@ -6756,12 +6806,13 @@ function pintarPay(){
         <strong>${esc(x.partido||'')}</strong><span style="color:var(--gold, #D4AF6A); font-weight:700;">@ ${esc(String(x.cuota||''))}</span>
       </div>
       <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
-      ${payLineasHTML(x)}
+      ${payLineasHTML(x, 'gen', i)}
       <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn" data-pay-tomar="${i}" type="button">La tomo</button><button class="btn secondary" data-pay-resena="${i}" type="button">🎙 Reseña: ¿por qué?</button></div>
     </div>`).join('');
   out.querySelectorAll('[data-pay-tomar]').forEach(b=>b.onclick=()=>tomarPay(+b.dataset.payTomar));
   out.querySelectorAll('[data-pay-resena]').forEach(b=>b.onclick=()=>payResena(paySugerencias[+b.dataset.payResena]));
+  out.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
   const otras = document.getElementById('payOtrasBtn'); if(otras) otras.onclick = ()=>generarPay(true);
 }
 // ---------- Pay: chat por voz y texto ----------
