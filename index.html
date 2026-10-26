@@ -5765,13 +5765,38 @@ async function winGuardarGanadaParaManana(texto, grupos, sendImage){
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
   const imageUrl = await winSubirImagenBlob(sendImage, 'ganada');
   if(!imageUrl && sendImage) throw new Error('No se pudo guardar la imagen. Revisa tu conexión e intenta de nuevo.');
-  state.winGanadas.push({ id: uid(), date: hoy, caption: texto, imageUrl, grupos: (grupos || []).join(','), status: 'pendiente', publishedAt: '' });
+  // Si ya hay una guardada igual (mismo día y texto), no se duplica: solo se suman los grupos.
+  const igual = (state.winGanadas || []).find(g=>g.status === 'pendiente' && g.date === hoy && winClaveGanada(g) === winClaveGanada({ caption: texto }));
+  if(igual){
+    igual.grupos = [...new Set([...(igual.grupos||'').split(',').filter(Boolean), ...(grupos||[])])].join(',');
+    if(!igual.imageUrl && imageUrl) igual.imageUrl = imageUrl;
+  } else {
+    state.winGanadas.push({ id: uid(), date: hoy, caption: texto, imageUrl, grupos: (grupos || []).join(','), status: 'pendiente', publishedAt: '' });
+  }
   await persist('winGanadas');
+}
+const winClaveGanada = (g)=>String(g.caption||'').replace(/\s+/g,' ').trim().toLowerCase();
+// Junta las ganadas guardadas repetidas (mismo día y texto) en una sola con todos sus grupos.
+async function winLimpiarGanadasDuplicadas(){
+  const vistos = new Map(), borrar = [];
+  (state.winGanadas || []).filter(g=>g.status === 'pendiente').forEach(g=>{
+    const k = g.date + '|' + winClaveGanada(g);
+    const base = vistos.get(k);
+    if(!base){ vistos.set(k, g); return; }
+    base.grupos = [...new Set([...(base.grupos||'').split(',').filter(Boolean), ...(g.grupos||'').split(',').filter(Boolean)])].join(',');
+    if(!base.imageUrl && g.imageUrl) base.imageUrl = g.imageUrl;
+    borrar.push(g.id);
+  });
+  if(!borrar.length) return 0;
+  state.winGanadas = state.winGanadas.filter(g=>!borrar.includes(g.id));
+  await persist('winGanadas', { deletedIds: borrar });
+  return borrar.length;
 }
 function winGanadasPendientes(){
   return (state.winGanadas || []).filter(g=>g.status === 'pendiente').sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 }
-function openWinGanadasAyerModal(){
+async function openWinGanadasAyerModal(){
+  try{ await winLimpiarGanadasDuplicadas(); }catch(e){ console.error(e); }
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
   const lista = winGanadasPendientes();
   const ayer = lista.filter(g=>g.date < hoy);

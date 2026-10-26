@@ -116,26 +116,47 @@ Reglas:
 - Solo partidos que se juegan en las próximas 36 horas y que existan de verdad (en los datos${conDatos ? ' que te doy o' : ''} que encuentres buscando en la web). NUNCA inventes partidos, horarios, líneas ni cuotas. Si no confirmas una cuota, di que es aproximada.
 - Baja el riesgo: prefiere líneas con margen amplio (por ejemplo un total que el equipo o jugador supera con holgura en sus últimos partidos), evita partidos con bajas importantes, rotaciones, finales parejas o información dudosa. Si una selección no te convence, no la pongas.
 - Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
-- Responde SOLO con un arreglo JSON de ${cantidad} objetos (sin texto extra, sin markdown) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de textos, uno por selección, con partido, línea y cuota, ej. "Lakers vs Suns: más de 215.5 puntos @1.30")${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
+- Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de textos, uno por selección, con partido, línea y cuota, ej. "Lakers vs Suns: más de 215.5 puntos @1.30")${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
   const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Dame ${cantidad} combinada(s) distintas.`}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web los partidos de hoy y mañana con sus cuotas aproximadas.'}`;
   const payload = { model: 'claude-sonnet-5', max_tokens: 3000, system, messages: [{ role: 'user', content: userMsg }] };
   payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }]; // los datos de cuotas cubren lo principal; la web completa tenis de mesa, e-sports y mercados de jugadores
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
-  });
-  if (!r.ok) {
-    console.error('Pay:', r.status, await r.text());
-    res.status(502).json({ error: 'Pay no pudo analizar ahora (servicio de IA). Intenta de nuevo.' });
+  // La búsqueda web puede pausar el turno (pause_turn): se continúa hasta 3 veces.
+  let data = null, texto = '';
+  for (let i = 0; i < 4; i++) {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    if (!r.ok) {
+      console.error('Pay:', r.status, await r.text());
+      res.status(502).json({ error: 'Pay no pudo analizar ahora (servicio de IA). Intenta de nuevo.' });
+      return;
+    }
+    data = await r.json();
+    texto += '\n' + (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    if (data.stop_reason !== 'pause_turn') break;
+    payload.messages = [...payload.messages.slice(0, 1), { role: 'assistant', content: data.content }];
+  }
+  // Busca el arreglo JSON: primero dentro de <json>, luego el último bloque [ ... ] que sea válido
+  let sugerencias = [];
+  const cand = [];
+  const tag = texto.match(/<json>([\s\S]*?)<\/json>/i);
+  if (tag) cand.push(tag[1]);
+  const fence = texto.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) cand.push(fence[1]);
+  for (let ini = texto.indexOf('['); ini >= 0 && cand.length < 12; ini = texto.indexOf('[', ini + 1)) {
+    const fin = texto.lastIndexOf(']');
+    if (fin > ini) cand.push(texto.slice(ini, fin + 1));
+  }
+  for (const c of cand) {
+    try { const j = JSON.parse(c.trim()); if (Array.isArray(j)) { sugerencias = j; break; } } catch (e) { /* siguiente candidato */ }
+  }
+  sugerencias = sugerencias.filter((x) => x && x.pick).slice(0, cantidad);
+  if (!sugerencias.length && lote) { res.status(200).json({ sugerencias: [], fuente: 'sin picks claros', razon: texto.trim().slice(0, 400) }); return; }
+  if (!sugerencias.length) {
+    console.error('Pay sin picks. Respuesta:', texto.slice(0, 600));
+    res.status(502).json({ error: 'Pay no armó una combinada en ese rango. Lo que dijo: ' + (texto.replace(/\s+/g, ' ').trim().slice(0, 220) || '(sin respuesta)') });
     return;
   }
-  const data = await r.json();
-  const texto = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
-  const m = texto.match(/\[[\s\S]*\]/);
-  let sugerencias = [];
-  try { sugerencias = JSON.parse(m ? m[0] : '[]'); } catch (e) { sugerencias = []; }
-  sugerencias = sugerencias.filter((x) => x && x.pick).slice(0, cantidad);
-  if (!sugerencias.length && lote) { res.status(200).json({ sugerencias: [], fuente: 'sin picks claros' }); return; }
-  if (!sugerencias.length) { res.status(502).json({ error: 'Pay no encontró una apuesta clara en ese rango. Prueba con otro rango o más tarde.' }); return; }
   res.status(200).json({ sugerencias, fuente: conDatos ? 'cuotas reales (The Odds API) + búsqueda web para otros deportes' : 'búsqueda en la web (cuotas aproximadas)' });
 }
 

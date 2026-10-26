@@ -7,17 +7,34 @@
 let H = null;
 const HOJA = 'PaySugerencias';
 const PANEL = (process.env.PANEL_URL || 'https://panel-paywin.vercel.app').replace(/\/$/, '');
-const CUPOS = [
-  { cupo: 'VIP', min: 1.8, max: 2.0 },
-  { cupo: 'Gratis', min: 1.75, max: 1.9 },
-  { cupo: 'Regalito', min: 1.75, max: 1.9 },
-  { cupo: 'Stake de pago', min: 2.5, max: 4.0 }
+// Lo que Pay debe completar cada día (en orden de prioridad) y el rango de cuota total de cada uno.
+const META_DIA = [
+  { cupo: 'Stake de pago', cuantos: 1, min: 2.5, max: 4.0 },
+  { cupo: 'Regalito', cuantos: 1, min: 1.75, max: 1.9 },
+  { cupo: 'Gratis', cuantos: 2, min: 1.75, max: 1.9 },
+  { cupo: 'VIP', cuantos: 3, min: 1.8, max: 2.0 }
 ];
+const MAX_POR_REVISION = 4;
+
+// Lo que falta del día: cada revisión completa lo pendiente (la mañana saca el stake primero).
+async function faltantes() {
+  const hoy = H.hoyEC();
+  let hechas = [];
+  try { hechas = (await H.leerHoja(HOJA)).filter((f) => new Date(Date.parse(f.createdAt) - 5 * 3600e3).toISOString().slice(0, 10) === hoy); } catch (e) { hechas = []; }
+  const lista = [];
+  for (const m of META_DIA) {
+    const ya = hechas.filter((f) => f.cupo === m.cupo).length;
+    for (let i = ya; i < m.cuantos; i++) lista.push({ cupo: m.cupo, min: m.min, max: m.max });
+  }
+  return lista.slice(0, MAX_POR_REVISION);
+}
 
 const horasEC = () => String(process.env.PAY_HORAS || '9,15').split(',').map((x) => Number(x.trim())).filter((n) => n >= 0 && n < 24);
 const ahoraEC = () => new Date(Date.now() - 5 * 3600e3);
 
 async function revisar(motivo) {
+  const CUPOS = await faltantes();
+  if (!CUPOS.length) return { n: 0, completo: true };
   const r = await fetch(`${PANEL}/api/win-redactar`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ modo: 'pay', cupos: CUPOS })
