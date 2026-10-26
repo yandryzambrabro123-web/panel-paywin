@@ -14,7 +14,9 @@ module.exports = async function handler(req, res) {
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+  let voiceId = process.env.ELEVENLABS_VOICE_ID;
+  // Pay (voz de hombre): si configuras ELEVENLABS_VOICE_ID_PAY en Vercel, Pay usa esa voz.
+  if (req.body && req.body.voz === 'pay' && process.env.ELEVENLABS_VOICE_ID_PAY) voiceId = process.env.ELEVENLABS_VOICE_ID_PAY;
   if (!apiKey || !voiceId) {
     res.status(500).json({ error: 'Falta configurar ELEVENLABS_API_KEY y/o ELEVENLABS_VOICE_ID en Vercel.' });
     return;

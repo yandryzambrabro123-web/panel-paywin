@@ -6521,7 +6521,10 @@ function renderFactory(){
           <div class="field" style="margin:0; width:80px;"><label>Cantidad</label><input id="payCant" inputmode="numeric" value="3"></div>
           <div class="field" style="margin:0; flex:1; min-width:160px;"><label>Indicación (opcional)</label><input id="payNota" placeholder="Ej: solo fútbol, evitar combinadas"></div>
         </div>
-        <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
+          <button class="btn secondary" id="payTalkBtn" type="button">🎙 Hablar con Pay</button>
+        </div>
         <div id="payOut" style="margin-top:14px;"></div>
       </div>
       <div class="card" style="grid-column:1/-1;">
@@ -6558,6 +6561,7 @@ function initPayPanel(){
   document.querySelectorAll('[data-pay-cupo]').forEach(b=>b.onclick=()=>setCupo(b.dataset.payCupo));
   setCupo(payCupo);
   document.getElementById('payGenBtn').onclick = generarPay;
+  document.getElementById('payTalkBtn').onclick = openPayChat;
   pintarPay();
   cargarPayAuto();
 }
@@ -6620,6 +6624,141 @@ function pintarPay(){
     </div>`).join('');
   out.querySelectorAll('[data-pay-tomar]').forEach(b=>b.onclick=()=>tomarPay(+b.dataset.payTomar));
 }
+// ---------- Pay: chat por voz y texto ----------
+let payChatMsgs = [], payChatBusy = false, payRec = null, payRecChunks = [], payStream = null, payAudioEl = null, payVozOn = true;
+function payChatContexto(){
+  const l = [];
+  (payAutoLista||[]).slice(0,6).forEach(x=>l.push(`[${x.cupo||'Pick'}] ${x.partido||''} | ${x.pick||''} | cuota ${x.cuota||''} | ${(x.selecciones||[]).join(' + ')} | ${x.analisis||''}`));
+  (paySugerencias||[]).slice(0,5).forEach(x=>l.push(`[${x.cupo||'Pick'}] ${x.partido||''} | ${x.pick||''} | cuota ${x.cuota||''} | ${(x.selecciones||[]).join(' + ')} | ${x.analisis||''}`));
+  return l.join('\n');
+}
+function payOrb(estado, texto){
+  const o = document.getElementById('payOrb'); if(o) o.dataset.estado = estado;
+  const t = document.getElementById('payOrbTxt'); if(t) t.textContent = texto || '';
+}
+function openPayChat(){
+  payChatMsgs = [];
+  openModal(`
+    <style>
+      #payOrb{ width:96px; height:96px; border-radius:50%; margin:4px auto 6px; background:radial-gradient(circle at 35% 30%, #fff3cf, #D4AF6A 45%, #7a5a1c 100%); box-shadow:0 0 22px rgba(212,175,106,.45); transition:transform .3s, box-shadow .3s; }
+      #payOrb[data-estado="listening"]{ animation:payPulse 1s ease-in-out infinite; box-shadow:0 0 34px rgba(110,200,255,.7); background:radial-gradient(circle at 35% 30%, #eaf8ff, #6ec8ff 45%, #1d5a85 100%); }
+      #payOrb[data-estado="thinking"]{ animation:paySpin 1.2s linear infinite; box-shadow:0 0 30px rgba(212,175,106,.8); }
+      #payOrb[data-estado="speaking"]{ animation:payPulse .55s ease-in-out infinite; box-shadow:0 0 40px rgba(212,175,106,.9); }
+      @keyframes payPulse{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.12);} }
+      @keyframes paySpin{ 0%{ transform:rotate(0) scale(1);} 50%{ transform:rotate(180deg) scale(1.06);} 100%{ transform:rotate(360deg) scale(1);} }
+      @media (prefers-reduced-motion: reduce){ #payOrb{ animation:none !important; } }
+      .pay-msg{ margin:6px 0; padding:9px 12px; border-radius:12px; font-size:13.5px; line-height:1.45; max-width:88%; white-space:pre-wrap; }
+      .pay-msg.yo{ background:rgba(212,175,106,.16); margin-left:auto; } .pay-msg.pay{ background:rgba(255,255,255,.06); }
+    </style>
+    <h3 style="text-align:center; margin-bottom:0;">Pay</h3>
+    <div id="payOrb" data-estado="idle"></div>
+    <div id="payOrbTxt" style="text-align:center; font-size:12.5px; color:var(--muted); min-height:18px; margin-bottom:8px;">Toca el micrófono y pregúntame por qué un pick, o escríbeme.</div>
+    <div id="payChatLog" style="max-height:230px; overflow-y:auto; margin-bottom:10px;"></div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn" id="payMicBtn" type="button" style="width:56px; flex:none; padding:12px 0;">🎙</button>
+      <div class="field" style="flex:1; margin:0;"><input id="payChatInput" placeholder="Escríbele a Pay…" autocomplete="off"></div>
+      <button class="btn secondary" id="payChatSendBtn" type="button" style="flex:none;">Enviar</button>
+    </div>
+    <label style="display:flex; gap:8px; align-items:center; font-size:12.5px; margin:10px 0 0; cursor:pointer;"><input type="checkbox" id="payVozChk" ${payVozOn?'checked':''}> Que Pay me responda en voz alta</label>
+    <div class="modal-actions"><button class="btn secondary" id="payChatCloseBtn">Cerrar</button></div>
+  `);
+  document.getElementById('payChatSendBtn').onclick = ()=>payChatEnviar(document.getElementById('payChatInput').value);
+  document.getElementById('payChatInput').onkeydown = (e)=>{ if(e.key==='Enter') payChatEnviar(e.target.value); };
+  document.getElementById('payMicBtn').onclick = payMicToggle;
+  document.getElementById('payVozChk').onchange = (e)=>{ payVozOn = e.target.checked; if(!payVozOn) payDetenerVoz(); };
+  document.getElementById('payChatCloseBtn').onclick = ()=>{ payDetenerVoz(); payCerrarMic(); closeModal(); };
+}
+function payChatPintar(){
+  const log = document.getElementById('payChatLog'); if(!log) return;
+  log.innerHTML = payChatMsgs.map(m=>`<div class="pay-msg ${m.role==='user'?'yo':'pay'}">${esc(m.content)}</div>`).join('');
+  log.scrollTop = log.scrollHeight;
+}
+async function payChatEnviar(texto){
+  texto = String(texto||'').trim();
+  if(!texto || payChatBusy) return;
+  const inp = document.getElementById('payChatInput'); if(inp) inp.value = '';
+  payDetenerVoz();
+  payChatMsgs.push({ role:'user', content: texto }); payChatPintar();
+  payChatBusy = true; payOrb('thinking', 'Pay está pensando…');
+  try{
+    const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_chat', mensajes: payChatMsgs, contexto: payChatContexto() }) });
+    const raw = await r.text(); let d = {}; try{ d = JSON.parse(raw); }catch(e){}
+    if(!r.ok) throw new Error(d.error || `Pay no pudo responder (código ${r.status}).`);
+    payChatMsgs.push({ role:'assistant', content: d.respuesta }); payChatPintar();
+    if(payVozOn) await payHablar(d.respuesta); else payOrb('idle', 'Toca el micrófono para hablar.');
+  }catch(e){
+    payChatMsgs.push({ role:'assistant', content: '⚠️ ' + e.message }); payChatPintar();
+    payOrb('idle', 'Hubo un problema.');
+  }finally{ payChatBusy = false; }
+}
+function payDetenerVoz(){
+  try{ if(payAudioEl){ payAudioEl.pause(); } }catch(e){}
+  try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
+}
+async function payHablar(texto){
+  payOrb('speaking', 'Pay está hablando…');
+  const limpio = String(texto).replace(/\[\d+\]/g,'').slice(0, 900);
+  try{
+    const r = await fetch('/api/win-voz', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: limpio, voz:'pay' }) });
+    if(!r.ok) throw new Error('voz no disponible');
+    const url = URL.createObjectURL(await r.blob());
+    if(!payAudioEl){ payAudioEl = new Audio(); payAudioEl.setAttribute('playsinline','true'); }
+    payAudioEl.src = url;
+    await new Promise((ok, fail)=>{ payAudioEl.onended = ok; payAudioEl.onerror = fail; payAudioEl.play().catch(fail); });
+    URL.revokeObjectURL(url);
+  }catch(e){
+    // Voz gratis del navegador (hombre si hay una disponible en español)
+    await new Promise((ok)=>{
+      if(!('speechSynthesis' in window)) return ok();
+      try{
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(limpio); u.lang = 'es-EC'; u.rate = 1.02; u.pitch = 0.8;
+        const voces = window.speechSynthesis.getVoices().filter(v=>/^es/i.test(v.lang));
+        const hombre = voces.find(v=>/jorge|diego|pablo|juan|carlos|male|hombre/i.test(v.name));
+        if(hombre || voces[0]) u.voice = hombre || voces[0];
+        u.onend = ok; u.onerror = ok; window.speechSynthesis.speak(u);
+      }catch(err){ ok(); }
+    });
+  }
+  payOrb('idle', 'Toca el micrófono para seguir hablando.');
+}
+function payCerrarMic(){
+  try{ if(payRec && payRec.state !== 'inactive'){ payRec.onstop = null; payRec.stop(); } }catch(e){}
+  try{ payStream && payStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  payRec = null; payStream = null;
+}
+async function payMicToggle(){
+  const btn = document.getElementById('payMicBtn');
+  if(payRec && payRec.state === 'recording'){ payRec.stop(); return; } // al parar, se manda a transcribir
+  if(payChatBusy) return;
+  payDetenerVoz();
+  try{
+    payStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    const mimeType = winPTTPickMimeType();
+    payRec = mimeType ? new MediaRecorder(payStream, { mimeType }) : new MediaRecorder(payStream);
+    payRecChunks = [];
+    payRec.ondataavailable = (e)=>{ if(e.data && e.data.size) payRecChunks.push(e.data); };
+    payRec.onstop = async ()=>{
+      const tipo = payRec.mimeType || mimeType || 'audio/mp4';
+      const blob = new Blob(payRecChunks, { type: tipo });
+      payCerrarMic();
+      if(btn){ btn.textContent = '🎙'; }
+      if(!blob.size){ payOrb('idle', 'No se grabó nada, intenta de nuevo.'); return; }
+      payOrb('thinking', 'Escuchando lo que dijiste…');
+      try{
+        const audioBase64 = await new Promise((ok, fail)=>{ const fr = new FileReader(); fr.onload = ()=>ok(String(fr.result).split(',')[1]||''); fr.onerror = fail; fr.readAsDataURL(blob); });
+        const r = await fetch('/api/win-transcribir', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ audioBase64, mimeType: tipo }) });
+        const d = await r.json().catch(()=>({}));
+        if(!r.ok || !d.text) throw new Error(d.error || 'No se pudo transcribir.');
+        payChatEnviar(d.text);
+      }catch(e){ payOrb('idle', 'No te escuché bien. Toca el micrófono y repite.'); }
+    };
+    payRec.start();
+    if(btn) btn.textContent = '⏹';
+    payOrb('listening', 'Te escucho… toca otra vez para enviar.');
+  }catch(e){ payOrb('idle', 'No pude usar el micrófono. Revisa el permiso del navegador.'); }
+}
+
 function tomarPay(i){
   const x = typeof i === 'object' ? i : paySugerencias[i]; if(!x) return;
   const texto = `${x.partido||''} — ${x.pick||''}${(x.selecciones||[]).length ? ' (' + x.selecciones.join(' + ') + ')' : ''} @ ${x.cuota||''}`;

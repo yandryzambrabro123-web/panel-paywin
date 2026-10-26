@@ -100,6 +100,43 @@ async function cuotasReales() {
   return cacheCuotas.datos;
 }
 
+// Llama a Anthropic (con búsqueda web opcional) y sigue si el turno se pausa; respeta un tiempo máximo.
+async function llamarPay(apiKey, payload, maxMs) {
+  const inicio = Date.now();
+  const base = payload.messages;
+  let texto = '', stop = '';
+  for (let i = 0; i < 4; i++) {
+    if (i > 0 && Date.now() - inicio > (maxMs || 35000)) break;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    if (!r.ok) { const t = await r.text(); console.error('Pay IA:', r.status, t.slice(0, 400)); return { ok: false, status: r.status, detalle: t.slice(0, 200) }; }
+    const data = await r.json();
+    stop = data.stop_reason || '';
+    texto += '\n' + (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    if (stop !== 'pause_turn') break;
+    payload = { ...payload, messages: [...base, { role: 'assistant', content: data.content }] };
+  }
+  return { ok: true, texto: texto.trim(), stop };
+}
+
+async function modoPayChat(apiKey, body, res) {
+  const mensajes = (Array.isArray(body.mensajes) ? body.mensajes : []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 1500) })).filter((m) => m.content);
+  if (!mensajes.length || mensajes[0].role !== 'user') { res.status(400).json({ error: 'Falta el mensaje.' }); return; }
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  let datos = null;
+  try { datos = await cuotasReales(); } catch (e) { datos = null; }
+  const contexto = String(body.contexto || '').slice(0, 4000);
+  const system = `Eres Pay, el analista deportivo de PayWin (agencia de pronósticos de Ecuador). Eres hombre. Hablas con el dueño ("jefe") por voz, en vivo, así que respondes en español natural, directo y seguro, en 3 a 6 frases cortas, sin listas ni markdown ni emojis. Hoy es ${hoy} (hora de Ecuador).
+Tu trabajo: explicar tus picks con una hipótesis clara (por qué crees que pasa: forma, historial, bajas, ritmo del partido, estadísticas de la línea), decir también qué podría salir mal y cuándo NO apostarías, y responder lo que te pregunte sobre partidos, mercados (goles, corners, tarjetas, remates, puntos, rebotes, asistencias, tenis, tenis de mesa, UFC, e-sports) y cómo bajar el riesgo. Ayudas a armar combinadas de selecciones de cuota baja (1.15 a 1.50 cada una).
+Honestidad: nunca prometas ganancia segura; no inventes partidos, estadísticas ni cuotas. Si no tienes el dato, dilo o búscalo. Las cuotas son aproximadas y el jefe las verifica en su casa de apuestas. Él también analiza cada pick.
+${contexto ? '\nPicks que tienes ahora mismo en pantalla:\n' + contexto : ''}${datos && datos.length ? '\n\nCuotas promedio actuales (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : ''}`;
+  const payload = { model: 'claude-sonnet-5', max_tokens: 700, system, messages: mensajes, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] };
+  const r = await llamarPay(apiKey, payload, 30000);
+  if (!r.ok) { res.status(502).json({ error: 'Pay no pudo responder (IA ' + r.status + ').' }); return; }
+  res.status(200).json({ respuesta: r.texto || 'No pude armar una respuesta, repíteme la pregunta.' });
+}
+
 async function modoPay(apiKey, body, res) {
   const cuotaMin = Number(body.cuotaMin) || 1.8, cuotaMax = Number(body.cuotaMax) || 2;
   const lote = Array.isArray(body.cupos) && body.cupos.length ? body.cupos.slice(0, 6) : null; // revisión automática: una combinada por cupo
@@ -119,25 +156,14 @@ Reglas:
 - Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de textos, uno por selección, con partido, línea y cuota, ej. "Lakers vs Suns: más de 215.5 puntos @1.30")${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
   const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Dame ${cantidad} combinada(s) distintas.`}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web los partidos de hoy y mañana con sus cuotas aproximadas.'}`;
   const payload = { model: 'claude-sonnet-5', max_tokens: 2200, system, messages: [{ role: 'user', content: userMsg }] };
-  payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }]; // los datos de cuotas cubren lo principal; la web completa tenis de mesa, e-sports y mercados de jugadores
-  // La búsqueda web puede pausar el turno (pause_turn): se continúa hasta 3 veces.
-  let data = null, texto = '';
-  const inicio = Date.now();
-  for (let i = 0; i < 4; i++) {
-    if (i > 0 && Date.now() - inicio > 35000) break; // no pasarse del tiempo máximo de la función (60 s)
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
-    });
-    if (!r.ok) {
-      console.error('Pay:', r.status, await r.text());
-      res.status(502).json({ error: 'Pay no pudo analizar ahora (servicio de IA). Intenta de nuevo.' });
-      return;
-    }
-    data = await r.json();
-    texto += '\n' + (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
-    if (data.stop_reason !== 'pause_turn') break;
-    payload.messages = [...payload.messages.slice(0, 1), { role: 'assistant', content: data.content }];
+  // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
+  if (!conDatos || body.web) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }];
+  const ia = await llamarPay(apiKey, payload, 35000);
+  if (!ia.ok) {
+    res.status(502).json({ error: `Pay no pudo analizar ahora (servicio de IA, código ${ia.status}). ${ia.detalle || ''}` });
+    return;
   }
+  const texto = ia.texto;
   // Busca el arreglo JSON: primero dentro de <json>, luego el último bloque [ ... ] que sea válido
   let sugerencias = [];
   const cand = [];
@@ -156,7 +182,7 @@ Reglas:
   if (!sugerencias.length && lote) { res.status(200).json({ sugerencias: [], fuente: 'sin picks claros', razon: texto.trim().slice(0, 400) }); return; }
   if (!sugerencias.length) {
     console.error('Pay sin picks. Respuesta:', texto.slice(0, 600));
-    res.status(502).json({ error: 'Pay no armó una combinada en ese rango. Lo que dijo: ' + (texto.replace(/\s+/g, ' ').trim().slice(0, 220) || '(sin respuesta)') });
+    res.status(502).json({ error: 'Pay no armó una combinada en ese rango. Lo que dijo: ' + (texto.replace(/\s+/g, ' ').trim().slice(0, 220) || `(sin respuesta; fuente: ${conDatos ? 'cuotas reales, ' + datos.length + ' eventos' : 'solo web, sin ODDS_API_KEY'}; fin: ${ia.stop || '-'})`) });
     return;
   }
   res.status(200).json({ sugerencias, fuente: conDatos ? 'cuotas reales (The Odds API) + búsqueda web para otros deportes' : 'búsqueda en la web (cuotas aproximadas)' });
@@ -175,6 +201,12 @@ module.exports = async function handler(req, res) {
   }
 
   const body = req.body || {};
+
+  if (body.modo === 'pay_chat') {
+    try { await modoPayChat(apiKey, body, res); }
+    catch (e) { console.error('Pay chat:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
+    return;
+  }
 
   if (body.modo === 'pay') {
     try { await modoPay(apiKey, body, res); }
