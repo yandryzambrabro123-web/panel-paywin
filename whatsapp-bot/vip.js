@@ -230,6 +230,32 @@ async function vincularTelegram(regId, userId) {
   await H.cambiarHoja(HOJA_VIPS, (filas) => filas.map((f) => String(f.registroId || '') === String(regId) ? { ...f, telegramId: String(userId) } : f));
 }
 
+// ---- Envío al grupo VIP de TELEGRAM (reemplaza al grupo VIP de WhatsApp) ----
+// Todo lo que antes iba al grupo VIP de WhatsApp (buenos días, apuestas, ganadas) sale por aquí.
+const VIP_WHATSAPP_JID = '120363411532196622@g.us'; // solo el grupo "VIP" (no "VIP Más Parley")
+async function enviarAlGrupoVip({ texto, imagenes }) {
+  const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
+  if (!cfg || !cfg.chatId) throw new Error('Falta el grupo VIP de Telegram: escribe /vipgrupo dentro del grupo.');
+  const chat_id = cfg.chatId;
+  const fotos = (imagenes || []).filter((i) => i && (i.base64 || i.url));
+  const token = H.TG_TOKEN();
+  const subir = async (img, caption) => {
+    if (img.url) return H.tg('sendPhoto', { chat_id, photo: img.url, ...(caption ? { caption } : {}) });
+    const fd = new FormData();
+    fd.append('chat_id', chat_id);
+    if (caption) fd.append('caption', caption);
+    fd.append('photo', new Blob([Buffer.from(img.base64, 'base64')], { type: img.mediaType || 'image/jpeg' }), 'foto.jpg');
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) throw new Error('Telegram sendPhoto: ' + (j.description || r.status));
+    return j.result;
+  };
+  const t = String(texto || '');
+  if (fotos.length === 1 && t.length <= 1000) { await subir(fotos[0], t); return; }
+  for (const f of fotos) await subir(f, '');
+  if (t) await H.tg('sendMessage', { chat_id, text: t });
+}
+
 function montar(app, stakes, extra) {
   H = stakes;
   const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
@@ -392,4 +418,4 @@ function montar(app, stakes, extra) {
   setTimeout(() => { procesarVencidos().catch(() => {}); }, 90 * 1000);
 }
 
-module.exports = { montar, diasRestantes, procesarVencidos, desactivarMiembro };
+module.exports = { montar, enviarAlGrupoVip, VIP_WHATSAPP_JID, diasRestantes, procesarVencidos, desactivarMiembro };

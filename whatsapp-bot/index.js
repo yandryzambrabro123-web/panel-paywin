@@ -114,7 +114,8 @@ app.use(express.json({ limit: '15mb' }));
 const stakes = require('./stakes');
 stakes.montar(app); // registro público del Stake de pago + aprobación por Telegram
 // Registro público del VIP + salida automática de los vencidos (todo por Telegram).
-require('./vip').montar(app, stakes, { requireApiKey });
+const vipMod = require('./vip');
+vipMod.montar(app, stakes, { requireApiKey });
 require('./regalito').montar(app, stakes, { requireApiKey });
 require('./pay').montar(app, stakes, { requireApiKey }); // registro VIP (Telegram) + salida automática de vencidos
 
@@ -230,6 +231,18 @@ async function mandarSeparador(grupoId) {
 // como imagenUrl (publicidades guardadas en Vercel Blob, en su calidad real -- Baileys la
 // descarga solo, no hace falta mandarla por el panel); si llegan las dos, gana imagenUrl.
 app.post('/enviar', requireApiKey, async (req, res) => {
+  // El grupo VIP ya NO está en WhatsApp: lo que iba ahí sale por el grupo VIP de Telegram.
+  if (req.body && req.body.grupoId === vipMod.VIP_WHATSAPP_JID) {
+    const { texto, imagenBase64, imagenUrl, mediaType } = req.body;
+    if (!texto && !imagenBase64 && !imagenUrl) return res.status(400).json({ error: 'Falta el texto.' });
+    try {
+      await vipMod.enviarAlGrupoVip({ texto, imagenes: (imagenUrl || imagenBase64) ? [{ url: imagenUrl || '', base64: imagenUrl ? '' : imagenBase64, mediaType }] : [] });
+      return res.json({ ok: true, via: 'telegram' });
+    } catch (e) {
+      console.error('Envío al VIP de Telegram:', e);
+      return res.status(500).json({ error: 'No se pudo mandar al grupo VIP de Telegram: ' + e.message });
+    }
+  }
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
   }
@@ -260,6 +273,16 @@ app.post('/enviar', requireApiKey, async (req, res) => {
 // texto, y después la línea separadora -- así el feed del grupo muestra todas las fotos
 // juntas y el resumen justo después. Body: { grupoId, imagenes: [{base64, mediaType}], texto }.
 app.post('/enviar-multiple', requireApiKey, async (req, res) => {
+  if (req.body && req.body.grupoId === vipMod.VIP_WHATSAPP_JID) {
+    const { imagenes, texto } = req.body;
+    try {
+      await vipMod.enviarAlGrupoVip({ texto, imagenes: (Array.isArray(imagenes) ? imagenes : []).map((m) => ({ base64: m && m.base64, mediaType: m && m.mediaType })) });
+      return res.json({ ok: true, via: 'telegram' });
+    } catch (e) {
+      console.error('Envío múltiple al VIP de Telegram:', e);
+      return res.status(500).json({ error: 'No se pudo mandar al grupo VIP de Telegram: ' + e.message });
+    }
+  }
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
   }
