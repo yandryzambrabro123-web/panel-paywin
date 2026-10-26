@@ -78,6 +78,35 @@ const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 10;
 
 // Caché de 3 horas: cada consulta gasta créditos del plan (500 al mes en el gratis).
 let cacheCuotas = { t: 0, datos: null };
+// Líneas de jugadores (remates, tiros al arco, asistencias, rebotes, triples, puntos). Gastan MUCHOS créditos
+// (mercados x partidos), así que solo se piden si en Vercel pones ODDS_PROPS=1 (plan de pago recomendado).
+async function lineasJugadores(key, eventos, limiteMs) {
+  const filas = [];
+  const maxPartidos = Number(process.env.ODDS_PROPS_MAX) || 5;
+  const config = [
+    { prefijo: 'basketball_nba', regiones: 'us', mercados: 'player_points,player_rebounds,player_assists,player_threes' },
+    { prefijo: 'soccer_', regiones: 'eu,us', mercados: 'player_shots_on_target,player_shots,player_assists' }
+  ];
+  for (const c of config) {
+    const lista = eventos.filter((e) => e.liga.startsWith(c.prefijo) && Date.parse(e.inicio) > Date.now() && Date.parse(e.inicio) <= limiteMs).slice(0, maxPartidos);
+    for (const e of lista) {
+      try {
+        const r = await fetch(`https://api.the-odds-api.com/v4/sports/${e.liga}/events/${e.id}/odds?apiKey=${key}&regions=${c.regiones}&markets=${c.mercados}&oddsFormat=decimal`);
+        if (!r.ok) continue;
+        const d = await r.json();
+        const mk = {};
+        for (const b of d.bookmakers || []) for (const m of b.markets || []) for (const o of m.outcomes || []) {
+          const k = `${m.key.replace('player_', '')} ${o.description || ''} ${o.name}${o.point != null ? ' ' + o.point : ''}`;
+          (mk[k] = mk[k] || []).push(o.price);
+        }
+        const lineas = Object.entries(mk).map(([k, v]) => [k, v.reduce((a, b) => a + b, 0) / v.length]).filter(([, p]) => p >= 1.15 && p <= 1.9).slice(0, 40).map(([k, p]) => `${k}: ${p.toFixed(2)}`);
+        if (lineas.length) filas.push(`JUGADORES ${e.liga} | ${e.casa} vs ${e.fuera} | ${e.inicio} | ${lineas.join(' ; ')}`);
+      } catch (err) { /* sin líneas de ese partido */ }
+    }
+  }
+  return filas;
+}
+
 async function cuotasReales() {
   const key = process.env.ODDS_API_KEY;
   if (!key) return null;
@@ -96,6 +125,7 @@ async function cuotasReales() {
   ligas = ligas.slice(0, PAY_MAX_LIGAS);
   const limite = Date.now() + 40 * 3600 * 1000; // solo partidos de las próximas 40 horas
   const eventos = [];
+  const evs = [];
   for (const liga of ligas) {
     try {
       const mercados = /^(soccer|basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals' : 'h2h';
@@ -111,10 +141,13 @@ async function cuotasReales() {
         }
         const resumen = Object.entries(mk).map(([k, v]) => `${k}: ${(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2)}`);
         eventos.push(`${liga} | ${e.home_team} vs ${e.away_team} | ${e.commence_time} | ${resumen.join(' ; ')}`);
+        evs.push({ liga, id: e.id, casa: e.home_team, fuera: e.away_team, inicio: e.commence_time });
       }
     } catch (e) { /* esa liga no respondió: se sigue con las demás */ }
   }
-  cacheCuotas = { t: Date.now(), datos: eventos.slice(0, 140) };
+  let extra = [];
+  if (process.env.ODDS_PROPS === '1') { try { extra = await lineasJugadores(key, evs, limite); } catch (e) { extra = []; } }
+  cacheCuotas = { t: Date.now(), datos: [...eventos.slice(0, 120), ...extra] };
   return cacheCuotas.datos;
 }
 
@@ -190,16 +223,18 @@ async function modoPay(apiKey, body, res) {
     res.status(502).json({ error: 'Ya no quedan partidos de hoy por empezar en las ligas que reviso. Pay solo arma apuestas del día.' });
     return;
   }
+  const historial = Array.isArray(body.historial) ? body.historial.slice(0, 30).map((x) => String(x).slice(0, 140)) : [];
   const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). Tu trabajo es armar apuestas de BAJO RIESGO para un cupo concreto, con análisis breve y honesto. El dueño revisa y analiza cada pick antes de apostar.
 ${lote ? 'Cada cupo tiene su NIVEL DE SEGURIDAD, que manda sobre el resto de reglas de cuota por selección:\n' + lote.map((c) => nivelPay(c.cupo)).join('\n') : nivelPay(cupo)}
 Estilo de apuesta (obligatorio): COMBINADAS de selecciones seguras. Cada selección individual debe respetar el rango del nivel de su cupo (por defecto 1.15 a 1.50). Elige cuántas selecciones (2 a 5) para que la cuota TOTAL (el producto de las cuotas) quede entre ${cuotaMin} y ${cuotaMax}. Muestra la cuota de cada selección y la cuota total.
-Deportes y mercados que puedes usar, todos: fútbol (goles, corners, tarjetas, remates, faltas, ganador, doble oportunidad), baloncesto/NBA (puntos totales, puntos/rebotes/asistencias de jugador), tenis (ganador, sets, juegos/puntos), tenis de mesa (total de puntos del partido, por ejemplo más de 74.5), UFC/MMA, e-sports. Usa VARIEDAD de deportes y ligas de todo el mundo (no te quedes en un solo deporte ni en una sola liga); mezcla deportes si eso baja el riesgo. Si en los datos hay fútbol, tenis, UFC u otros deportes, inclúyelos, no solo NBA.
+Deportes y mercados que puedes usar, todos: fútbol (goles, corners, tarjetas, remates, faltas, ganador, doble oportunidad), baloncesto/NBA (puntos totales, puntos/rebotes/asistencias de jugador), tenis (ganador, sets, juegos/puntos), tenis de mesa (total de puntos del partido, por ejemplo más de 74.5), UFC/MMA, e-sports. Usa VARIEDAD de mercados además del ganador: goles, corners, tarjetas, remates/tiros al arco de jugadores, asistencias, rebotes, triples y puntos de jugadores, totales, hándicaps, sets/juegos de tenis. Usa las líneas de jugadores SOLO si aparecen en los datos (líneas que empiezan con JUGADORES) o si las confirmas en la web; si no, no las inventes. Usa VARIEDAD de deportes y ligas de todo el mundo (no te quedes en un solo deporte ni en una sola liga); mezcla deportes si eso baja el riesgo. Si en los datos hay fútbol, tenis, UFC u otros deportes, inclúyelos, no solo NBA.
 Reglas:
+- NINGUNA línea (partido + selección) puede repetirse con las que el jefe ya usó hoy (te las doy en la indicación) ni entre combinadas distintas.
 - Solo partidos de HOY (${hoy}, hora de Ecuador) que todavía no hayan empezado; NUNCA de mañana ni de otro día. Deben existir de verdad (en los datos${conDatos ? ' que te doy o' : ''} que encuentres buscando en la web). NUNCA inventes partidos, horarios, líneas ni cuotas. Si no confirmas una cuota, di que es aproximada.
 - Baja el riesgo: prefiere líneas con margen amplio (por ejemplo un total que el equipo o jugador supera con holgura en sus últimos partidos), evita partidos con bajas importantes, rotaciones, finales parejas o información dudosa. Si una selección no te convence, no la pongas.
 - Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
 - Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de OBJETOS, uno por línea, cada uno con: partido ("Local vs Visitante"), pick (la selección clara, ej. "Más de 215.5 puntos" o "Gana Sevilla"), cuota (número) y hora (hora de Ecuador))${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
-  const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Todos los partidos deben ser de HOY. Dame ${cantidad} combinada(s) distintas.`}${Array.isArray(body.evitar) && body.evitar.length ? '\nNO repitas ninguna de estas selecciones que ya te di (busca otras): ' + body.evitar.slice(0, 20).map((x) => String(x).slice(0, 120)).join(' ; ') : ''}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web SOLO los partidos de hoy que aún no empiezan, con sus cuotas aproximadas.'}`;
+  const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Todos los partidos deben ser de HOY. Dame ${cantidad} combinada(s) distintas.`}${Array.isArray(body.evitar) && body.evitar.length ? '\nLÍNEAS YA USADAS HOY, prohibido repetirlas (ni el mismo partido con la misma selección; busca otras): ' + body.evitar.slice(0, 60).map((x) => String(x).slice(0, 120)).join(' ; ') : ''}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${historial.length ? '\nApuestas que el jefe ya GANÓ antes (aprende qué tipo de líneas y cuotas le funcionan; NO las repitas tal cual): ' + historial.join(' ; ') : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web SOLO los partidos de hoy que aún no empiezan, con sus cuotas aproximadas.'}`;
   const payload = { model: 'claude-sonnet-5', max_tokens: 6000, system, messages: [{ role: 'user', content: userMsg }] };
   // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
   if (!conDatos || body.web) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }];
@@ -228,7 +263,13 @@ Reglas:
   for (const c of cand) {
     try { const j = JSON.parse(c.trim()); if (Array.isArray(j)) { sugerencias = j; break; } } catch (e) { /* siguiente candidato */ }
   }
-  sugerencias = sugerencias.filter((x) => x && x.pick).slice(0, cantidad);
+  sugerencias = sugerencias.filter((x) => x && x.pick);
+  const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const usadas = new Set((Array.isArray(body.evitar) ? body.evitar : []).map(norm));
+  const sinRepetir = sugerencias.filter((x) => !(x.selecciones || []).some((l) => l && typeof l === 'object' && usadas.has(norm((l.partido || '') + (l.pick || '')))));
+  const hubo = sugerencias.length;
+  sugerencias = sinRepetir.slice(0, cantidad);
+  if (hubo && !sugerencias.length && !lote) { res.status(502).json({ error: 'Pay solo encontró combinadas con líneas que ya usaste hoy. Toca generar de nuevo para que busque otras.' }); return; }
   if (!sugerencias.length && lote) { res.status(200).json({ sugerencias: [], fuente: 'sin picks claros', razon: texto.trim().slice(0, 400) }); return; }
   if (!sugerencias.length) {
     console.error('Pay sin picks. Respuesta:', texto.slice(0, 600));

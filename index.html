@@ -6521,6 +6521,7 @@ function renderFactory(){
           <div class="field" style="margin:0; width:80px;"><label>Cantidad</label><input id="payCant" inputmode="numeric" value="3"></div>
           <div class="field" style="margin:0; flex:1; min-width:160px;"><label>Indicación (opcional)</label><input id="payNota" placeholder="Ej: solo fútbol, evitar combinadas"></div>
         </div>
+        <label style="display:flex; gap:8px; align-items:center; font-size:12.5px; margin:0 0 12px; cursor:pointer;"><input type="checkbox" id="payWebChk"> Buscar también líneas de jugadores en la web (más lento, cuotas aproximadas)</label>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
           <button class="btn secondary" id="payTalkBtn" type="button">🎙 Hablar con Pay</button>
@@ -6568,6 +6569,40 @@ function payTextoSel(x){
   return (x.selecciones||[]).map(payNormSel).map((l,i)=>`Línea ${i+1}: ${l.partido ? l.partido + ' — ' : ''}${l.pick} @${l.cuota}`).join('\n');
 }
 
+// ---- Líneas ya usadas hoy (para que Pay no repita) e historial de ganadas ----
+const payHoyEC = ()=> new Date(Date.now() - 5*3600e3).toISOString().slice(0,10);
+let payTomadasHoy = [];
+async function payCargarTomadas(){
+  try{
+    const r = await fetch(`${SHEETS_API_URL}?sheet=PayTomadas`); const j = await r.json();
+    payTomadasHoy = (Array.isArray(j.data) ? j.data : []).filter(f=>f.day === payHoyEC()).map(f=>`${f.partido}: ${f.pick}`);
+  }catch(e){ payTomadasHoy = []; }
+}
+async function payGuardarTomada(x){
+  const filas = (x.selecciones||[]).map(payNormSel).filter(l=>l.pick).map(l=>({ id: uid(), day: payHoyEC(), partido: l.partido, pick: l.pick, cuota: l.cuota, cupo: x.cupo||'' }));
+  if(!filas.length) return;
+  filas.forEach(f=>payTomadasHoy.push(`${f.partido}: ${f.pick}`));
+  try{
+    const r = await fetch(`${SHEETS_API_URL}?sheet=PayTomadas`); const j = await r.json();
+    const previas = (Array.isArray(j.data) ? j.data : []).filter(f=>f.day === payHoyEC());
+    await fetch(SHEETS_API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet:'PayTomadas', data:[...previas, ...filas] }) });
+  }catch(e){ console.error('No se pudo guardar las líneas tomadas:', e); }
+}
+function payEvitar(incluirSugeridas){
+  const hoy = payHoyEC(), l = [...payTomadasHoy];
+  [...(state.vipBets||[]), ...(state.freeBets||[]), ...(state.liveBets||[])].filter(b=>b.date === hoy).forEach(b=>{
+    if(b.event || b.pick) l.push(`${b.event||''}: ${b.pick||''}`);
+    try{ (getLines(b)||[]).forEach(x=>{ if(x.pick) l.push(`${b.event||''}: ${x.pick}`); }); }catch(e){}
+  });
+  (payAutoLista||[]).filter(x=>String(x.createdAt||'').slice(0,10) >= hoy || true).forEach(x=>(x.selecciones||[]).map(payNormSel).forEach(s=>{ if(s.pick) l.push(`${s.partido}: ${s.pick}`); }));
+  if(incluirSugeridas) (paySugerencias||[]).forEach(x=>(x.selecciones||[]).map(payNormSel).forEach(s=>{ if(s.pick) l.push(`${s.partido}: ${s.pick}`); }));
+  return [...new Set(l)].slice(0, 60);
+}
+function payHistorial(){
+  return [...(state.vipBets||[]), ...(state.freeBets||[]), ...(state.liveBets||[])].filter(b=>b.result==='won').sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,25)
+    .map(b=>`${b.sport||''} ${b.event||''} ${b.pick||''} @${b.odds||''}`.replace(/\s+/g,' ').trim());
+}
+
 const PAY_CUPOS = {
   'VIP':          { min:1.80, max:2.00, grupos:['VIP'] },
   'Gratis':       { min:1.75, max:1.90, grupos:['Gratis 1','Gratis 2'] },
@@ -6592,6 +6627,7 @@ function initPayPanel(){
     el.innerHTML = d.odds ? '🟢 Cuotas reales conectadas (The Odds API).' : '🔴 Sin cuotas reales: falta <b>ODDS_API_KEY</b> en Vercel (o falta hacer Redeploy). Sin eso Pay depende de la web y casi no arma picks.';
   }).catch(()=>{});
   pintarPay();
+  payCargarTomadas();
   cargarPayAuto();
 }
 let payAutoLista = [];
@@ -6627,7 +6663,7 @@ async function generarPay(otras){
     const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       modo:'pay', cupo: payCupo, cuotaMin: document.getElementById('payMin').value, cuotaMax: document.getElementById('payMax').value,
       cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value,
-      evitar: otras === true ? paySugerencias.flatMap(x=>(x.selecciones||[]).map(payNormSel).map(l=>`${l.partido}: ${l.pick}`)) : []
+      evitar: payEvitar(otras === true), historial: payHistorial(), web: !!(document.getElementById('payWebChk')||{}).checked
     }) });
     const raw = await r.text();
     let d = {}; try{ d = JSON.parse(raw); }catch(e){}
@@ -6801,6 +6837,7 @@ async function payMicToggle(){
 
 function tomarPay(i){
   const x = typeof i === 'object' ? i : paySugerencias[i]; if(!x) return;
+  payGuardarTomada(x);
   const texto = (x.selecciones||[]).length ? `${payTextoSel(x)}\nCuota total: @${x.cuota||''}` : `${x.partido||''} — ${x.pick||''} @ ${x.cuota||''}`;
   const cfg = PAY_CUPOS[x.cupo] || {};
   if(x.cupo === 'Regalito'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openRegalitoDiaModal(); return; }
