@@ -45,7 +45,7 @@ async function evitarHoy() {
   for (const h of ['ApuestasVIP', 'ApuestasGratis', 'ApuestasLive']) {
     try { (await H.leerHoja(h)).filter((b) => String(b.date || '').slice(0, 10) === hoy).forEach((b) => l.push(`${b.event || ''}: ${b.pick || ''}`)); } catch (e) { /* sin esa hoja */ }
   }
-  return [...new Set(l)].slice(0, 60);
+  return [...new Set(l)].slice(0, 100);
 }
 
 // Lo que Pay aprendió de las capturas de ganadas del jefe (hoja PayGanadas).

@@ -6619,6 +6619,7 @@ function payLineasHTML(x, origen, idx){
         <div style="font-size:14.5px; font-weight:600;">${esc(l.pick)}</div>
       </div>
       <div style="flex:none; font-weight:700;">@ ${esc(String(l.cuota))}</div>
+      <button type="button" class="btn secondary" data-pay-excluir="${origen}:${idx}:${i}" title="Ya la mandé o no la quiero: Pay no la vuelve a proponer hoy" style="flex:none; padding:6px 9px; font-size:12px;">Ya la usé</button>
       <button type="button" class="btn secondary" data-pay-bajar="${origen}:${idx}:${i}" title="Bajar el riesgo de esta línea" style="flex:none; padding:6px 9px; font-size:12px;">↓ Riesgo</button>
       <button type="button" class="btn ${on ? '' : 'secondary'}" data-pay-like="${origen}:${idx}:${i}" title="Me gusta esta línea" style="flex:none; padding:6px 10px;">${on ? '♥' : '♡'}</button>
     </div>`;}).join('') + `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--border); font-weight:800;"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${esc(String(x.cuota||''))}</span></div>`;
@@ -6690,6 +6691,16 @@ async function payBajarRiesgo(linea, claveOriginal){
     });
   }catch(e){ out.textContent = 'No se pudo: ' + e.message; }
 }
+// "Ya la usé": Pay no vuelve a proponer ese partido hoy, y se quita la combinada que lo trae
+function payExcluir(ref){
+  const [origen, idx, i] = ref.split(':');
+  const lista = origen === 'auto' ? payAutoLista : paySugerencias;
+  const x = lista[+idx]; if(!x) return;
+  const l = (x.selecciones||[]).map(payNormSel)[+i]; if(!l) return;
+  payGuardarEnvio(`${l.partido}: ${l.pick}`);
+  lista.splice(+idx, 1);
+  pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
+}
 // Guarda el texto de una apuesta que ya mandaste, para que Pay no la vuelva a proponer hoy
 async function payGuardarEnvio(texto){
   const t = String(texto||'').replace(/\s+/g,' ').trim().slice(0,300); if(!t) return;
@@ -6731,7 +6742,7 @@ function payEvitar(incluirSugeridas){
   });
   (payAutoLista||[]).filter(x=>String(x.createdAt||'').slice(0,10) >= hoy || true).forEach(x=>(x.selecciones||[]).map(payNormSel).forEach(s=>{ if(s.pick) l.push(`${s.partido}: ${s.pick}`); }));
   if(incluirSugeridas) (paySugerencias||[]).forEach(x=>(x.selecciones||[]).map(payNormSel).forEach(s=>{ if(s.pick) l.push(`${s.partido}: ${s.pick}`); }));
-  return [...new Set(l)].slice(0, 60);
+  return [...new Set(l)].slice(0, 100);
 }
 // Perdidas y estadística real del panel (apuestas marcadas como Ganada / Perdida).
 function payPerdidasYResumen(){
@@ -6862,6 +6873,7 @@ function cargarPayAutoPintar(){
   el.querySelectorAll('[data-pay-resenaauto]').forEach(b=>b.onclick=()=>payResena(payAutoLista[+b.dataset.payResenaauto]));
   el.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
   el.querySelectorAll('[data-pay-bajar]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBajar));
+  el.querySelectorAll('[data-pay-excluir]').forEach(b=>b.onclick=()=>payExcluir(b.dataset.payExcluir));
 }
 async function generarPay(otras){
   const out = document.getElementById('payOut'), btn = document.getElementById('payGenBtn');
@@ -6900,6 +6912,7 @@ function pintarPay(){
   out.querySelectorAll('[data-pay-resena]').forEach(b=>b.onclick=()=>payResena(paySugerencias[+b.dataset.payResena]));
   out.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
   out.querySelectorAll('[data-pay-bajar]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBajar));
+  out.querySelectorAll('[data-pay-excluir]').forEach(b=>b.onclick=()=>payExcluir(b.dataset.payExcluir));
   const otras = document.getElementById('payOtrasBtn'); if(otras) otras.onclick = ()=>generarPay(true);
 }
 // ---------- Pay: chat por voz y texto ----------
