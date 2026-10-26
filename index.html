@@ -6508,6 +6508,41 @@ function renderReminders(){
 }
 
 // ---------- Fábrica de apuestas (espacio creado; se configura después) ----------
+// ---------- Enviadas hoy: lo que se mandó y cómo quedó registrado ----------
+function enviadasHoyHTML(){
+  const hoy = payHoyEC();
+  const norm = (t)=>String(t||'').replace(/\s+/g,' ').trim().slice(0,200);
+  const fechaEC = (iso)=>{ const d = new Date(iso); return isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(0,10); };
+  const horaEC = (iso)=>{ const d = new Date(iso); return isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(11,16); };
+  const salidas = (state.winOutbox||[]).filter(o=>o.kind === 'nueva_apuesta' && o.status === 'enviado' && fechaEC(o.createdAt) === hoy);
+  const usadas = new Set();
+  const regs = [
+    ...(state.vipBets||[]).map(b=>({ ...b, _t:'VIP' })), ...(state.freeBets||[]).map(b=>({ ...b, _t:'Gratis' })), ...(state.liveBets||[]).map(b=>({ ...b, _t:'Live' }))
+  ].filter(b=>b.date === hoy);
+  const filas = regs.map(b=>{
+    const m = salidas.filter(o=>norm(o.caption) === norm(b.pick));
+    m.forEach(o=>usadas.add(o.id));
+    const ms = parseInt(String(b.id).slice(0,-5), 36);
+    return { t: b._t, texto: (m[0] && m[0].caption) || b.pick, img: b.imageUrl || (m[0] && m[0].image) || '', odds: b.odds, result: b.result, grupos: [...new Set(m.map(o=>o.destino))], hora: m[0] ? horaEC(m[0].createdAt) : (ms ? horaEC(new Date(ms).toISOString()) : ''), ok: true, ord: m[0] ? m[0].createdAt : (ms ? new Date(ms).toISOString() : '') };
+  });
+  // Mandadas pero sin registro en el panel
+  const sueltas = {};
+  salidas.filter(o=>!usadas.has(o.id)).forEach(o=>{ const k = norm(o.caption); (sueltas[k] = sueltas[k] || { o, grupos: [] }).grupos.push(o.destino); });
+  Object.values(sueltas).forEach(({o, grupos})=>filas.push({ t:'', texto:o.caption, img:o.image || '', odds:0, result:'', grupos:[...new Set(grupos)], hora: horaEC(o.createdAt), ok:false, ord:o.createdAt }));
+  (state.gifts||[]).filter(g=>g.date === hoy).forEach(g=>filas.push({ t:'Regalito', texto:g.pick, img:g.imageUrl||'', odds:g.odds, result:g.result, grupos:[], hora:'', ok:true, ord:'' }));
+  if(!filas.length) return '<div style="color:var(--muted); font-size:13px;">Todavía no mandaste ninguna apuesta hoy.</div>';
+  filas.sort((a,b)=>String(b.ord).localeCompare(String(a.ord)));
+  const rl = (r)=> r==='won' ? '✅ Ganada' : r==='lost' ? '❌ Perdida' : r==='pending' ? '⏳ Pendiente' : '';
+  return filas.map(f=>`
+    <div style="display:flex; gap:12px; padding:12px 0; border-top:1px solid var(--border); ${f.ok ? '' : 'background:rgba(255,90,90,.07); border-left:3px solid #ff6b6b; padding-left:10px;'}">
+      ${f.img ? `<a href="${esc(f.img)}" target="_blank" rel="noopener" style="flex:none;"><img src="${esc(f.img)}" alt="Foto de la apuesta" loading="lazy" style="width:92px; height:92px; object-fit:cover; border-radius:10px; border:1px solid var(--border);"></a>` : ''}
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">${[f.t, f.hora, f.grupos.join(', ')].filter(Boolean).map(esc).join(' · ')}${f.odds ? ' · @ ' + esc(String(f.odds)) : ''}${rl(f.result) ? ' · ' + rl(f.result) : ''}</div>
+        <div style="font-size:13.5px; white-space:pre-wrap; word-break:break-word;">${esc(f.texto)}</div>
+        <div style="font-size:12px; margin-top:6px; font-weight:700; color:${f.ok ? '#5fd38d' : '#ff7a7a'};">${f.ok ? '✓ Registrada en el panel' : '⚠️ Se mandó pero NO quedó registrada'}</div>
+      </div>
+    </div>`).join('');
+}
 function renderFactory(){
   const ganadas = winGanadasPendientes().length;
   document.getElementById('main').innerHTML = `
@@ -6541,6 +6576,11 @@ function renderFactory(){
         <div id="payEstado" style="font-size:12px; color:var(--muted); margin-top:10px;"></div>
         <div id="payBandeja"></div>
         <div id="payOut" style="margin-top:14px;"></div>
+      </div>
+      <div class="card" style="grid-column:1/-1;">
+        <div class="card-title">Enviadas hoy</div>
+        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Lo que mandaste hoy desde el panel, con su imagen y el texto tal cual salió. Si algo se mandó y no quedó registrado, sale marcado en rojo.</div>
+        <div id="enviadasHoy">${enviadasHoyHTML()}</div>
       </div>
       <div class="card" style="grid-column:1/-1;">
         <div class="card-title">Lo que Pay encontró solo</div>
