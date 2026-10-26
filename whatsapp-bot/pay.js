@@ -37,10 +37,13 @@ const horasEC = () => String(process.env.PAY_HORAS || '9,15').split(',').map((x)
 const ahoraEC = () => new Date(Date.now() - 5 * 3600e3);
 
 // Líneas ya usadas hoy (tomadas, sugeridas antes y apuestas registradas) para no repetirlas.
+async function descartadasHoy() {
+  try { return (await H.leerHoja('PayTomadas')).filter((f) => f.day === H.hoyEC() && f.cupo === 'descartada').map((f) => `${f.partido}: ${f.pick}`).slice(-40); } catch (e) { return []; }
+}
 async function evitarHoy() {
   const hoy = H.hoyEC(), l = [];
   const sel = (x) => { try { return JSON.parse(x.selecciones || '[]'); } catch (e) { return []; } };
-  try { (await H.leerHoja('PayTomadas')).filter((f) => f.day === hoy).forEach((f) => l.push(`${f.partido}: ${f.pick}`)); } catch (e) { /* sin tomadas */ }
+  try { (await H.leerHoja('PayTomadas')).filter((f) => f.day === hoy && f.cupo !== 'descartada').forEach((f) => l.push(`${f.partido}: ${f.pick}`)); } catch (e) { /* sin tomadas */ }
   try { (await H.leerHoja(HOJA)).forEach((f) => sel(f).forEach((s) => { if (s && s.pick) l.push(`${s.partido || ''}: ${s.pick}`); })); } catch (e) { /* sin sugerencias */ }
   for (const h of ['ApuestasVIP', 'ApuestasGratis', 'ApuestasLive']) {
     try { (await H.leerHoja(h)).filter((b) => String(b.date || '').slice(0, 10) === hoy).forEach((b) => l.push(`${b.event || ''}: ${b.pick || ''}`)); } catch (e) { /* sin esa hoja */ }
@@ -74,7 +77,7 @@ async function revisar(motivo) {
   if (!CUPOS.length) return { n: 0, completo: true };
   const r = await fetch(`${PANEL}/api/win-redactar`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ modo: 'pay', cupos: CUPOS, evitar: await evitarHoy(), historial: await historialGanadas(), ...(await perdidasYResumen()) })
+    body: JSON.stringify({ modo: 'pay', cupos: CUPOS, evitar: await evitarHoy(), descartadas: await descartadasHoy(), historial: await historialGanadas(), ...(await perdidasYResumen()) })
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
