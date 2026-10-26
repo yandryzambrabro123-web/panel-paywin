@@ -6111,10 +6111,10 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       <div id="winGanadaLeyendo" style="font-size:11.5px; color:var(--muted); margin-top:4px;">${sendImage && sendImage.base64 ? 'Leyendo la captura para sugerir la apuesta y los montos…' : 'Sube captura para que Win lea los montos, o escríbelos.'}</div>
       <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-top:10px; cursor:pointer;"><input type="checkbox" id="f-winGuardarGanada"> 📌 Guardarla también para publicarla mañana (ganadas de ayer)</label>
       <button class="btn secondary" type="button" id="winGuardarGanadaBtn" style="width:100%; margin-top:8px; font-size:12.5px;">📌 Solo guardar para mañana (sin mandar hoy)</button>
-    </div>` : `<div class="field"><label>Registrar en el panel como</label>
+    </div>` : (kind === 'nueva_apuesta' ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel según el grupo al que la mandes (VIP → Apuesta VIP, Gratis → Apuesta gratis), con la foto y el texto.</div>` : `<div class="field"><label>Registrar en el panel como</label>
       <select id="f-winRegistrar">${WIN_REGISTRO_TIPOS.map(t=>`<option value="${t.key}" ${t.key===winRegistroDefault(kind, grupos)?'selected':''}>${t.label}</option>`).join('')}</select>
       <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se registra al mandar con la foto, y el recordatorio de Telegram lo cuenta como hecho hoy.</div>
-    </div>`}
+    </div>`)}
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Los grupos con bot conectado se mandan solos en un toque. Los demás copian el texto y abren el chat para pegar y enviar.</div>
     ${groupButtonsHTML}
     <div class="modal-actions">
@@ -6164,8 +6164,22 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       closeModal(); renderWin();
     }catch(e){ alert(e.message); soloGuardarBtn.disabled = false; soloGuardarBtn.textContent = '📌 Solo guardar para mañana (sin mandar hoy)'; }
   };
-  const winRegistrarSiToca = async (texto)=>{
+  const winRegistradoTipos = new Set();
+  const winRegistrarSiToca = async (texto, grupoEnviado)=>{
     await winGuardarGanadaSiToca(texto);
+    if(kind === 'nueva_apuesta'){ // automático: el grupo al que la mandas decide dónde se registra
+      let tipo = '';
+      if(winPreset && winPreset.tipo === 'none') tipo = '';
+      else if(winPreset && winPreset.tipo === 'liveBets') tipo = 'liveBets';
+      else if(/vip/i.test(grupoEnviado||'')) tipo = 'vipBets';
+      else if(/gratis/i.test(grupoEnviado||'')) tipo = 'freeBets';
+      else if(winPreset && winPreset.tipo) tipo = winPreset.tipo;
+      if(!tipo || winRegistradoTipos.has(tipo)) return;
+      winRegistradoTipos.add(tipo);
+      try{ await winRegistrarEnPanel(tipo, texto, sendImage); }
+      catch(e){ winRegistradoTipos.delete(tipo); console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
+      return;
+    }
     if(winRegistrado) return;
     const gan = document.getElementById('f-winGanadaBet');
     if(gan){
@@ -6194,7 +6208,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       else alert(`Todavía no tengo el link de "${grupo}". El texto ya quedó copiado -- mándalo a mano por esta vez.`);
       pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado').then(()=>persist('winOutbox'));
       if(kind === 'nueva_apuesta') payGuardarEnvio(finalCaption);
-      winRegistrarSiToca(finalCaption);
+      winRegistrarSiToca(finalCaption, grupo);
       btn.textContent = link ? 'Copiado y grupo abierto ✓' : 'Texto copiado ✓';
       btn.disabled = true;
       btn.classList.add('secondary');
@@ -6225,7 +6239,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
         await pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado');
         await persist('winOutbox');
         if(kind === 'nueva_apuesta') payGuardarEnvio(finalCaption);
-        await winRegistrarSiToca(finalCaption);
+        await winRegistrarSiToca(finalCaption, grupo);
         btn.textContent = `Mandado a "${grupo}" ✓`;
         btn.classList.add('secondary');
       }catch(e){
