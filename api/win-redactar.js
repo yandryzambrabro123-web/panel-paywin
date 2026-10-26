@@ -118,11 +118,13 @@ Reglas:
 - Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
 - Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de textos, uno por selección, con partido, línea y cuota, ej. "Lakers vs Suns: más de 215.5 puntos @1.30")${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
   const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Dame ${cantidad} combinada(s) distintas.`}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web los partidos de hoy y mañana con sus cuotas aproximadas.'}`;
-  const payload = { model: 'claude-sonnet-5', max_tokens: 3000, system, messages: [{ role: 'user', content: userMsg }] };
-  payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }]; // los datos de cuotas cubren lo principal; la web completa tenis de mesa, e-sports y mercados de jugadores
+  const payload = { model: 'claude-sonnet-5', max_tokens: 2200, system, messages: [{ role: 'user', content: userMsg }] };
+  payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }]; // los datos de cuotas cubren lo principal; la web completa tenis de mesa, e-sports y mercados de jugadores
   // La búsqueda web puede pausar el turno (pause_turn): se continúa hasta 3 veces.
   let data = null, texto = '';
+  const inicio = Date.now();
   for (let i = 0; i < 4; i++) {
+    if (i > 0 && Date.now() - inicio > 35000) break; // no pasarse del tiempo máximo de la función (60 s)
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
     });
