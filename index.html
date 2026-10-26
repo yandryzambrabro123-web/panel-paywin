@@ -6484,9 +6484,20 @@ function renderFactory(){
       </div>
     </div>
     <div class="grid-2">
-      <div class="card">
-        <div class="card-title">Espacio listo</div>
-        <div class="empty">Esta sección está vacía a propósito. Dime cómo la quieres configurar y la armamos.</div>
+      <div class="card" style="grid-column:1/-1;">
+        <div class="card-title">Pay · analista deportivo</div>
+        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Elige para qué es la apuesta y Pay te arma sugerencias con los próximos partidos. Tú decides cuál tomas.</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          ${Object.keys(PAY_CUPOS).map(k=>`<button class="btn secondary" data-pay-cupo="${k}" type="button">${k}</button>`).join('')}
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
+          <div class="field" style="margin:0; width:90px;"><label>Cuota mín.</label><input id="payMin" inputmode="decimal"></div>
+          <div class="field" style="margin:0; width:90px;"><label>Cuota máx.</label><input id="payMax" inputmode="decimal"></div>
+          <div class="field" style="margin:0; width:80px;"><label>Cantidad</label><input id="payCant" inputmode="numeric" value="3"></div>
+          <div class="field" style="margin:0; flex:1; min-width:160px;"><label>Indicación (opcional)</label><input id="payNota" placeholder="Ej: solo fútbol, evitar combinadas"></div>
+        </div>
+        <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
+        <div id="payOut" style="margin-top:14px;"></div>
       </div>
       <div class="card">
         <div class="card-title">Ganadas de ayer</div>
@@ -6496,6 +6507,70 @@ function renderFactory(){
     </div>
   `;
   document.getElementById('factoryGanadasBtn').onclick = openWinGanadasAyerModal;
+  initPayPanel();
+}
+
+const PAY_CUPOS = {
+  'VIP':          { min:1.80, max:2.00, grupos:['VIP'] },
+  'Gratis':       { min:1.75, max:1.90, grupos:['Gratis 1','Gratis 2'] },
+  'Regalito':     { min:1.75, max:1.90, grupos:[] },
+  'Stake de pago':{ min:2.50, max:4.00, grupos:[] }
+};
+let payCupo = 'VIP';
+let paySugerencias = [];
+function initPayPanel(){
+  const setCupo = (k)=>{
+    payCupo = k;
+    document.getElementById('payMin').value = PAY_CUPOS[k].min.toFixed(2);
+    document.getElementById('payMax').value = PAY_CUPOS[k].max.toFixed(2);
+    document.querySelectorAll('[data-pay-cupo]').forEach(b=>{ b.className = 'btn ' + (b.dataset.payCupo===k ? '' : 'secondary'); });
+  };
+  document.querySelectorAll('[data-pay-cupo]').forEach(b=>b.onclick=()=>setCupo(b.dataset.payCupo));
+  setCupo(payCupo);
+  document.getElementById('payGenBtn').onclick = generarPay;
+  pintarPay();
+}
+async function generarPay(){
+  const out = document.getElementById('payOut'), btn = document.getElementById('payGenBtn');
+  btn.disabled = true; btn.textContent = 'Pay está analizando…';
+  out.innerHTML = '<div style="color:var(--muted); font-size:13px;">Revisando partidos y cuotas, toma unos segundos.</div>';
+  try{
+    const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+      modo:'pay', cupo: payCupo, cuotaMin: document.getElementById('payMin').value, cuotaMax: document.getElementById('payMax').value,
+      cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value
+    }) });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error || 'Pay no pudo responder.');
+    paySugerencias = d.sugerencias.map(x=>({ ...x, cupo: payCupo })); paySugerencias.fuente = d.fuente;
+    pintarPay();
+  }catch(e){
+    out.innerHTML = `<div style="color:#ff7a7a; font-size:13px;">${esc(e.message)}</div>`;
+  }finally{ btn.disabled = false; btn.textContent = 'Generar apuesta ahora'; }
+}
+function pintarPay(){
+  const out = document.getElementById('payOut'); if(!out || !paySugerencias.length) return;
+  out.innerHTML = `<div style="font-size:11.5px; color:var(--muted); margin-bottom:8px;">Fuente: ${esc(paySugerencias.fuente||'')} · Verifica la cuota en tu casa antes de apostar.</div>` +
+    paySugerencias.map((x,i)=>`
+    <div style="border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <strong>${esc(x.partido||'')}</strong><span style="color:var(--gold, #D4AF6A); font-weight:700;">@ ${esc(String(x.cuota||''))}</span>
+      </div>
+      <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
+      <div style="font-size:14px; margin-bottom:4px;">${esc(x.pick||'')}</div>
+      ${(x.selecciones||[]).length ? `<div style="font-size:12.5px; color:var(--muted);">${x.selecciones.map(esc).join(' + ')}</div>` : ''}
+      <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
+      <button class="btn" data-pay-tomar="${i}" type="button">La tomo</button>
+    </div>`).join('');
+  out.querySelectorAll('[data-pay-tomar]').forEach(b=>b.onclick=()=>tomarPay(+b.dataset.payTomar));
+}
+function tomarPay(i){
+  const x = paySugerencias[i]; if(!x) return;
+  const texto = `${x.partido||''} — ${x.pick||''}${(x.selecciones||[]).length ? ' (' + x.selecciones.join(' + ') + ')' : ''} @ ${x.cuota||''}`;
+  const cfg = PAY_CUPOS[x.cupo] || {};
+  if(x.cupo === 'Regalito'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openRegalitoDiaModal(); return; }
+  if(x.cupo === 'Stake de pago'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openStakePagoUploadModal(); return; }
+  openWinBetForm('nueva', cfg.grupos || []);
+  const code = document.getElementById('f-winCode'); if(code) code.value = texto;
 }
 
 /* ---------- ROUTER ---------- */

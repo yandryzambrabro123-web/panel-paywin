@@ -67,6 +67,71 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
   return textBlock ? textBlock.text : '';
 }
 
+
+// ---------- Pay: analista deportivo de la Fábrica de apuestas ----------
+// modo "pay": { modo:'pay', cupo, cuotaMin, cuotaMax, cantidad, instruccion? } -> { sugerencias:[...], fuente }
+// Con ODDS_API_KEY (the-odds-api.com) usa cuotas reales; sin ella, busca los próximos partidos en la web.
+const PAY_LIGAS = (process.env.ODDS_SPORTS || 'soccer_epl,soccer_spain_la_liga,soccer_italy_serie_a,soccer_germany_bundesliga,soccer_france_ligue_one,soccer_uefa_champs_league,soccer_conmebol_libertadores,soccer_brazil_campeonato,soccer_argentina_primera_division,basketball_nba').split(',');
+
+async function cuotasReales() {
+  const key = process.env.ODDS_API_KEY;
+  if (!key) return null;
+  const eventos = [];
+  for (const liga of PAY_LIGAS) {
+    try {
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=h2h,totals&oddsFormat=decimal`);
+      if (!r.ok) continue;
+      const lista = await r.json();
+      for (const e of lista) {
+        const mercados = {};
+        for (const b of e.bookmakers || []) for (const m of b.markets || []) for (const o of m.outcomes || []) {
+          const k = `${m.key}|${o.name}${o.point != null ? ' ' + o.point : ''}`;
+          (mercados[k] = mercados[k] || []).push(o.price);
+        }
+        const resumen = Object.entries(mercados).map(([k, v]) => `${k}: ${(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2)}`);
+        eventos.push(`${liga} | ${e.home_team} vs ${e.away_team} | ${e.commence_time} | ${resumen.join(' ; ')}`);
+      }
+    } catch (e) { /* esa liga no respondió: se sigue con las demás */ }
+  }
+  return eventos.slice(0, 80);
+}
+
+async function modoPay(apiKey, body, res) {
+  const cuotaMin = Number(body.cuotaMin) || 1.8, cuotaMax = Number(body.cuotaMax) || 2;
+  const cantidad = Math.max(1, Math.min(5, Number(body.cantidad) || 3));
+  const cupo = String(body.cupo || 'apuesta').slice(0, 40);
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  let datos = null;
+  try { datos = await cuotasReales(); } catch (e) { datos = null; }
+  const conDatos = datos && datos.length;
+  const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). Propones apuestas para un cupo concreto, con análisis breve y honesto.
+Reglas:
+- Solo propones partidos que se juegan en las próximas 36 horas y que aparezcan en los datos${conDatos ? ' que te doy' : ' que encuentres buscando en la web'}. NUNCA inventes partidos, horarios ni cuotas.
+- La cuota de cada sugerencia debe quedar entre ${cuotaMin} y ${cuotaMax}. Si ningún pick simple cae en ese rango, arma una combinada de 2 o 3 selecciones y multiplica las cuotas.
+- Prioriza valor: forma reciente, historial, bajas y contexto. Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta".
+- Las cuotas vienen de un promedio de casas, así que avisa que se verifique en la casa donde se apuesta.
+- Responde SOLO con un arreglo JSON de ${cantidad} objetos (sin texto extra, sin markdown) con estos campos: partido (o "Combinada"), liga, hora (hora de Ecuador, texto corto), pick (texto claro, ej. "Más de 2.5 goles"), cuota (número), confianza, analisis (máximo 2 frases), selecciones (arreglo de textos si es combinada, si no vacío).`;
+  const userMsg = `Cupo: ${cupo}. Rango de cuota: ${cuotaMin} a ${cuotaMax}. Dame ${cantidad} sugerencia(s).${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${conDatos ? '\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web los partidos de hoy y mañana con sus cuotas aproximadas.'}`;
+  const payload = { model: 'claude-sonnet-5', max_tokens: 1800, system, messages: [{ role: 'user', content: userMsg }] };
+  if (!conDatos) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }];
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  if (!r.ok) {
+    console.error('Pay:', r.status, await r.text());
+    res.status(502).json({ error: 'Pay no pudo analizar ahora (servicio de IA). Intenta de nuevo.' });
+    return;
+  }
+  const data = await r.json();
+  const texto = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  const m = texto.match(/\[[\s\S]*\]/);
+  let sugerencias = [];
+  try { sugerencias = JSON.parse(m ? m[0] : '[]'); } catch (e) { sugerencias = []; }
+  sugerencias = sugerencias.filter((x) => x && x.pick).slice(0, cantidad);
+  if (!sugerencias.length) { res.status(502).json({ error: 'Pay no encontró una apuesta clara en ese rango. Prueba con otro rango o más tarde.' }); return; }
+  res.status(200).json({ sugerencias, fuente: conDatos ? 'cuotas reales (The Odds API)' : 'búsqueda en la web (cuotas aproximadas)' });
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método no permitido.' });
@@ -80,6 +145,12 @@ module.exports = async function handler(req, res) {
   }
 
   const body = req.body || {};
+
+  if (body.modo === 'pay') {
+    try { await modoPay(apiKey, body, res); }
+    catch (e) { console.error('Pay:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
+    return;
+  }
 
   if (body.modo === 'difusion') {
     try {
