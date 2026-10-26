@@ -131,10 +131,14 @@ async function modoPayChat(apiKey, body, res) {
 Tu trabajo: explicar tus picks con una hipótesis clara (por qué crees que pasa: forma, historial, bajas, ritmo del partido, estadísticas de la línea), decir también qué podría salir mal y cuándo NO apostarías, y responder lo que te pregunte sobre partidos, mercados (goles, corners, tarjetas, remates, puntos, rebotes, asistencias, tenis, tenis de mesa, UFC, e-sports) y cómo bajar el riesgo. Ayudas a armar combinadas de selecciones de cuota baja (1.15 a 1.50 cada una).
 Honestidad: nunca prometas ganancia segura; no inventes partidos, estadísticas ni cuotas. Si no tienes el dato, dilo o búscalo. Las cuotas son aproximadas y el jefe las verifica en su casa de apuestas. Él también analiza cada pick.
 ${contexto ? '\nPicks que tienes ahora mismo en pantalla:\n' + contexto : ''}${datos && datos.length ? '\n\nCuotas promedio actuales (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : ''}`;
-  const payload = { model: 'claude-sonnet-5', max_tokens: 700, system, messages: mensajes, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] };
-  const r = await llamarPay(apiKey, payload, 30000);
-  if (!r.ok) { res.status(502).json({ error: 'Pay no pudo responder (IA ' + r.status + ').' }); return; }
-  res.status(200).json({ respuesta: r.texto || 'No pude armar una respuesta, repíteme la pregunta.' });
+  // Por defecto responde rápido con lo que sabe y con las cuotas reales; busca en la web solo si el jefe lo pide ("busca...").
+  const pideWeb = /\b(busca|buscar|búscame|investiga|internet|web)\b/i.test(mensajes[mensajes.length - 1].content);
+  const payload = { model: 'claude-sonnet-5', max_tokens: 700, system, messages: mensajes };
+  if (pideWeb) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }];
+  let r = await llamarPay(apiKey, payload, 40000);
+  if (r.ok && !r.texto && payload.tools) { delete payload.tools; r = await llamarPay(apiKey, payload, 20000); } // reintento sin web
+  if (!r.ok) { res.status(502).json({ error: `Pay no pudo responder (IA ${r.status}). ${r.detalle || ''}` }); return; }
+  res.status(200).json({ respuesta: r.texto || 'Pay no devolvió respuesta (fin: ' + (r.stop || '-') + '). Intenta de nuevo.' });
 }
 
 async function modoPay(apiKey, body, res) {
@@ -163,7 +167,12 @@ Reglas:
     res.status(502).json({ error: `Pay no pudo analizar ahora (servicio de IA, código ${ia.status}). ${ia.detalle || ''}` });
     return;
   }
-  const texto = ia.texto;
+  let texto = ia.texto;
+  if (!texto && payload.tools && conDatos) { // se quedó buscando en la web: se reintenta solo con las cuotas reales
+    delete payload.tools;
+    const ia2 = await llamarPay(apiKey, payload, 25000);
+    if (ia2.ok) texto = ia2.texto;
+  }
   // Busca el arreglo JSON: primero dentro de <json>, luego el último bloque [ ... ] que sea válido
   let sugerencias = [];
   const cand = [];
@@ -201,6 +210,11 @@ module.exports = async function handler(req, res) {
   }
 
   const body = req.body || {};
+
+  if (body.modo === 'pay_diag') {
+    res.status(200).json({ odds: !!process.env.ODDS_API_KEY, eventosEnCaché: cacheCuotas.datos ? cacheCuotas.datos.length : null });
+    return;
+  }
 
   if (body.modo === 'pay_chat') {
     try { await modoPayChat(apiKey, body, res); }
