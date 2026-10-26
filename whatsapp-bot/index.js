@@ -115,7 +115,8 @@ const stakes = require('./stakes');
 stakes.montar(app); // registro público del Stake de pago + aprobación por Telegram
 // Registro público del VIP + salida automática de los vencidos (todo por Telegram).
 require('./vip').montar(app, stakes, { requireApiKey });
-require('./regalito').montar(app, stakes, { requireApiKey }); // registro VIP (Telegram) + salida automática de vencidos
+require('./regalito').montar(app, stakes, { requireApiKey });
+require('./pay').montar(app, stakes, { requireApiKey }); // registro VIP (Telegram) + salida automática de vencidos
 
 function requireApiKey(req, res, next) {
   if (!API_KEY) {

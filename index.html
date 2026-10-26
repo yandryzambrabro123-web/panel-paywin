@@ -6499,6 +6499,11 @@ function renderFactory(){
         <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
         <div id="payOut" style="margin-top:14px;"></div>
       </div>
+      <div class="card" style="grid-column:1/-1;">
+        <div class="card-title">Lo que Pay encontró solo</div>
+        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Pay revisa los partidos varias veces al día y te avisa por Telegram. Aquí quedan sus picks de las últimas 36 horas.</div>
+        <div id="payAuto"><div style="color:var(--muted); font-size:13px;">Cargando…</div></div>
+      </div>
       <div class="card">
         <div class="card-title">Ganadas de ayer</div>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:14px;">${ganadas ? `Tienes <strong style="color:var(--text);">${ganadas}</strong> guardada${ganadas>1?'s':''} para publicar.` : 'No hay ganadas guardadas para publicar.'}</div>
@@ -6529,6 +6534,32 @@ function initPayPanel(){
   setCupo(payCupo);
   document.getElementById('payGenBtn').onclick = generarPay;
   pintarPay();
+  cargarPayAuto();
+}
+let payAutoLista = [];
+async function cargarPayAuto(){
+  const el = document.getElementById('payAuto'); if(!el) return;
+  try{
+    const r = await fetch(`${SHEETS_API_URL}?sheet=PaySugerencias`);
+    const j = await r.json();
+    const corte = Date.now() - 36*3600e3;
+    payAutoLista = (Array.isArray(j.data) ? j.data : []).filter(x=>Date.parse(x.createdAt) >= corte)
+      .sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)))
+      .map(x=>{ let sel=[]; try{ sel = JSON.parse(x.selecciones||'[]'); }catch(e){} return { ...x, selecciones: sel }; });
+  }catch(e){ payAutoLista = []; }
+  if(!payAutoLista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">Todavía no hay picks de Pay. Revisa a las 9am y 3pm (hora de Ecuador).</div>'; return; }
+  el.innerHTML = payAutoLista.map((x,i)=>`
+    <div style="border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <strong>${esc(x.cupo||'Pick')} · ${esc(x.partido||'')}</strong><span style="color:var(--gold, #D4AF6A); font-weight:700;">@ ${esc(String(x.cuota||''))}</span>
+      </div>
+      <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
+      <div style="font-size:14px; margin-bottom:4px;">${esc(x.pick||'')}</div>
+      ${x.selecciones.length ? `<div style="font-size:12.5px; color:var(--muted);">${x.selecciones.map(esc).join('<br>')}</div>` : ''}
+      <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
+      <button class="btn" data-pay-auto="${i}" type="button">La tomo</button>
+    </div>`).join('');
+  el.querySelectorAll('[data-pay-auto]').forEach(b=>b.onclick=()=>tomarPay(payAutoLista[+b.dataset.payAuto]));
 }
 async function generarPay(){
   const out = document.getElementById('payOut'), btn = document.getElementById('payGenBtn');
@@ -6564,7 +6595,7 @@ function pintarPay(){
   out.querySelectorAll('[data-pay-tomar]').forEach(b=>b.onclick=()=>tomarPay(+b.dataset.payTomar));
 }
 function tomarPay(i){
-  const x = paySugerencias[i]; if(!x) return;
+  const x = typeof i === 'object' ? i : paySugerencias[i]; if(!x) return;
   const texto = `${x.partido||''} — ${x.pick||''}${(x.selecciones||[]).length ? ' (' + x.selecciones.join(' + ') + ')' : ''} @ ${x.cuota||''}`;
   const cfg = PAY_CUPOS[x.cupo] || {};
   if(x.cupo === 'Regalito'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openRegalitoDiaModal(); return; }
