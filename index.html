@@ -6585,7 +6585,7 @@ function enviadasHoyHTML(){
   // Mandadas pero sin registro en el panel
   const sueltas = {};
   salidas.filter(o=>!usadas.has(o.id)).forEach(o=>{ const k = norm(o.caption); (sueltas[k] = sueltas[k] || { o, grupos: [] }).grupos.push(o.destino); });
-  Object.values(sueltas).forEach(({o, grupos})=>filas.push({ t:'', texto:o.caption, img:o.image || '', odds:0, result:'', grupos:[...new Set(grupos)], hora: horaEC(o.createdAt), ok:false, ord:o.createdAt }));
+  Object.values(sueltas).forEach(({o, grupos})=>filas.push({ t: grupos.some(g=>/^Stake de pago/.test(g)) ? 'Stake de pago' : '', texto:o.caption, img:o.image || '', odds:0, result:'', grupos:[...new Set(grupos)], hora: horaEC(o.createdAt), ok: grupos.some(g=>/^Stake de pago/.test(g)), t2:1, ord:o.createdAt }));
   (state.gifts||[]).filter(g=>g.date === hoy).forEach(g=>filas.push({ t:'Regalito', texto:g.pick, img:g.imageUrl||'', odds:g.odds, result:g.result, grupos:[], hora:'', ok:true, ord:'' }));
   if(!filas.length) return '<div style="color:var(--muted); font-size:13px;">Todavía no mandaste ninguna apuesta hoy.</div>';
   filas.sort((a,b)=>String(b.ord).localeCompare(String(a.ord)));
@@ -7469,13 +7469,43 @@ async function payMicToggle(){
   }catch(e){ payOrb('idle', 'No pude usar el micrófono. Revisa el permiso del navegador.'); }
 }
 
+
+// ---- Stake de pago desde Fábrica: solo se pide la captura y queda registrado como enviado (el stake lo subes tú a Telegram) ----
+function openStakeRegistroModal(texto){
+  openModal(`
+    <h3>Stake de pago tomado</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Sube la captura de la apuesta que armaste. No se manda a ningún grupo: solo queda registrada como enviada hoy. El stake lo subes tú a Telegram y el anuncio lo haces con Win.</div>
+    <div style="font-size:12.5px; white-space:pre-wrap; border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:8px;">${esc(texto)}</div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:10px 0;">
+      <div style="font-size:26px; margin-bottom:6px;">📎</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la captura</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="stakeRegBtn" type="button">Registrar como enviado</button>
+    </div>
+  `);
+  wireWinDropzone();
+  document.getElementById('stakeRegBtn').onclick = async ()=>{
+    if(!winPendingFile){ alert('Sube la captura primero.'); return; }
+    const b = document.getElementById('stakeRegBtn'); b.disabled = true; b.textContent = 'Registrando…';
+    const thumb = await fileToThumbnail(winPendingFile).catch(()=> '');
+    await pushToOutbox('nueva_apuesta', 'Stake de pago (lo subes tú a Telegram)', texto, thumb, true, 'enviado');
+    await persist('winOutbox');
+    closeModal();
+    const box = document.getElementById('enviadasHoy'); if(box) box.innerHTML = enviadasHoyHTML();
+    const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">✅ Stake de pago registrado como enviado (lo ves en "Enviadas hoy").</span>';
+  };
+}
 function tomarPay(i){
   const x = typeof i === 'object' ? i : paySugerencias[i]; if(!x) return;
   payGuardarTomada(x);
   const texto = (x.selecciones||[]).length ? `${payTextoSel(x)}\nCuota total: @${x.cuota||''}` : `${x.partido||''} — ${x.pick||''} @ ${x.cuota||''}`;
   const cfg = PAY_CUPOS[x.cupo] || {};
   if(x.cupo === 'Regalito'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openRegalitoDiaModal(); return; }
-  if(x.cupo === 'Stake de pago'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openStakePagoUploadModal(); return; }
+  if(x.cupo === 'Stake de pago'){ openStakeRegistroModal(texto); return; }
   openWinBetForm('nueva', cfg.grupos || []);
   const code = document.getElementById('f-winCode'); if(code) code.value = texto;
 }
