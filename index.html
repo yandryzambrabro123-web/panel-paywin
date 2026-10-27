@@ -6646,6 +6646,7 @@ function payLineasHTML(x, origen, idx){
       <div style="flex:none; font-weight:700;">@ ${esc(String(l.cuota))}</div>
       <button type="button" class="btn secondary" data-pay-descartar="${origen}:${idx}:${i}" title="No me gusta esta línea: se quita y Pay no la vuelve a proponer" style="flex:none; padding:6px 9px; font-size:12px;">Descartar</button>
       <button type="button" class="btn secondary" data-pay-excluir="${origen}:${idx}:${i}" title="Ya la mandé o no la quiero: Pay no la vuelve a proponer hoy" style="flex:none; padding:6px 9px; font-size:12px;">Ya la usé</button>
+      <button type="button" class="btn secondary" data-pay-builder="${origen}:${idx}:${i}" title="Armar Bet Builder (Crear apuesta) con esta línea" style="flex:none; padding:6px 9px; font-size:12px;">Bet Builder</button>
       <button type="button" class="btn secondary" data-pay-bajar="${origen}:${idx}:${i}" title="Bajar el riesgo de esta línea" style="flex:none; padding:6px 9px; font-size:12px;">↓ Riesgo</button>
       <button type="button" class="btn ${on ? '' : 'secondary'}" data-pay-like="${origen}:${idx}:${i}" title="Me gusta esta línea" style="flex:none; padding:6px 10px;">${on ? '♥' : '♡'}</button>
     </div>`;}).join('') + `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--border); font-weight:800;"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${esc(String(x.cuota||''))}</span></div>`;
@@ -6674,7 +6675,7 @@ function pintarBandejaPay(){
   el.innerHTML = `
     <div style="border:1px solid var(--gold, #D4AF6A); border-radius:12px; padding:12px 14px; margin:12px 0;">
       <div style="font-weight:800; margin-bottom:6px;">♥ Mis líneas elegidas (${paySeleccion.length})</div>
-      ${paySeleccion.map((s,i)=>`<div style="display:flex; gap:8px; align-items:center; padding:5px 0; border-top:1px solid var(--border);"><div style="flex:1; min-width:0;"><div style="font-size:12px; color:var(--muted);">${esc(s.partido)}</div><div style="font-size:14px; font-weight:600;">${esc(s.pick)}</div></div><div style="font-weight:700;">@ ${esc(String(s.cuota))}</div><button type="button" class="btn secondary" data-pay-bajar-sel="${i}" title="Bajar el riesgo de esta línea" style="padding:4px 8px; font-size:12px;">↓ Riesgo</button><button type="button" class="btn secondary" data-pay-quitar="${i}" style="padding:4px 9px;">✕</button></div>`).join('')}
+      ${paySeleccion.map((s,i)=>`<div style="display:flex; gap:8px; align-items:center; padding:5px 0; border-top:1px solid var(--border);"><div style="flex:1; min-width:0;"><div style="font-size:12px; color:var(--muted);">${esc(s.partido)}</div><div style="font-size:14px; font-weight:600;">${esc(s.pick)}</div></div><div style="font-weight:700;">@ ${esc(String(s.cuota))}</div> <button type="button" class="btn secondary" data-pay-builder-sel="${i}" title="Armar Bet Builder con esta línea" style="padding:4px 8px; font-size:12px;">Bet Builder</button><button type="button" class="btn secondary" data-pay-bajar-sel="${i}" title="Bajar el riesgo de esta línea" style="padding:4px 8px; font-size:12px;">↓ Riesgo</button><button type="button" class="btn secondary" data-pay-quitar="${i}" style="padding:4px 9px;">✕</button></div>`).join('')}
       <div style="display:flex; justify-content:space-between; padding:8px 0 4px; font-weight:800; border-top:1px solid var(--border);"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${total.toFixed(2)}</span></div>
       ${repetido ? '<div style="font-size:12px; color:#ff7a7a;">⚠️ Tienes dos líneas del mismo partido: están relacionadas y la casa puede no dejarte combinarlas.</div>' : ''}
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
@@ -6683,7 +6684,8 @@ function pintarBandejaPay(){
         <button class="btn secondary" id="payVaciarBtn" type="button">Vaciar</button>
       </div>
     </div>`;
-  el.querySelectorAll('[data-pay-bajar-sel]').forEach(b=>b.onclick=()=>payBajarRiesgo(paySeleccion[+b.dataset.payBajarSel], paySeleccion[+b.dataset.payBajarSel].k));
+  el.querySelectorAll('[data-pay-builder-sel]').forEach(b=>b.onclick=()=>payAlternativas(paySeleccion[+b.dataset.payBuilderSel], paySeleccion[+b.dataset.payBuilderSel].k, 'builder'));
+  el.querySelectorAll('[data-pay-bajar-sel]').forEach(b=>b.onclick=()=>payAlternativas(paySeleccion[+b.dataset.payBajarSel], paySeleccion[+b.dataset.payBajarSel].k, 'bajar'));
   el.querySelectorAll('[data-pay-quitar]').forEach(b=>b.onclick=()=>{ paySeleccion.splice(+b.dataset.payQuitar,1); pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); });
   document.getElementById('payVaciarBtn').onclick = ()=>{ paySeleccion = []; pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); };
   const combi = ()=>({ cupo: payCupo, partido: `Combinada de ${paySeleccion.length}`, pick: 'Mi combinada', cuota: total.toFixed(2), selecciones: paySeleccion.map(s=>({ partido:s.partido, pick:s.pick, cuota:s.cuota, hora:s.hora })) });
@@ -6691,22 +6693,23 @@ function pintarBandejaPay(){
   document.getElementById('payResenaSelBtn').onclick = ()=>payResena(combi());
 }
 // ---- Bajar el riesgo de una línea: Pay propone alternativas más seguras (cuota menor) del mismo partido ----
-function payBajarDesde(ref){
+function payBajarDesde(ref, tipo){
   const [origen, idx, i] = ref.split(':');
   const x = (origen === 'auto' ? payAutoLista : paySugerencias)[+idx]; if(!x) return;
   const l = (x.selecciones||[]).map(payNormSel)[+i]; if(!l) return;
-  payBajarRiesgo({ ...l, cupo: x.cupo || payCupo }, payClaveLinea(l));
+  payAlternativas({ ...l, cupo: x.cupo || payCupo }, payClaveLinea(l), tipo || 'bajar');
 }
-async function payBajarRiesgo(linea, claveOriginal){
-  openModal(`<h3>Bajar el riesgo</h3><div style="font-size:13px; color:var(--muted); margin-bottom:8px;">${esc(linea.partido||'')}<br><b style="color:var(--text);">${esc(linea.pick)}</b> @ ${esc(String(linea.cuota))}</div><div id="payBajarOut" style="font-size:13.5px;">Pay está buscando opciones más seguras…</div><div style="margin-top:12px;"><button class="btn secondary" type="button" onclick="closeModal()">Cerrar</button></div>`);
+async function payAlternativas(linea, claveOriginal, tipo){
+  const esBuilder = tipo === 'builder';
+  openModal(`<h3>${esBuilder ? 'Bet Builder con esta línea' : 'Bajar el riesgo'}</h3><div style="font-size:13px; color:var(--muted); margin-bottom:8px;">${esc(linea.partido||'')}<br><b style="color:var(--text);">${esc(linea.pick)}</b> @ ${esc(String(linea.cuota))}</div><div id="payBajarOut" style="font-size:13.5px;">${esBuilder ? 'Pay está armando opciones de Crear apuesta…' : 'Pay está buscando opciones más seguras…'}</div><div style="margin-top:12px;"><button class="btn secondary" type="button" onclick="closeModal()">Cerrar</button></div>`);
   const out = document.getElementById('payBajarOut');
   try{
-    const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_bajar', linea, evitar: payEvitar(false) }) }), 50000);
+    const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo: esBuilder ? 'pay_builder' : 'pay_bajar', linea, cupo: linea.cupo || payCupo, evitar: payEvitar(false), descartadas: payDescartadasHoy.slice(-40) }) }), 50000);
     const j = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(j.error || 'Pay no pudo responder.');
     const alts = j.alternativas || [];
     if(!alts.length){ out.textContent = j.aviso || 'No encontré alternativas más seguras.'; return; }
-    out.innerHTML = alts.map((a,n)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;"><div style="display:flex; gap:8px; align-items:center;"><div style="flex:1; font-weight:700;">${esc(a.pick)}</div><div style="font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(String(a.cuota))}${a.aprox ? ' <span style="font-size:11px; color:var(--muted);">aprox</span>' : ''}</div></div>${a.nota ? `<div style="font-size:12.5px; color:var(--muted); margin:4px 0 8px;">${esc(a.nota)}</div>` : ''}<button class="btn" type="button" data-pay-alt="${n}">Usar esta línea</button></div>`).join('') + '<div style="font-size:11.5px; color:var(--muted);">Verifica la cuota en tu casa: las "aprox" son estimadas.</div>';
+    out.innerHTML = alts.map((a,n)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;"><div style="display:flex; gap:8px; align-items:center;"><div style="flex:1; font-weight:700;">${esc(a.pick)}</div><div style="font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(String(a.cuota))}${a.aprox ? ' <span style="font-size:11px; color:var(--muted);">aprox</span>' : ''}</div></div>${a.nota ? `<div style="font-size:12.5px; color:var(--muted); margin:4px 0 8px;">${esc(a.nota)}</div>` : ''}<button class="btn" type="button" data-pay-alt="${n}">Usar esta línea</button></div>`).join('') + `<div style="font-size:11.5px; color:var(--muted);">${esBuilder ? 'La cuota del Bet Builder es estimada: ármalo en Crear apuesta de Mas1x2 y usa la cuota exacta que te dé la casa.' : 'Verifica la cuota en tu casa: las "aprox" son estimadas.'}</div>`;
     out.querySelectorAll('[data-pay-alt]').forEach(b=>b.onclick=()=>{
       const a = alts[+b.dataset.payAlt];
       const nueva = { partido: a.partido || linea.partido, pick: a.pick, cuota: a.cuota, hora: a.hora || linea.hora || '', cupo: linea.cupo || payCupo };
@@ -6967,6 +6970,7 @@ function cargarPayAutoPintar(){
   el.querySelectorAll('[data-pay-resenaauto]').forEach(b=>b.onclick=()=>payResena(payAutoLista[+b.dataset.payResenaauto]));
   el.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
   el.querySelectorAll('[data-pay-bajar]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBajar));
+  el.querySelectorAll('[data-pay-builder]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBuilder, 'builder'));
   el.querySelectorAll('[data-pay-excluir]').forEach(b=>b.onclick=()=>payExcluir(b.dataset.payExcluir));
   el.querySelectorAll('[data-pay-descartar]').forEach(b=>b.onclick=()=>payDescartar(b.dataset.payDescartar));
 }
@@ -7008,6 +7012,7 @@ function pintarPay(){
   out.querySelectorAll('[data-pay-resena]').forEach(b=>b.onclick=()=>payResena(paySugerencias[+b.dataset.payResena]));
   out.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
   out.querySelectorAll('[data-pay-bajar]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBajar));
+  out.querySelectorAll('[data-pay-builder]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBuilder, 'builder'));
   out.querySelectorAll('[data-pay-excluir]').forEach(b=>b.onclick=()=>payExcluir(b.dataset.payExcluir));
   out.querySelectorAll('[data-pay-descartar]').forEach(b=>b.onclick=()=>payDescartar(b.dataset.payDescartar));
   const otras = document.getElementById('payOtrasBtn'); if(otras) otras.onclick = ()=>generarPay(true);

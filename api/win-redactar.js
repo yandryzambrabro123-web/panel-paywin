@@ -339,6 +339,32 @@ Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: parti
   res.status(200).json({ sugerencias: lista, fuente: 'tu foto del partido' });
 }
 
+// Bet Builder de UNA línea: la misma selección + otros mercados que se refuerzan, del MISMO partido, como una sola selección "Crear apuesta".
+async function modoPayBuilder(apiKey, body, res) {
+  const l = body.linea || {};
+  const partido = String(l.partido || '').slice(0, 120), pick = String(l.pick || '').slice(0, 160), cuota = Number(String(l.cuota || '').replace(',', '.')) || 0;
+  if (!pick) { res.status(400).json({ error: 'Falta la línea.' }); return; }
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  let datos = null;
+  try { datos = await cuotasReales(); } catch (e) { datos = null; }
+  const palabras = (partido + ' ' + pick).toLowerCase().split(/[^a-záéíóúñ]+/).filter((w) => w.length > 3);
+  const delPartido = (datos || []).filter((x) => { const t = x.toLowerCase(); return palabras.filter((w) => t.includes(w)).length >= 2; }).slice(0, 8);
+  const descartadas = (Array.isArray(body.descartadas) ? body.descartadas : []).slice(0, 40).join(' ; ').slice(0, 1500);
+  const system = `Eres Pay, el analista deportivo de PayWin. Hoy es ${hoy} (hora de Ecuador). ${PAY_CONOCIMIENTO}
+${nivelPay(body.cupo)}
+El jefe tiene esta línea: "${pick}" en ${partido || 'un partido'}, cuota ${cuota || '?'}. Quiere armar un BET BUILDER ("Crear apuesta" en Mas1x2): esa misma selección MÁS uno o dos mercados extra del MISMO partido que se refuercen entre sí, como UNA sola selección.
+Dame de 3 a 4 opciones, de la más conservadora a la más atrevida. Cada una empieza con "Crear apuesta:" y lista las patas unidas con " + " (ej. "Crear apuesta: Gana Real Madrid + más de 150.5 puntos totales"). Reglas: la primera pata es la selección del jefe; las demás deben ser coherentes (nunca mercados que se contradicen); prefiere mercados con margen amplio; usa mercados de jugador SOLO si aparecen en los datos de abajo o si los confirmas. Estima la cuota combinada (es MENOR que multiplicar las cuotas sueltas por la correlación, aprox. 10 a 25% menos) y márcala aprox, porque la casa da la cuota exacta al armarlo. Ninguna opción debe superar la cuota 2.60. Sé honesto en la nota: qué tiene que pasar para que gane y qué la puede romper.
+${descartadas ? 'Líneas que el jefe descartó (no las uses): ' + descartadas + '.' : ''}
+${delPartido.length ? 'Cuotas promedio de ese partido (liga | partido | inicio UTC | mercado: cuota):\n' + delPartido.join('\n') : 'No tengo cuotas reales de ese partido; estima con tu conocimiento y márcalas aprox.'}
+Responde SOLO con un arreglo JSON: [{"pick":"Crear apuesta: ...","cuota":1.55,"nota":"1 o 2 frases","aprox":true}]`;
+  const r = await llamarPay(apiKey, { model: 'claude-sonnet-5', max_tokens: 1800, system, messages: [{ role: 'user', content: 'Arma las opciones de Bet Builder.' }] }, 30000);
+  if (!r.ok) { res.status(502).json({ error: `Pay no pudo responder (IA ${r.status}).` }); return; }
+  let lista = [];
+  try { lista = JSON.parse(r.texto.slice(r.texto.indexOf('['), r.texto.lastIndexOf(']') + 1)); } catch (e) { lista = []; }
+  lista = (Array.isArray(lista) ? lista : []).filter((a) => a && a.pick && Number(a.cuota) > 1).slice(0, 4).map((a) => ({ partido, hora: l.hora || '', pick: String(a.pick).slice(0, 200), cuota: Number(a.cuota).toFixed(2), nota: String(a.nota || '').slice(0, 240), aprox: a.aprox !== false }));
+  res.status(200).json(lista.length ? { alternativas: lista } : { alternativas: [], aviso: 'Pay no encontró un Bet Builder coherente para esa línea.' });
+}
+
 // Bajar el riesgo de UNA línea: misma selección/partido pero más segura (cuota menor).
 async function modoPayBajar(apiKey, body, res) {
   const l = body.linea || {};
@@ -497,6 +523,12 @@ module.exports = async function handler(req, res) {
   if (body.modo === 'pay_partido') {
     try { await modoPayPartido(apiKey, body, res); }
     catch (e) { console.error('Pay partido:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
+    return;
+  }
+
+  if (body.modo === 'pay_builder') {
+    try { await modoPayBuilder(apiKey, body, res); }
+    catch (e) { console.error('Pay builder:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
     return;
   }
 
