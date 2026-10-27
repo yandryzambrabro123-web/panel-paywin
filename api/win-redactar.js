@@ -116,8 +116,8 @@ async function cuotasReales(fecha) {
   const key = process.env.ODDS_API_KEY;
   if (!key) return null;
   const fechaOk = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : '';
-  if (fechaOk) { const c = cachePorFecha[fechaOk]; if (c && Date.now() - c.t < 3 * 3600 * 1000) return c.datos; }
-  else if (cacheCuotas.datos && Date.now() - cacheCuotas.t < 3 * 3600 * 1000) return cacheCuotas.datos;
+  if (fechaOk) { const c = cachePorFecha[fechaOk]; if (c && Date.now() - c.t < 4 * 3600 * 1000) return c.datos; }
+  else if (cacheCuotas.datos && Date.now() - cacheCuotas.t < 4 * 3600 * 1000) return cacheCuotas.datos;
   // Lista de deportes activos hoy (esta consulta no gasta créditos)
   let ligas = [];
   if (process.env.ODDS_SPORTS) ligas = process.env.ODDS_SPORTS.split(',').map((x) => x.trim()).filter(Boolean);
@@ -143,8 +143,11 @@ async function cuotasReales(fecha) {
   const evs = [];
   for (const liga of ligas) {
     try {
-      const mercados = /^(soccer|basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals' : 'h2h';
-      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${mercados}&oddsFormat=decimal`);
+      const basicos = /^(soccer|basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals' : 'h2h';
+      // Fútbol: además ambos marcan y doble oportunidad; básquet/hockey/NFL/béisbol: hándicap. Si esa liga no los trae, se pide lo básico.
+      const mercados = liga.startsWith('soccer_') ? 'h2h,totals,btts,double_chance' : /^(basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals,spreads' : basicos;
+      let r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${mercados}&oddsFormat=decimal`);
+      if (!r.ok && mercados !== basicos) r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${basicos}&oddsFormat=decimal`);
       if (!r.ok) continue;
       const lista = await r.json();
       let porLiga = 0;
