@@ -498,62 +498,76 @@ Reglas:
     const ia2 = await llamarPay(apiKey, payload, 25000);
     if (ia2.ok) texto = ia2.texto;
   }
-  // Busca el arreglo JSON: primero dentro de <json>, luego el último bloque [ ... ] que sea válido
-  let sugerencias = [];
-  const cand = [];
-  const tag = texto.match(/<json>([\s\S]*?)<\/json>/i);
-  if (tag) cand.push(tag[1]);
-  const fence = texto.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence) cand.push(fence[1]);
-  for (let ini = texto.indexOf('['); ini >= 0 && cand.length < 12; ini = texto.indexOf('[', ini + 1)) {
-    const fin = texto.lastIndexOf(']');
-    if (fin > ini) cand.push(texto.slice(ini, fin + 1));
-  }
-  for (const c of cand) {
-    try { const j = JSON.parse(c.trim()); if (Array.isArray(j)) { sugerencias = j; break; } } catch (e) { /* siguiente candidato */ }
-  }
-  sugerencias = sugerencias.filter((x) => x && x.pick);
   const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
-  const descartadas = (Array.isArray(body.descartadas) ? body.descartadas : []).slice(0, 60);
-  const usadas = new Set([...(Array.isArray(body.evitar) ? body.evitar : []), ...descartadas, ...vistosSesion].map(norm));
-  // Repetida si es exacta o si el mismo partido/jugador ya aparece en algo que el jefe mandó o registró hoy
-  const palabrasDe = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !/^(gana|mas|menos|mayor|menor|total|juegos|goles|sets|partido|equipo|apuesta|cuota|linea|combinada)$/.test(w));
-  const textosUsados = (Array.isArray(body.evitar) ? body.evitar : []).map((e) => new Set(palabrasDe(e)));
-  const yaUsada = (l) => {
-    if (!l || typeof l !== 'object') return false;
-    if (usadas.has(norm((l.partido || '') + (l.pick || '')))) return true;
-    const pw = [...new Set(palabrasDe(l.partido))];
-    return pw.length >= 2 && textosUsados.some((set) => pw.filter((w) => set.has(w)).length >= 2);
+  const evaluar = (texto) => {
+    // Busca el arreglo JSON: primero dentro de <json>, luego el último bloque [ ... ] que sea válido
+    let sugerencias = [];
+    const cand = [];
+    const tag = texto.match(/<json>([\s\S]*?)<\/json>/i);
+    if (tag) cand.push(tag[1]);
+    const fence = texto.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) cand.push(fence[1]);
+    for (let ini = texto.indexOf('['); ini >= 0 && cand.length < 12; ini = texto.indexOf('[', ini + 1)) {
+      const fin = texto.lastIndexOf(']');
+      if (fin > ini) cand.push(texto.slice(ini, fin + 1));
+    }
+    for (const c of cand) {
+      try { const j = JSON.parse(c.trim()); if (Array.isArray(j)) { sugerencias = j; break; } } catch (e) { /* siguiente candidato */ }
+    }
+    sugerencias = sugerencias.filter((x) => x && x.pick);
+    const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+    const descartadas = (Array.isArray(body.descartadas) ? body.descartadas : []).slice(0, 60);
+    const usadas = new Set([...(Array.isArray(body.evitar) ? body.evitar : []), ...descartadas, ...vistosSesion].map(norm));
+    // Repetida si es exacta o si el mismo partido/jugador ya aparece en algo que el jefe mandó o registró hoy
+    const palabrasDe = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !/^(gana|mas|menos|mayor|menor|total|juegos|goles|sets|partido|equipo|apuesta|cuota|linea|combinada)$/.test(w));
+    const textosUsados = (Array.isArray(body.evitar) ? body.evitar : []).map((e) => new Set(palabrasDe(e)));
+    const yaUsada = (l) => {
+      if (!l || typeof l !== 'object') return false;
+      if (usadas.has(norm((l.partido || '') + (l.pick || '')))) return true;
+      const pw = [...new Set(palabrasDe(l.partido))];
+      return pw.length >= 2 && textosUsados.some((set) => pw.filter((w) => set.has(w)).length >= 2);
+    };
+    const partidosVistos = new Set();
+    const sinRepetir = sugerencias.filter((x) => {
+      const sels = (x.selecciones || []).filter((l) => l && typeof l === 'object');
+      if (sels.some(yaUsada)) return false;
+      const claves = sels.map((l) => [...new Set(palabrasDe(l.partido))].sort().join('|')).filter(Boolean);
+      if (claves.some((k) => partidosVistos.has(k))) return false; // mismo partido ya usado en otra combinada de esta respuesta
+      claves.forEach((k) => partidosVistos.add(k));
+      return true;
+    });
+    // La cuota total SIEMPRE es el producto de las cuotas de las selecciones (el modelo se equivoca al multiplicar)
+    const productoDe = (x) => { const c = (x.selecciones || []).map((l) => Number(String(l && l.cuota).replace(',', '.'))); return c.length && c.every((n) => n > 1) ? c.reduce((a, b) => a * b, 1) : 0; };
+    sinRepetir.forEach((x) => { const pr = productoDe(x); if (pr) x.cuota = Number(pr.toFixed(2)); });
+    const rangoDe = (x) => { const c = lote && lote.find((q) => String(q.cupo) === String(x.cupo)); return c ? [Number(c.min), Number(c.max)] : [cuotaMin, cuotaMax]; };
+    const enRango = sinRepetir.filter((x) => { const [mn, mx] = rangoDe(x); return Number(x.cuota) >= mn - 0.03 && Number(x.cuota) <= mx + 0.03; });
+    return { todas: sugerencias, validas: enRango };
   };
-  const partidosVistos = new Set();
-  const sinRepetir = sugerencias.filter((x) => {
-    const sels = (x.selecciones || []).filter((l) => l && typeof l === 'object');
-    if (sels.some(yaUsada)) return false;
-    const claves = sels.map((l) => [...new Set(palabrasDe(l.partido))].sort().join('|')).filter(Boolean);
-    if (claves.some((k) => partidosVistos.has(k))) return false; // mismo partido ya usado en otra combinada de esta respuesta
-    claves.forEach((k) => partidosVistos.add(k));
-    return true;
-  });
-  // La cuota total SIEMPRE es el producto de las cuotas de las selecciones (el modelo se equivoca al multiplicar)
-  const productoDe = (x) => { const c = (x.selecciones || []).map((l) => Number(String(l && l.cuota).replace(',', '.'))); return c.length && c.every((n) => n > 1) ? c.reduce((a, b) => a * b, 1) : 0; };
-  sinRepetir.forEach((x) => { const pr = productoDe(x); if (pr) x.cuota = Number(pr.toFixed(2)); });
-  const rangoDe = (x) => { const c = lote && lote.find((q) => String(q.cupo) === String(x.cupo)); return c ? [Number(c.min), Number(c.max)] : [cuotaMin, cuotaMax]; };
-  const enRango = sinRepetir.filter((x) => { const [mn, mx] = rangoDe(x); return Number(x.cuota) >= mn - 0.08 && Number(x.cuota) <= mx + 0.12; });
-  let usables = enRango;
-  if (!enRango.length && sinRepetir.length) {
-    usables = sinRepetir;
-    usables.forEach((x) => { const [mn, mx] = rangoDe(x); x.analisis = `⚠️ La cuota real de esta combinada es ${x.cuota}, fuera del rango pedido (${mn} a ${mx}). ` + (x.analisis || ''); });
+  let ev = evaluar(texto);
+  // ESTRICTO: solo se devuelven combinadas dentro del rango; si faltan, se le pide a Pay completar (hasta 2 reintentos)
+  for (let ronda = 0; ronda < 2 && !lote && ev.validas.length < cantidad && conDatos; ronda++) {
+    const faltan = cantidad - ev.validas.length;
+    const prev = ev.todas.map((x) => `${String(x.pick).slice(0, 80)} => cuota total real ${x.cuota}`).join(' | ');
+    const msg2 = `Tu respuesta anterior NO cumplió: necesito ${cantidad} combinadas con cuota total (producto de las cuotas) ENTRE ${cuotaMin} y ${cuotaMax}, y solo ${ev.validas.length} cumplen. ${prev ? 'Resultado de tus combinadas (cuota real = producto): ' + prev + '. ' : ''}Dame AHORA ${faltan} combinada(s) NUEVAS (partidos distintos a los ya usados) cuyo producto de cuotas quede dentro de ${cuotaMin}-${cuotaMax}: suma o quita selecciones hasta lograrlo, usando solo líneas de los datos reales. Mismo formato JSON dentro de <json></json>.`;
+    const p2 = { ...payload, messages: [...payload.messages, { role: 'assistant', content: texto }, { role: 'user', content: msg2 }] };
+    delete p2.tools;
+    const ia3 = await llamarPay(apiKey, p2, 30000);
+    if (!ia3.ok || !ia3.texto) break;
+    const ev2 = evaluar(ia3.texto);
+    const vistas = new Set(ev.validas.map((x) => norm(x.partido + x.pick)));
+    ev = { todas: [...ev.todas, ...ev2.todas], validas: [...ev.validas, ...ev2.validas.filter((x) => !vistas.has(norm(x.partido + x.pick)))] };
   }
-  const hubo = sugerencias.length;
-  sugerencias = usables.slice(0, cantidad);
-  if (hubo && !sugerencias.length && !lote) { res.status(502).json({ error: 'Pay solo encontró combinadas con líneas que ya usaste hoy. Toca generar de nuevo para que busque otras.' }); return; }
+  const hubo = ev.todas.length;
+  const faltaron = !lote && ev.validas.length < cantidad ? cantidad - ev.validas.length : 0;
+  let sugerencias = ev.validas.slice(0, cantidad);
+  if (hubo && !sugerencias.length && !lote) { res.status(502).json({ error: `Pay no logró armar combinadas dentro de tu rango (${cuotaMin} a ${cuotaMax}) con partidos que no hayas usado. Prueba otra fecha, amplía un poco el rango o toca generar de nuevo.` }); return; }
   if (!sugerencias.length && lote) { res.status(200).json({ sugerencias: [], fuente: 'sin picks claros', razon: texto.trim().slice(0, 400) }); return; }
   if (!sugerencias.length) {
     console.error('Pay sin picks. Respuesta:', texto.slice(0, 600));
     res.status(502).json({ error: 'Pay no armó una combinada en ese rango. Lo que dijo: ' + (texto.replace(/\s+/g, ' ').trim().slice(0, 220) || `(sin respuesta; fuente: ${conDatos ? 'cuotas reales, ' + datos.length + ' eventos' : 'solo web, sin ODDS_API_KEY'}; fin: ${ia.stop || '-'})`) });
     return;
   }
-  res.status(200).json({ sugerencias, fuente: conDatos ? 'cuotas reales (The Odds API) + búsqueda web para otros deportes' : 'búsqueda en la web (cuotas aproximadas)' });
+  res.status(200).json({ sugerencias, aviso: faltaron ? `Pedías ${cantidad} pero solo pude armar ${sugerencias.length} dentro del rango ${cuotaMin} a ${cuotaMax} sin repetir partidos.` : '', fuente: conDatos ? 'cuotas reales (The Odds API) + búsqueda web para otros deportes' : 'búsqueda en la web (cuotas aproximadas)' });
 }
 
 module.exports = async function handler(req, res) {
