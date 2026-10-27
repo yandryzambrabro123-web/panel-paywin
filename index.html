@@ -6767,7 +6767,7 @@ function payEventoHTML(s, liga, acciones, nuevo, editIdx){
   return `<div class="slip-ev ${nuevo ? 'nuevo' : ''}">
     <div class="slip-meta"><span>${emoji}</span>${bb || patas.length > 1 ? '<span class="slip-badge" style="padding:1px 6px; font-size:10.5px;">BB</span>' : ''}<span>${esc(payFechaCorta())}${s.hora ? ' • ' + esc(s.hora) : ''}${liga && !String(liga).includes('/') ? ' • ' + esc(liga) : ''}</span></div>
     <div class="slip-teams">${teams}${editIdx != null ? `<span class="slip-odd" data-pay-edcuota="${editIdx}" style="cursor:pointer; border-bottom:1px dashed #8e96ad;" title="Toca para poner la cuota real de la casa">${esc(payFmtCuota(s.cuota))} ✎</span>` : `<span class="slip-odd">${esc(payFmtCuota(s.cuota))}</span>`}</div>
-    <div class="slip-tl">${patas.map(p=>`<div class="slip-leg"><div class="slip-mkt">${esc(p.mercado)}</div><div class="slip-sel">${p.jugador ? payLogoHTML(p.jugador,'jug') : ''}<span>${esc(p.texto)}</span></div></div>`).join('')}</div>
+    <div class="slip-tl">${patas.map((p,j)=>`<div class="slip-leg" style="position:relative;"><div class="slip-mkt">${esc(p.mercado)}</div><div class="slip-sel">${p.jugador ? payLogoHTML(p.jugador,'jug') : ''}<span>${esc(p.texto)}</span></div>${editIdx != null ? `<button type="button" data-pay-xpata="${editIdx}:${j}" title="No está en la casa: quitar esta línea" style="position:absolute; right:0; top:50%; transform:translateY(-50%); background:rgba(255,90,90,.12); color:#ff7a7a; border:1px solid rgba(255,90,90,.4); border-radius:8px; width:30px; height:30px; font-size:15px; cursor:pointer;">✕</button>` : ''}</div>`).join('')}${editIdx != null && s.revisar ? '<div style="font-size:11.5px; color:#ffd966; margin-top:4px;">⚠️ Quitaste una línea: toca la cuota y pon la real de la casa.</div>' : ''}</div>
     ${acciones ? `<div class="slip-acts">${acciones}</div>` : ''}
   </div>`;
 }
@@ -6874,6 +6874,16 @@ function pintarBandejaPay(){
   document.getElementById('payFlotanteBar').onclick = ()=>{ payFlotanteAbierto = !payFlotanteAbierto; pintarBandejaPay(); };
   el.querySelectorAll('[data-pay-builder-sel]').forEach(b=>b.onclick=()=>payAlternativas(paySeleccion[+b.dataset.payBuilderSel], paySeleccion[+b.dataset.payBuilderSel].k, 'builder'));
   el.querySelectorAll('[data-pay-bajar-sel]').forEach(b=>b.onclick=()=>payAlternativas(paySeleccion[+b.dataset.payBajarSel], paySeleccion[+b.dataset.payBajarSel].k, 'bajar'));
+  el.querySelectorAll('[data-pay-xpata]').forEach(b=>b.onclick=(ev)=>{
+    ev.stopPropagation(); const [i,j] = b.dataset.payXpata.split(':').map(Number); const s0 = paySeleccion[i]; if(!s0) return;
+    const bb = /^crear apuesta\s*:/i.test(String(s0.pick||'').trim());
+    const partes = String(s0.pick||'').trim().replace(/^crear apuesta\s*:\s*/i,'').split(/\s+\+\s+/).map(t=>t.trim()).filter(Boolean);
+    partes.splice(j,1);
+    if(!partes.length){ paySeleccion.splice(i,1); pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); return; }
+    s0.pick = (bb && partes.length > 1 ? 'Crear apuesta: ' : '') + partes.join(' + ');
+    s0.k = payClaveLinea ? payClaveLinea(s0) : s0.k; s0.revisar = true;
+    pintarPay(); pintarBandejaPay();
+  });
   el.querySelectorAll('[data-pay-edcuota]').forEach(b=>b.onclick=(ev)=>{
     ev.stopPropagation(); const i = +b.dataset.payEdcuota; const s0 = paySeleccion[i]; if(!s0) return;
     b.outerHTML = `<input id="payEdIn" type="number" step="0.01" inputmode="decimal" value="${esc(String(s0.cuota).replace(',','.'))}" style="width:84px; padding:4px 6px; font-size:16px; font-weight:800; text-align:right; margin-left:auto;">`;
