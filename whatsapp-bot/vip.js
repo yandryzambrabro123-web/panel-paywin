@@ -365,6 +365,27 @@ function montar(app, stakes, extra) {
     return { ok: true };
   }
 
+
+  // Revisión rápida para el jefe: abre https://<tu-bot>/diag/registro y dice qué falla en los registros (no muestra claves)
+  app.get('/diag/registro', async (req, res) => {
+    const out = { telegram_token: H.TG_TOKEN() ? 'ok' : 'FALTA la variable TELEGRAM_BOT_TOKEN en Railway', telegram_chat_id_jefe: H.TG_ADMIN() ? 'ok' : 'FALTA la variable TELEGRAM_CHAT_ID en Railway' };
+    let me = null;
+    try { me = await H.tg('getMe', {}); out.bot_telegram = 'ok (@' + me.username + ')'; } catch (e) { out.bot_telegram = 'FALLA: ' + String(e.message).slice(0, 120); }
+    if (H.TG_ADMIN() && me) { try { await H.tg('getChat', { chat_id: H.TG_ADMIN() }); out.chat_del_jefe = 'ok (el bot puede escribirte)'; } catch (e) { out.chat_del_jefe = 'FALLA: ' + String(e.message).slice(0, 120) + ' -> abre el bot en Telegram y toca Iniciar'; } }
+    try { await H.leerHoja(HOJA_REGISTROS); out.hoja_registros = 'ok'; } catch (e) { out.hoja_registros = 'FALLA al leer Google Sheets: ' + String(e.message).slice(0, 120); }
+    try { await H.cambiarHoja(HOJA_REGISTROS, (f) => f); out.escribir_hoja = 'ok'; } catch (e) { out.escribir_hoja = 'FALLA al guardar en Google Sheets: ' + String(e.message).slice(0, 120); }
+    try {
+      const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
+      if (!cfg || !cfg.chatId) out.grupo_vip = 'FALTA: escribe /vipgrupo dentro del grupo VIP de Telegram (sin esto no se puede aprobar a nadie)';
+      else {
+        out.grupo_vip = 'configurado';
+        try { const m = await H.tg('getChatMember', { chat_id: cfg.chatId, user_id: me.id }); out.bot_en_grupo_vip = m.status === 'administrator' ? (m.can_invite_users ? 'ok (admin con permiso de invitar)' : 'ES ADMIN pero SIN permiso "Invitar usuarios": actívaselo') : 'FALLA: el bot no es administrador del grupo VIP (estado: ' + m.status + ')'; }
+        catch (e) { out.bot_en_grupo_vip = 'FALLA: ' + String(e.message).slice(0, 120); }
+      }
+    } catch (e) { out.grupo_vip = 'FALLA al leer la configuración: ' + String(e.message).slice(0, 120); }
+    res.json(out);
+  });
+
   app.get('/vip', (req, res) => { res.set('Cache-Control', 'no-store').type('html').send(PAGINA); });
 
   app.post('/vip/registro', async (req, res) => {
@@ -403,7 +424,7 @@ function montar(app, stakes, extra) {
       res.json({ id: reg.id });
     } catch (e) {
       console.error('Registro VIP:', e);
-      res.status(500).json({ error: 'No se pudo enviar el registro. Intenta de nuevo.' });
+      res.status(500).json({ error: 'No se pudo enviar el registro. Intenta de nuevo en un minuto.' });
     }
   });
 
