@@ -90,7 +90,8 @@ async function lineasJugadores(key, eventos, limiteMs) {
   const maxPartidos = Number(process.env.ODDS_PROPS_MAX) || 5;
   const config = [
     { prefijo: 'basketball_nba', regiones: 'us', mercados: 'player_points,player_rebounds,player_assists,player_threes' },
-    { prefijo: 'soccer_', regiones: 'eu,us', mercados: 'player_shots_on_target,player_shots,player_assists' }
+    { prefijo: 'soccer_', regiones: 'eu,us', mercados: 'player_shots_on_target,player_shots,player_assists' },
+    { prefijo: 'soccer_', regiones: 'eu', mercados: 'alternate_totals_corners,alternate_totals_cards', etiqueta: 'EQUIPO' } // corners y tarjetas (si la liga los trae)
   ];
   for (const c of config) {
     const lista = eventos.filter((e) => e.liga.startsWith(c.prefijo) && Date.parse(e.inicio) > Date.now() && Date.parse(e.inicio) <= limiteMs).slice(0, maxPartidos);
@@ -105,7 +106,7 @@ async function lineasJugadores(key, eventos, limiteMs) {
           (mk[k] = mk[k] || []).push(o.price);
         }
         const lineas = Object.entries(mk).map(([k, v]) => [k, v.reduce((a, b) => a + b, 0) / v.length]).filter(([, p]) => p >= 1.15 && p <= 1.9).slice(0, 40).map(([k, p]) => `${k}: ${p.toFixed(2)}`);
-        if (lineas.length) filas.push(`JUGADORES ${e.liga} | ${e.casa} vs ${e.fuera} | ${e.inicio} | ${lineas.join(' ; ')}`);
+        if (lineas.length) filas.push(`${c.etiqueta || 'JUGADORES'} ${e.liga} | ${e.casa} vs ${e.fuera} | ${e.inicio} | ${lineas.join(' ; ')}`);
       } catch (err) { /* sin líneas de ese partido */ }
     }
   }
@@ -364,30 +365,32 @@ async function modoPayImagenes(body, res) {
   res.status(200).json(out);
 }
 
-// Bet Builder de UNA línea: la misma selección + otros mercados que se refuerzan, del MISMO partido, como una sola selección "Crear apuesta".
+// Opciones para armar un Bet Builder: Pay NO lo arma; da LÍNEAS sueltas del mismo partido y el jefe elige cuáles juntar.
 async function modoPayBuilder(apiKey, body, res) {
   const l = body.linea || {};
-  const partido = String(l.partido || '').slice(0, 120), pick = String(l.pick || '').slice(0, 160), cuota = Number(String(l.cuota || '').replace(',', '.')) || 0;
+  const partido = String(l.partido || '').slice(0, 120), pick = String(l.pick || '').replace(/^crear apuesta\s*:\s*/i, '').slice(0, 200), cuota = Number(String(l.cuota || '').replace(',', '.')) || 0;
   if (!pick) { res.status(400).json({ error: 'Falta la línea.' }); return; }
   const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
   let datos = null;
   try { datos = await cuotasReales(); } catch (e) { datos = null; }
   const palabras = (partido + ' ' + pick).toLowerCase().split(/[^a-záéíóúñ]+/).filter((w) => w.length > 3);
-  const delPartido = (datos || []).filter((x) => { const t = x.toLowerCase(); return palabras.filter((w) => t.includes(w)).length >= 2; }).slice(0, 8);
+  const delPartido = (datos || []).filter((x) => { const t = x.toLowerCase(); return palabras.filter((w) => t.includes(w)).length >= 2; }).slice(0, 10);
+  const mercados = (Array.isArray(body.mercados) ? body.mercados : []).map((m) => String(m).slice(0, 40)).slice(0, 10);
+  const excluir = (Array.isArray(body.excluir) ? body.excluir : []).map((m) => String(m).slice(0, 120)).slice(0, 40).join(' ; ');
   const descartadas = (Array.isArray(body.descartadas) ? body.descartadas : []).slice(0, 40).join(' ; ').slice(0, 1500);
   const system = `Eres Pay, el analista deportivo de PayWin. Hoy es ${hoy} (hora de Ecuador). ${PAY_CONOCIMIENTO}
-${nivelPay(body.cupo)}
-El jefe tiene esta línea: "${pick}" en ${partido || 'un partido'}, cuota ${cuota || '?'}. Quiere armar un BET BUILDER ("Crear apuesta" en Mas1x2): esa misma selección MÁS uno o dos mercados extra del MISMO partido que se refuercen entre sí, como UNA sola selección.
-Dame de 3 a 4 opciones, de la más conservadora a la más atrevida. Cada una empieza con "Crear apuesta:" y lista las patas unidas con " + " (ej. "Crear apuesta: Gana Real Madrid + más de 150.5 puntos totales"). Reglas: la primera pata es la selección del jefe; las demás deben ser coherentes (nunca mercados que se contradicen); prefiere mercados con margen amplio; usa mercados de jugador SOLO si aparecen en los datos de abajo o si los confirmas. Estima la cuota combinada (es MENOR que multiplicar las cuotas sueltas por la correlación, aprox. 10 a 25% menos) y márcala aprox, porque la casa da la cuota exacta al armarlo. Ninguna opción debe superar la cuota 2.60. Sé honesto en la nota: qué tiene que pasar para que gane y qué la puede romper.
-${descartadas ? 'Líneas que el jefe descartó (no las uses): ' + descartadas + '.' : ''}
+El jefe arma SU PROPIO Bet Builder ("Crear apuesta" en Mas1x2) y ya tiene esta línea base: "${pick}" en ${partido || 'un partido'}${cuota ? ', cuota ' + cuota : ''}. NO armes el Bet Builder ni combines nada: dame LÍNEAS SUELTAS del MISMO partido (una selección cada una) que sean coherentes con la base y que él pueda agregar.
+Dame 8 líneas, cada una de un mercado distinto cuando se pueda y de la más conservadora a la más atrevida. ${mercados.length ? 'El jefe pidió estos mercados: ' + mercados.join(', ') + '. Enfócate en ellos (todas las líneas que puedas de esos mercados) y completa con otros solo si faltan.' : 'Cubre mercados variados: goles totales, corners, tarjetas, tiros al arco y remates (del equipo y de jugadores), asistencias, hándicap, primer tiempo, y en básquet puntos totales, triples, rebotes y asistencias de jugadores.'}
+Reglas: nunca una línea que contradiga la base (ej. base "gana Roma" y "gana Cagliari"); no repitas la base; usa las cuotas reales de los datos cuando existan y si no, estima la cuota de ESA línea sola y márcala aprox (aprox true). Las líneas de jugador (tiros al arco, remates, asistencias, triples) SOLO si aparecen en los datos o si las confirmas en la web; si no, no las inventes. Cada línea con una nota de 1 frase: por qué tiene margen y qué la rompe. Cuota de cada línea entre 1.10 y 2.20.
+${excluir ? 'Ya te mostré estas (NO las repitas, dame otras distintas): ' + excluir + '.' : ''} ${descartadas ? 'Líneas que el jefe descartó: ' + descartadas + '.' : ''}
 ${delPartido.length ? 'Cuotas promedio de ese partido (liga | partido | inicio UTC | mercado: cuota):\n' + delPartido.join('\n') : 'No tengo cuotas reales de ese partido; estima con tu conocimiento y márcalas aprox.'}
-Responde SOLO con un arreglo JSON: [{"pick":"Crear apuesta: ...","cuota":1.55,"nota":"1 o 2 frases","aprox":true}]`;
-  const r = await llamarPay(apiKey, { model: 'claude-sonnet-5', max_tokens: 1800, system, messages: [{ role: 'user', content: 'Arma las opciones de Bet Builder.' }] }, 30000);
+Responde SOLO con un arreglo JSON: [{"mercado":"Corners","pick":"Más de 8.5 tiros de esquina","cuota":1.35,"nota":"…","aprox":true}]`;
+  const r = await llamarPay(apiKey, { model: 'claude-sonnet-5', max_tokens: 2500, system, messages: [{ role: 'user', content: 'Dame las líneas sueltas para que yo arme mi Bet Builder.' }] }, 32000);
   if (!r.ok) { res.status(502).json({ error: `Pay no pudo responder (IA ${r.status}).` }); return; }
   let lista = [];
   try { lista = JSON.parse(r.texto.slice(r.texto.indexOf('['), r.texto.lastIndexOf(']') + 1)); } catch (e) { lista = []; }
-  lista = (Array.isArray(lista) ? lista : []).filter((a) => a && a.pick && Number(a.cuota) > 1).slice(0, 4).map((a) => ({ partido, hora: l.hora || '', pick: String(a.pick).slice(0, 200), cuota: Number(a.cuota).toFixed(2), nota: String(a.nota || '').slice(0, 240), aprox: a.aprox !== false }));
-  res.status(200).json(lista.length ? { alternativas: lista } : { alternativas: [], aviso: 'Pay no encontró un Bet Builder coherente para esa línea.' });
+  lista = (Array.isArray(lista) ? lista : []).filter((a) => a && a.pick && Number(a.cuota) > 1).slice(0, 10).map((a) => ({ mercado: String(a.mercado || '').slice(0, 40), pick: String(a.pick).replace(/^crear apuesta\s*:\s*/i, '').slice(0, 160), cuota: Number(a.cuota).toFixed(2), nota: String(a.nota || '').slice(0, 220), aprox: a.aprox !== false }));
+  res.status(200).json(lista.length ? { opciones: lista } : { opciones: [], aviso: 'Pay no encontró más líneas coherentes para ese partido.' });
 }
 
 // Bajar el riesgo de UNA línea: misma selección/partido pero más segura (cuota menor).
@@ -400,7 +403,7 @@ async function modoPayBajar(apiKey, body, res) {
   try { datos = await cuotasReales(); } catch (e) { datos = null; }
   const palabras = (partido + ' ' + pick).toLowerCase().split(/[^a-záéíóúñ]+/).filter((w) => w.length > 3);
   const delPartido = (datos || []).filter((x) => { const t = x.toLowerCase(); return palabras.filter((w) => t.includes(w)).length >= 2; }).slice(0, 6);
-  const evitar = (Array.isArray(body.evitar) ? body.evitar : []).slice(0, 40).join(' ; ').slice(0, 2500);
+  const evitar = [...(Array.isArray(body.evitar) ? body.evitar : []).slice(0, 40), ...(Array.isArray(body.excluir) ? body.excluir : []).slice(0, 30)].join(' ; ').slice(0, 2800);
   const system = `Eres Pay, el analista deportivo de PayWin. Hoy es ${hoy} (hora de Ecuador). El jefe tiene esta línea: "${pick}" en ${partido || 'un partido de hoy'}, cuota ${cuota || '?'}. Quiere BAJARLE EL RIESGO a esa misma línea: darle 3 alternativas del MISMO partido/jugador (o muy relacionadas) que sean más fáciles de que salgan, con cuota MENOR que ${cuota || 'la actual'} (ideal entre 1.12 y 1.40), ordenadas de menos a más conservadora. Ejemplos: en tenis, "gana el partido" -> "gana al menos 1 set" o "más de X juegos del jugador"; en fútbol, "gana el equipo" -> "doble oportunidad" o "más de 0.5 goles del equipo"; en NBA, "más de 3.5 triples" -> "más de 1.5 triples" o puntos más bajos; en totales, una línea más baja.
 ${PAY_CONOCIMIENTO}
 Honestidad: usa las cuotas reales que te doy cuando existan; si una alternativa no está en los datos, pon tu cuota estimada y márcala con "aprox". No inventes que es seguro. ${evitar ? 'NO repitas estas líneas ya usadas hoy: ' + evitar + '.' : ''}
@@ -422,6 +425,7 @@ async function modoPay(apiKey, body, res) {
   const cantidad = lote ? lote.length : Math.max(1, Math.min(5, Number(body.cantidad) || 3));
   const cupo = String(body.cupo || 'apuesta').slice(0, 40);
   const vistosSesion = (Array.isArray(body.vistos) ? body.vistos : []).slice(0, 120);
+  const mercadosPedidos = (Array.isArray(body.mercados) ? body.mercados : []).map((m) => String(m).slice(0, 40)).slice(0, 10);
   const hoyReal = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
   const maxFecha = new Date(Date.now() - 5 * 3600e3 + 6 * 86400e3).toISOString().slice(0, 10);
   const hoy = /^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) && body.fecha >= hoyReal && body.fecha <= maxFecha ? String(body.fecha) : hoyReal;
@@ -453,7 +457,7 @@ Reglas:
 - Baja el riesgo: prefiere líneas con margen amplio (por ejemplo un total que el equipo o jugador supera con holgura en sus últimos partidos), evita partidos con bajas importantes, rotaciones, finales parejas o información dudosa. Si una selección no te convence, no la pongas.
 - Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
 - Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de OBJETOS, uno por línea, cada uno con: deporte ("futbol","baloncesto","tenis","mma","beisbol","hockey","nfl","tenis de mesa" o "esports"), partido ("Local vs Visitante"), pick (la selección clara, ej. "Más de 215.5 puntos" o "Gana Sevilla"), cuota (número) y hora (hora de Ecuador))${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
-  const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Todos los partidos deben ser del día ${hoy}. Dame ${cantidad} combinada(s) distintas.`}${Array.isArray(body.evitar) && body.evitar.length ? '\nLÍNEAS YA USADAS HOY, prohibido repetirlas (ni el mismo partido con la misma selección; busca otras): ' + body.evitar.slice(0, 100).map((x) => String(x).slice(0, 120)).join(' ; ') : ''}${descartadas0(body) ? '\nLÍNEAS QUE EL JEFE DESCARTÓ porque no le gustan (no las pongas, y evita líneas del mismo tipo y mismo estilo de riesgo): ' + descartadas0(body) : ''}${vistosSesion.length ? '\nLÍNEAS QUE YA TE MOSTRÉ en esta sesión (NO las repitas; busca otros partidos y otros mercados, el jefe quiere ver líneas nuevas cada vez): ' + vistosSesion.slice(0, 80).map((x) => String(x).slice(0, 110)).join(' ; ') : ''}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${body.resumen ? '\nEstadística real del jefe: ' + String(body.resumen).slice(0, 300) + '. Si el acierto es bajo, sé MÁS conservador de lo normal.' : ''}${Array.isArray(body.perdidas) && body.perdidas.length ? '\nApuestas que el jefe PERDIÓ (analiza el patrón: mercados, cuotas y tipos de línea que le fallan, y EVÍTALOS): ' + body.perdidas.slice(0, 40).map((x) => String(x).slice(0, 140)).join(' ; ') : ''}${historial.length ? '\nApuestas que el jefe ya GANÓ antes (aprende qué tipo de líneas y cuotas le funcionan; NO las repitas tal cual): ' + historial.join(' ; ') : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web SOLO los partidos del día ${hoy} que aún no empiezan, con sus cuotas aproximadas.'}`;
+  const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Todos los partidos deben ser del día ${hoy}. Dame ${cantidad} combinada(s) distintas.`}${Array.isArray(body.evitar) && body.evitar.length ? '\nLÍNEAS YA USADAS HOY, prohibido repetirlas (ni el mismo partido con la misma selección; busca otras): ' + body.evitar.slice(0, 100).map((x) => String(x).slice(0, 120)).join(' ; ') : ''}${descartadas0(body) ? '\nLÍNEAS QUE EL JEFE DESCARTÓ porque no le gustan (no las pongas, y evita líneas del mismo tipo y mismo estilo de riesgo): ' + descartadas0(body) : ''}${mercadosPedidos.length ? '\nMERCADOS QUE PIDE EL JEFE: ' + mercadosPedidos.join(', ') + '. Usa sobre todo estos mercados y que cada combinada incluya al menos una línea de ellos. Los de jugadores (tiros al arco, remates, asistencias, triples) solo con línea real de los datos (empiezan con JUGADORES) o confirmada en la web; si no hay, usa los de equipo (corners, tarjetas, goles) y marca la cuota como aproximada.' : ''}${vistosSesion.length ? '\nLÍNEAS QUE YA TE MOSTRÉ en esta sesión (NO las repitas; busca otros partidos y otros mercados, el jefe quiere ver líneas nuevas cada vez): ' + vistosSesion.slice(0, 80).map((x) => String(x).slice(0, 110)).join(' ; ') : ''}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${body.resumen ? '\nEstadística real del jefe: ' + String(body.resumen).slice(0, 300) + '. Si el acierto es bajo, sé MÁS conservador de lo normal.' : ''}${Array.isArray(body.perdidas) && body.perdidas.length ? '\nApuestas que el jefe PERDIÓ (analiza el patrón: mercados, cuotas y tipos de línea que le fallan, y EVÍTALOS): ' + body.perdidas.slice(0, 40).map((x) => String(x).slice(0, 140)).join(' ; ') : ''}${historial.length ? '\nApuestas que el jefe ya GANÓ antes (aprende qué tipo de líneas y cuotas le funcionan; NO las repitas tal cual): ' + historial.join(' ; ') : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web SOLO los partidos del día ${hoy} que aún no empiezan, con sus cuotas aproximadas.'}`;
   const payload = { model: 'claude-sonnet-5', max_tokens: 6000, system, messages: [{ role: 'user', content: userMsg }] };
   // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
   if (!conDatos || body.web) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }];

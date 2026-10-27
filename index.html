@@ -6620,6 +6620,10 @@ function renderFactory(){
           <div class="field" style="margin:0; width:80px;"><label>Cantidad</label><input id="payCant" inputmode="numeric" value="3"></div>
           <div class="field" style="margin:0; flex:1; min-width:160px;"><label>Indicación (opcional)</label><input id="payNota" placeholder="Ej: solo fútbol, evitar combinadas"></div>
         </div>
+        <div class="field" style="margin:0 0 12px;"><label>Mercados que quiero (opcional)</label>
+          <div id="payMercadosChips" style="display:flex; gap:6px; flex-wrap:wrap;">${['Goles','Corners','Tarjetas','Tiros al arco jugadores','Remates','Asistencias','Triples','Puntos','Tenis','UFC'].map(m=>`<button type="button" class="btn secondary" data-pay-mkt="${m}" style="padding:5px 10px; font-size:12px;">${m}</button>`).join('')}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Pay usa sobre todo esos mercados. Los de jugadores salen con cuota real solo si el plan de datos los trae; si no, quedan como aproximados.</div>
+        </div>
         <div class="field" style="margin:0 0 12px;"><label>Fecha de los partidos</label>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <button class="btn secondary" type="button" data-pay-dia="0" style="padding:6px 12px; font-size:12.5px;">Hoy</button>
@@ -6877,26 +6881,100 @@ function payBajarDesde(ref, tipo){
   const l = (x.selecciones||[]).map(payNormSel)[+i]; if(!l) return;
   payAlternativas({ ...l, cupo: x.cupo || payCupo }, payClaveLinea(l), tipo || 'bajar');
 }
+// Pone la línea nueva en mi boleto (reemplaza la original si ya estaba, si no la agrega)
+function payAplicarLinea(linea, a, claveOriginal){
+  const nueva = { partido: a.partido || linea.partido, pick: a.pick, cuota: a.cuota, hora: a.hora || linea.hora || '', liga: linea.liga || '', cupo: linea.cupo || payCupo };
+  nueva.k = payClaveLinea(nueva); payUltimaK = nueva.k; payFlotanteAbierto = true;
+  const pos = paySeleccion.findIndex(s=>s.k === claveOriginal);
+  if(pos >= 0) paySeleccion[pos] = nueva; else if(!paySeleccion.some(s=>s.k === nueva.k)) paySeleccion.push(nueva);
+  closeModal(); pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
+}
 async function payAlternativas(linea, claveOriginal, tipo){
-  const esBuilder = tipo === 'builder';
-  openModal(`<h3>${esBuilder ? 'Bet Builder con esta línea' : 'Bajar el riesgo'}</h3><div style="font-size:13px; color:var(--muted); margin-bottom:8px;">${esc(linea.partido||'')}<br><b style="color:var(--text);">${esc(linea.pick)}</b> @ ${esc(String(linea.cuota))}</div><div id="payBajarOut" style="font-size:13.5px;">${esBuilder ? 'Pay está armando opciones de Crear apuesta…' : 'Pay está buscando opciones más seguras…'}</div><div style="margin-top:12px;"><button class="btn secondary" type="button" onclick="closeModal()">Cerrar</button></div>`);
-  const out = document.getElementById('payBajarOut');
-  try{
-    const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo: esBuilder ? 'pay_builder' : 'pay_bajar', linea, cupo: linea.cupo || payCupo, evitar: payEvitar(false), descartadas: payDescartadasHoy.slice(-40) }) }), 50000);
-    const j = await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(j.error || 'Pay no pudo responder.');
-    const alts = j.alternativas || [];
-    if(!alts.length){ out.textContent = j.aviso || 'No encontré alternativas más seguras.'; return; }
-    out.innerHTML = alts.map((a,n)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;"><div style="display:flex; gap:8px; align-items:center;"><div style="flex:1; font-weight:700;">${esc(a.pick)}</div><div style="font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(String(a.cuota))}${a.aprox ? ' <span style="font-size:11px; color:var(--muted);">aprox</span>' : ''}</div></div>${a.nota ? `<div style="font-size:12.5px; color:var(--muted); margin:4px 0 8px;">${esc(a.nota)}</div>` : ''}<button class="btn" type="button" data-pay-alt="${n}">Usar esta línea</button></div>`).join('') + `<div style="font-size:11.5px; color:var(--muted);">${esBuilder ? 'La cuota del Bet Builder es estimada: ármalo en Crear apuesta de Mas1x2 y usa la cuota exacta que te dé la casa.' : 'Verifica la cuota en tu casa: las "aprox" son estimadas.'}</div>`;
-    out.querySelectorAll('[data-pay-alt]').forEach(b=>b.onclick=()=>{
-      const a = alts[+b.dataset.payAlt];
-      const nueva = { partido: a.partido || linea.partido, pick: a.pick, cuota: a.cuota, hora: a.hora || linea.hora || '', liga: linea.liga || '', cupo: linea.cupo || payCupo };
-      nueva.k = payClaveLinea(nueva); payUltimaK = nueva.k; payFlotanteAbierto = true;
-      const pos = paySeleccion.findIndex(s=>s.k === claveOriginal);
-      if(pos >= 0) paySeleccion[pos] = nueva; else if(!paySeleccion.some(s=>s.k === nueva.k)) paySeleccion.push(nueva);
-      closeModal(); pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
-    });
-  }catch(e){ out.textContent = 'No se pudo: ' + e.message; }
+  if(tipo === 'builder') return payBuilderModal(linea, claveOriginal);
+  const alts = [];
+  openModal(`<h3>Bajar el riesgo</h3><div style="font-size:13px; color:var(--muted); margin-bottom:8px;">${esc(linea.partido||'')}<br><b style="color:var(--text);">${esc(linea.pick)}</b> @ ${esc(String(linea.cuota))}</div><div id="payBajarOut" style="font-size:13.5px;">Pay está buscando opciones más seguras…</div><div id="payBajarMas" style="margin-top:8px;"></div><div style="margin-top:12px;"><button class="btn secondary" type="button" onclick="closeModal()">Cerrar</button></div>`);
+  const out = document.getElementById('payBajarOut'), mas = document.getElementById('payBajarMas');
+  const pintar = ()=>{
+    out.innerHTML = alts.map((a,n)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;"><div style="display:flex; gap:8px; align-items:center;"><div style="flex:1; font-weight:700;">${esc(a.pick)}</div><div style="font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(String(a.cuota))}${a.aprox ? ' <span style="font-size:11px; color:var(--muted);">aprox</span>' : ''}</div></div>${a.nota ? `<div style="font-size:12.5px; color:var(--muted); margin:4px 0 8px;">${esc(a.nota)}</div>` : ''}<button class="btn" type="button" data-pay-alt="${n}">Usar esta línea</button></div>`).join('') + '<div style="font-size:11.5px; color:var(--muted);">Verifica la cuota en tu casa: las "aprox" son estimadas.</div>';
+    out.querySelectorAll('[data-pay-alt]').forEach(b=>b.onclick=()=>payAplicarLinea(linea, alts[+b.dataset.payAlt], claveOriginal));
+    mas.innerHTML = '<button class="btn secondary" type="button" id="payBajarOtras">↻ Ninguna me gustó: otras opciones</button>';
+    document.getElementById('payBajarOtras').onclick = ()=>cargar(true);
+  };
+  const cargar = async (otras)=>{
+    if(otras){ mas.innerHTML = '<span style="color:var(--muted); font-size:13px;">Pay busca otras…</span>'; }
+    try{
+      const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_bajar', linea, cupo: linea.cupo || payCupo, evitar: payEvitar(false), excluir: alts.map(a=>a.pick), descartadas: payDescartadasHoy.slice(-40) }) }), 50000);
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(j.error || 'Pay no pudo responder.');
+      const nuevas = j.alternativas || [];
+      if(!nuevas.length && !alts.length){ out.textContent = j.aviso || 'No encontré alternativas más seguras.'; mas.innerHTML = ''; return; }
+      alts.push(...nuevas); pintar();
+      if(!nuevas.length) mas.insertAdjacentHTML('afterbegin', '<div style="font-size:12.5px; color:var(--muted); margin-bottom:6px;">No encontré más opciones distintas.</div>');
+    }catch(e){ if(!alts.length) out.textContent = 'No se pudo: ' + e.message; else { pintar(); mas.insertAdjacentHTML('afterbegin', `<div style="font-size:12.5px; color:#ff7a7a;">No se pudo: ${esc(e.message)}</div>`); } }
+  };
+  cargar(false);
+}
+// ---------- Bet Builder armado por el jefe: Pay da líneas sueltas del partido y él elige cuáles juntar ----------
+const PAY_MERCADOS = ['Goles','Corners','Tarjetas','Tiros al arco','Remates','Asistencias','Triples','Puntos','Hándicap','Primer tiempo'];
+async function payBuilderModal(linea, claveOriginal){
+  const base = { pick: String(linea.pick||'').replace(/^crear apuesta\s*:\s*/i,''), cuota: Number(String(linea.cuota).replace(',','.')) || 1 };
+  const elegidas = []; // líneas extra que agregó el jefe
+  const mostradas = []; let mercados = new Set();
+  openModal(`
+    <h3>Armar tu Bet Builder</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:8px;">${esc(linea.partido||'')} · Pay te da líneas de este partido y tú eliges cuáles juntar.</div>
+    <div id="pbCaja" style="border:1px solid var(--gold, #D4AF6A); border-radius:12px; padding:10px 12px; margin-bottom:10px;"></div>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">¿Qué mercados quieres ver? (opcional)</div>
+    <div id="pbChips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">${PAY_MERCADOS.map(m=>`<button type="button" class="btn secondary" data-pb-mkt="${m}" style="padding:5px 10px; font-size:12px;">${m}</button>`).join('')}</div>
+    <div style="display:flex; gap:8px; margin-bottom:10px;"><button class="btn" type="button" id="pbBuscar" style="flex:1;">Buscar líneas</button></div>
+    <div id="pbOut" style="font-size:13.5px; max-height:42vh; overflow-y:auto;"></div>
+    <div id="pbMas" style="margin-top:8px;"></div>
+    <div style="margin-top:12px;"><button class="btn secondary" type="button" onclick="closeModal()">Cerrar</button></div>
+  `);
+  const caja = document.getElementById('pbCaja'), out = document.getElementById('pbOut'), mas = document.getElementById('pbMas');
+  const estimada = ()=>{ const todas = [base, ...elegidas]; const prod = todas.reduce((a,l)=>a*(Number(l.cuota)||1),1); return todas.length > 1 ? prod * Math.pow(0.9, todas.length-1) : prod; };
+  const pintarCaja = ()=>{
+    caja.innerHTML = `<div style="font-weight:800; margin-bottom:6px;">Tu Bet Builder</div>
+      <div style="display:flex; gap:8px; padding:4px 0;"><span style="color:#FFD54A;">●</span><div style="flex:1;"><b>${esc(base.pick)}</b> <span style="color:var(--muted);">@ ${esc(String(base.cuota))}</span> <span style="font-size:11px; color:var(--muted);">(base)</span></div></div>
+      ${elegidas.map((l,i)=>`<div style="display:flex; gap:8px; padding:4px 0;"><span style="color:#FFD54A;">●</span><div style="flex:1;"><b>${esc(l.pick)}</b> <span style="color:var(--muted);">@ ${esc(String(l.cuota))}</span></div><button type="button" class="btn secondary" data-pb-quitar="${i}" style="padding:2px 8px; font-size:11px;">✕</button></div>`).join('')}
+      <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+        <div style="font-size:12.5px; color:var(--muted);">Cuota estimada: <b style="color:var(--gold, #D4AF6A); font-size:15px;">${estimada().toFixed(2)}</b> <span style="font-size:11px;">aprox</span></div>
+        <input id="pbCuotaReal" type="number" step="0.01" placeholder="Cuota real de la casa" style="flex:1; min-width:140px; padding:6px 8px;">
+      </div>
+      <button class="btn" type="button" id="pbUsar" style="width:100%; margin-top:8px;" ${elegidas.length ? '' : 'disabled'}>Usar este Bet Builder${elegidas.length ? ` (${elegidas.length+1} patas)` : ''}</button>`;
+    caja.querySelectorAll('[data-pb-quitar]').forEach(b=>b.onclick=()=>{ elegidas.splice(+b.dataset.pbQuitar,1); pintarCaja(); pintarOpciones(); });
+    const u = document.getElementById('pbUsar');
+    if(u) u.onclick = ()=>{
+      const real = Number((document.getElementById('pbCuotaReal')||{}).value);
+      const pick = 'Crear apuesta: ' + [base.pick, ...elegidas.map(l=>l.pick)].join(' + ');
+      payAplicarLinea(linea, { partido: linea.partido, pick, cuota: (real > 1 ? real : estimada()).toFixed(2), hora: linea.hora }, claveOriginal);
+    };
+  };
+  const pintarOpciones = ()=>{
+    out.innerHTML = mostradas.map((o,n)=>{ const on = elegidas.some(e=>e.pick===o.pick); return `<div style="border:1px solid var(--border); border-radius:10px; padding:9px 11px; margin-bottom:7px; ${on ? 'border-color:#FFD54A;' : ''}"><div style="display:flex; gap:8px; align-items:center;"><div style="flex:1;"><div style="font-size:11.5px; color:var(--muted);">${esc(o.mercado||'')}</div><div style="font-weight:700;">${esc(o.pick)}</div></div><div style="font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(String(o.cuota))}${o.aprox ? ' <span style="font-size:11px; color:var(--muted);">aprox</span>' : ''}</div><button type="button" class="btn ${on ? '' : 'secondary'}" data-pb-add="${n}" style="padding:6px 10px; font-size:12px;">${on ? '✓ Agregada' : '+ Agregar'}</button></div>${o.nota ? `<div style="font-size:12px; color:var(--muted); margin-top:4px;">${esc(o.nota)}</div>` : ''}</div>`; }).join('');
+    out.querySelectorAll('[data-pb-add]').forEach(b=>b.onclick=()=>{ const o = mostradas[+b.dataset.pbAdd]; const i = elegidas.findIndex(e=>e.pick===o.pick); if(i>=0) elegidas.splice(i,1); else elegidas.push(o); pintarCaja(); pintarOpciones(); });
+    if(mostradas.length) mas.innerHTML = '<button class="btn secondary" type="button" id="pbOtras">↻ Ninguna me gustó: otras líneas</button>';
+    const ot = document.getElementById('pbOtras'); if(ot) ot.onclick = ()=>buscar(true);
+  };
+  const buscar = async (otras)=>{
+    if(!otras){ mostradas.length = 0; }
+    const btn = document.getElementById('pbBuscar'); btn.disabled = true; btn.textContent = 'Pay está buscando…';
+    mas.innerHTML = otras ? '<span style="color:var(--muted); font-size:13px;">Pay busca otras…</span>' : '';
+    if(!otras) out.innerHTML = '<div style="color:var(--muted);">Pay está buscando líneas de este partido…</div>';
+    try{
+      const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_builder', linea: { ...linea, pick: base.pick, cuota: base.cuota }, cupo: linea.cupo || payCupo, mercados: [...mercados], excluir: mostradas.map(o=>o.pick), descartadas: payDescartadasHoy.slice(-40) }) }), 55000);
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(j.error || 'Pay no pudo responder.');
+      const nuevas = (j.opciones || []).filter(o=>!mostradas.some(m=>m.pick===o.pick));
+      mostradas.push(...nuevas);
+      if(!mostradas.length){ out.textContent = j.aviso || 'No encontré líneas para ese partido.'; mas.innerHTML = ''; }
+      else { pintarOpciones(); if(!nuevas.length) mas.insertAdjacentHTML('afterbegin', '<div style="font-size:12.5px; color:var(--muted); margin-bottom:6px;">No encontré más líneas distintas.</div>'); }
+    }catch(e){ if(!mostradas.length) out.textContent = 'No se pudo: ' + e.message; else { pintarOpciones(); mas.insertAdjacentHTML('afterbegin', `<div style="font-size:12.5px; color:#ff7a7a;">No se pudo: ${esc(e.message)}</div>`); } }
+    finally{ btn.disabled = false; btn.textContent = 'Buscar líneas'; }
+  };
+  document.querySelectorAll('[data-pb-mkt]').forEach(b=>b.onclick=()=>{ const m = b.dataset.pbMkt; if(mercados.has(m)) mercados.delete(m); else mercados.add(m); b.className = 'btn ' + (mercados.has(m) ? '' : 'secondary'); });
+  document.getElementById('pbBuscar').onclick = ()=>buscar(false);
+  pintarCaja(); buscar(false);
 }
 // "Descartar": esa línea no me gusta. Se quita de la combinada (la cuota se recalcula) y Pay no la vuelve a proponer.
 function payDescartar(ref){
@@ -6948,6 +7026,7 @@ function payTextoSel(x){
 const payHoyEC = ()=> new Date(Date.now() - 5*3600e3).toISOString().slice(0,10);
 let payTomadasHoy = [];
 let payDescartadasHoy = [];
+const payMercadosSel = new Set();
 let payVistosSesion = []; // líneas que Pay ya me mostró en esta sesión (para no repetirlas)
 async function payCargarTomadas(){
   try{
@@ -7088,6 +7167,7 @@ const PAY_CUPOS = {
 let payCupo = 'VIP';
 let paySugerencias = [];
 function initPayPanel(){
+  document.querySelectorAll('[data-pay-mkt]').forEach(b=>{ b.className = 'btn ' + (payMercadosSel.has(b.dataset.payMkt) ? '' : 'secondary'); b.onclick = ()=>{ const m = b.dataset.payMkt; if(payMercadosSel.has(m)) payMercadosSel.delete(m); else payMercadosSel.add(m); b.className = 'btn ' + (payMercadosSel.has(m) ? '' : 'secondary'); }; });
   const fIn = document.getElementById('payFecha');
   if(fIn){
     const sumar = (n)=> new Date(Date.now() - 5*3600e3 + n*86400e3).toISOString().slice(0,10);
@@ -7154,7 +7234,7 @@ async function generarPay(otras){
     const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       modo:'pay', cupo: payCupo, cuotaMin: document.getElementById('payMin').value, cuotaMax: document.getElementById('payMax').value,
       cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value,
-      fecha: payFechaElegida(), vistos: payVistosSesion.slice(-100), evitar: payEvitar(otras === true), descartadas: payDescartadasHoy.slice(-40), historial: payHistorial(), perdidas: payPerdidasYResumen().perdidas, resumen: payPerdidasYResumen().resumen, web: !!(document.getElementById('payWebChk')||{}).checked
+      fecha: payFechaElegida(), mercados: [...payMercadosSel], vistos: payVistosSesion.slice(-100), evitar: payEvitar(otras === true), descartadas: payDescartadasHoy.slice(-40), historial: payHistorial(), perdidas: payPerdidasYResumen().perdidas, resumen: payPerdidasYResumen().resumen, web: !!(document.getElementById('payWebChk')||{}).checked
     }) });
     const raw = await r.text();
     let d = {}; try{ d = JSON.parse(raw); }catch(e){}
