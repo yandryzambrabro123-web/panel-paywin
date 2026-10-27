@@ -940,6 +940,7 @@
   .ftab.on .fb{ background:#14110a; color:var(--c); }
   .ftab-panel{ display:none; border-top:3px solid var(--c, #E6C068) !important; }
   .ftab-panel.on{ display:block; }
+  #winGanFechaNueva,#winGanTextoNuevo,#winGanDesde,#winGanHasta{ background:var(--surface-2, #171E29); color:var(--text, #e9ecf5); border:1px solid var(--border); border-radius:10px; font:inherit; }
   .fstep{ display:flex; align-items:center; gap:9px; font-weight:800; font-size:13.5px; color:#e9ecf5; margin:2px 0 9px; }
   .fstep span{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#E6C068; color:#14110a; font-size:12px; font-weight:900; }
   .fdet{ margin:0 0 14px; border:1px dashed var(--border); border-radius:12px; padding:8px 12px; }
@@ -3272,6 +3273,7 @@ function winIcon(name){
 function renderWin(){
   if(state.view !== 'win'){ render(); return; } // si se llama desde otra sección, repinta la que está abierta
   if(winSub === 'ganadas'){ renderWinGanadas(); return; }
+  document.body.classList.add('win-locked');
   seedWinMemoryIfEmpty();
   const outboxRows = [...state.winOutbox].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
   const pending = outboxRows.filter(o=>o.status==='pendiente');
@@ -5884,6 +5886,7 @@ function winGanadasFiltradas(){
   });
 }
 function renderWinGanadas(){
+  document.body.classList.remove('win-locked'); window.scrollTo(0,0);
   const lista = winGanadasFiltradas();
   const hoy = winGanFechaMas(0);
   const chip = (k, t)=>`<button type="button" class="btn ${winGanFiltro === k ? '' : 'secondary'}" data-gan-f="${k}" style="padding:7px 14px;">${t}</button>`;
