@@ -78,7 +78,7 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
 // Deportes y ligas por prioridad (se usan las que estén activas hoy en The Odds API, hasta ODDS_MAX_LIGAS).
 // Se puede fijar una lista propia con la variable ODDS_SPORTS en Vercel (separada por comas).
 const PAY_PRIORIDAD = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'basketball_nba', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_europa_league', 'soccer_conmebol_copa_libertadores', 'soccer_brazil_campeonato', 'soccer_argentina_primera_division', 'soccer_mexico_ligamx', 'soccer_usa_mls', 'tennis_atp', 'tennis_wta', 'mma_mixed_martial_arts', 'basketball_euroleague', 'icehockey_nhl', 'baseball_mlb', 'americanfootball_nfl', 'soccer_netherlands_eredivisie', 'soccer_portugal_primeira_liga', 'soccer_turkey_super_league', 'soccer_efl_champ', 'soccer_colombia_primera_a', 'soccer_chile_campeonato'];
-const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 16;
+const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 30;
 
 // Caché de 3 horas: cada consulta gasta créditos del plan (500 al mes en el gratis).
 let cacheCuotas = { t: 0, datos: null };
@@ -126,8 +126,27 @@ async function cuotasReales(fecha) {
     try {
       const r = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${key}`);
       const activos = r.ok ? (await r.json()).filter((x) => x.active && !x.has_outrights).map((x) => x.key) : [];
+      // Ventana del día pedido (para saber qué ligas tienen partidos): la consulta de eventos NO gasta créditos
+      const dDesde = fechaOk ? Math.max(Date.now(), Date.parse(fechaOk + 'T00:00:00-05:00')) : Date.now();
+      const dHasta = fechaOk ? Date.parse(fechaOk + 'T23:59:59-05:00') : Date.now() + 40 * 3600 * 1000;
+      const cuenta = {};
+      const pendientes = [...activos];
+      await Promise.all(Array.from({ length: 12 }, async () => {
+        while (pendientes.length) {
+          const k = pendientes.shift();
+          try {
+            const re = await fetch(`https://api.the-odds-api.com/v4/sports/${k}/events?apiKey=${key}`);
+            if (!re.ok) { cuenta[k] = -1; continue; } // no se pudo saber: se deja pasar
+            const evs = await re.json();
+            cuenta[k] = (Array.isArray(evs) ? evs : []).filter((e) => { const t = Date.parse(e.commence_time); return t >= dDesde && t <= dHasta; }).length;
+          } catch (e) { cuenta[k] = -1; }
+        }
+      }));
+      const conPartidos = activos.filter((k) => cuenta[k] !== 0); // solo ligas con partidos ese día (o sin dato)
+      // Prioridad: primero las de la lista fija, luego TODAS las demás con partidos (copas, ligas menores…), más partidos primero
       const orden = [];
-      for (const p of PAY_PRIORIDAD) for (const k of activos) if ((k === p || k.startsWith(p + '_')) && !orden.includes(k)) orden.push(k);
+      for (const p of PAY_PRIORIDAD) for (const k of conPartidos) if ((k === p || k.startsWith(p + '_')) && !orden.includes(k)) orden.push(k);
+      conPartidos.filter((k) => !orden.includes(k)).sort((a, b) => (cuenta[b] || 0) - (cuenta[a] || 0)).forEach((k) => orden.push(k));
       // Reparto por deporte (fútbol, básquet, tenis, UFC, béisbol, hockey, NFL): una liga de cada deporte por vuelta, para que no se llene todo de fútbol
       const grupos = {};
       for (const k of orden) (grupos[k.split('_')[0]] = grupos[k.split('_')[0]] || []).push(k);
@@ -312,13 +331,13 @@ async function modoPayPartido(apiKey, body, res) {
   const cupo = String(body.cupo || 'apuesta').slice(0, 40);
   const evitar = (Array.isArray(body.evitar) ? body.evitar : []).slice(0, 60).map((x) => String(x).slice(0, 120)).join(' ; ');
   const descartadas = (Array.isArray(body.descartadas) ? body.descartadas : []).slice(0, 40).map((x) => String(x).slice(0, 120)).join(' ; ');
-  const system = `Eres Pay, el analista deportivo de PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). El jefe te da UN partido concreto (foto de la pantalla de su casa de apuestas Mas1x2 con mercados y cuotas, y/o texto) y quiere saber qué se puede sacar de ahí con el menor riesgo.
+  const system = `Eres Pay, el analista deportivo de PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). El jefe te da UN partido concreto o una CARTELERA con VARIOS partidos (foto de la pantalla de su casa de apuestas Mas1x2 con mercados y cuotas, y/o texto) y quiere saber qué se puede sacar de ahí con el menor riesgo. Si la foto trae varios partidos, lee TODOS (equipos, competición, hora y las cuotas 1x2 visibles), analiza cuáles tienen mejor línea y propón opciones de PARTIDOS DISTINTOS (no todas del mismo).
 ${PAY_CONOCIMIENTO}
 ${nivelPay(cupo)}
 Trabajo:
 1) Identifica el partido, la competición, el día y la hora si se ven. Si en la foto hay mercados con cuotas, esas son las cuotas REALES de su casa: úsalas tal cual (no las cambies). Lo que no esté en la foto, estímalo y márcalo "aprox".
 2) Analiza el partido con lo que veas y lo que busques en la web (forma reciente, bajas, historial, ritmo, estilo, estadísticas de la línea). No inventes datos: si no encuentras algo, dilo.
-3) Propón de 3 a 5 OPCIONES, de la más conservadora a la más atrevida. Cada opción es UNA selección del partido o una selección Bet Builder ("Crear apuesta:" con 2 mercados que se refuerzan). No mezcles dos selecciones sueltas del mismo partido como si fueran combinada. Incluye mercados variados (goles, corners, tarjetas, remates, doble oportunidad, sets/juegos, puntos, jugadores) solo si hay base.
+3) Propón de 3 a 6 OPCIONES, de la más conservadora a la más atrevida. Cada opción es UNA selección del partido o una selección Bet Builder ("Crear apuesta:" con 2 mercados que se refuerzan). No mezcles dos selecciones sueltas del mismo partido como si fueran combinada. Incluye mercados variados (goles, corners, tarjetas, remates, doble oportunidad, sets/juegos, puntos, jugadores) solo si hay base.
 4) Sé honesto: si el partido es parejo o con poca información, dilo y baja la confianza; si no recomiendas apostar nada, devuelve las opciones con confianza "baja" y explícalo en el análisis. Nunca prometas ganancia segura.
 ${evitar ? 'Líneas ya usadas hoy (no las repitas): ' + evitar + '.' : ''} ${descartadas ? 'Líneas que el jefe descartó porque no le gustan: ' + descartadas + '.' : ''}
 Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: partido ("Local vs Visitante"), liga, hora (hora de Ecuador o ""), pick (la selección clara), cuota (número), confianza ("baja","media" o "alta"), analisis (máximo 3 frases: por qué sí y qué podría salir mal), selecciones (arreglo con UN objeto {partido, pick, cuota, hora}).`;
@@ -335,7 +354,7 @@ Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: parti
   if (t.indexOf('[') >= 0 && t.lastIndexOf(']') > t.indexOf('[')) cand.push(t.slice(t.indexOf('['), t.lastIndexOf(']') + 1));
   let lista = [];
   for (const c of cand) { try { const j = JSON.parse(c.trim()); if (Array.isArray(j)) { lista = j; break; } } catch (e) { /* siguiente */ } }
-  lista = lista.filter((x) => x && x.pick).slice(0, 5);
+  lista = lista.filter((x) => x && x.pick).slice(0, 6);
   if (!lista.length) { res.status(502).json({ error: 'Pay no sacó opciones claras de ese partido. Lo que dijo: ' + (t.replace(/\s+/g, ' ').trim().slice(0, 240) || '(sin respuesta)') }); return; }
   res.status(200).json({ sugerencias: lista, fuente: 'tu foto del partido' });
 }

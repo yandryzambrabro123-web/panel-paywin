@@ -6636,7 +6636,7 @@ function renderFactory(){
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
           <button class="btn secondary" id="payTalkBtn" type="button">🎙 Hablar con Pay</button>
-          <button class="btn secondary" id="payPartidoBtn" type="button">🔍 Analizar un partido</button>
+          <button class="btn secondary" id="payPartidoBtn" type="button">🔍 Analizar partido / cartelera</button>
           <button class="btn secondary" id="payAprBtn" type="button">📸 Enseñarle a Pay</button>
         </div>
         <div id="payAprendeInfo" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
@@ -7081,8 +7081,8 @@ async function payCargarGanadasDB(){
 function openPayPartido(){
   let fotos = []; // { base64, mediaType }
   openModal(`
-    <h3>🔍 Analizar un partido</h3>
-    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube una captura del partido con sus mercados y cuotas (de Mas1x2 u otra casa) y/o escribe cuál es. Pay lo analiza y te dice qué líneas se pueden sacar y con qué riesgo. Si la captura trae las cuotas, usa esas.</div>
+    <h3>🔍 Analizar un partido o una cartelera</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube una captura de la cartelera de Mas1x2 (varios partidos a la vez, como la lista de hoy) o de UN partido con sus mercados, y/o escribe cuál es. Pay lee todos los partidos y cuotas de la foto y te dice qué líneas se pueden sacar y con qué riesgo. Si la captura trae las cuotas, usa esas.</div>
     <input id="payPartidoFiles" type="file" accept="image/*" multiple style="display:none;">
     <button class="btn secondary" id="payPartidoPick" type="button" style="width:100%;">📸 Elegir captura(s) del partido</button>
     <div id="payPartidoFotos" style="font-size:12.5px; color:var(--muted); margin:8px 0;"></div>
