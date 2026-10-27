@@ -299,6 +299,43 @@ function nivelPay(cupo) {
   return `NIVEL MODERADO (${cupo}): selecciones de cuota 1.20 a 1.60, buena información y valor; puedes usar más variedad de mercados. No tiene que ser ultra segura.`;
 }
 
+// Analiza UN partido que el jefe elige (foto de las cuotas/mercados de su casa y/o texto) y propone sus mejores líneas.
+async function modoPayPartido(apiKey, body, res) {
+  const imgs = (Array.isArray(body.imagenes) ? body.imagenes : []).filter((i) => i && i.base64).slice(0, 3);
+  const nota = String(body.nota || '').slice(0, 400);
+  if (!imgs.length && !nota) { res.status(400).json({ error: 'Sube una foto del partido o escribe cuál es.' }); return; }
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  const cupo = String(body.cupo || 'apuesta').slice(0, 40);
+  const evitar = (Array.isArray(body.evitar) ? body.evitar : []).slice(0, 60).map((x) => String(x).slice(0, 120)).join(' ; ');
+  const descartadas = (Array.isArray(body.descartadas) ? body.descartadas : []).slice(0, 40).map((x) => String(x).slice(0, 120)).join(' ; ');
+  const system = `Eres Pay, el analista deportivo de PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). El jefe te da UN partido concreto (foto de la pantalla de su casa de apuestas Mas1x2 con mercados y cuotas, y/o texto) y quiere saber qué se puede sacar de ahí con el menor riesgo.
+${PAY_CONOCIMIENTO}
+${nivelPay(cupo)}
+Trabajo:
+1) Identifica el partido, la competición, el día y la hora si se ven. Si en la foto hay mercados con cuotas, esas son las cuotas REALES de su casa: úsalas tal cual (no las cambies). Lo que no esté en la foto, estímalo y márcalo "aprox".
+2) Analiza el partido con lo que veas y lo que busques en la web (forma reciente, bajas, historial, ritmo, estilo, estadísticas de la línea). No inventes datos: si no encuentras algo, dilo.
+3) Propón de 3 a 5 OPCIONES, de la más conservadora a la más atrevida. Cada opción es UNA selección del partido o una selección Bet Builder ("Crear apuesta:" con 2 mercados que se refuerzan). No mezcles dos selecciones sueltas del mismo partido como si fueran combinada. Incluye mercados variados (goles, corners, tarjetas, remates, doble oportunidad, sets/juegos, puntos, jugadores) solo si hay base.
+4) Sé honesto: si el partido es parejo o con poca información, dilo y baja la confianza; si no recomiendas apostar nada, devuelve las opciones con confianza "baja" y explícalo en el análisis. Nunca prometas ganancia segura.
+${evitar ? 'Líneas ya usadas hoy (no las repitas): ' + evitar + '.' : ''} ${descartadas ? 'Líneas que el jefe descartó porque no le gustan: ' + descartadas + '.' : ''}
+Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: partido ("Local vs Visitante"), liga, hora (hora de Ecuador o ""), pick (la selección clara), cuota (número), confianza ("baja","media" o "alta"), analisis (máximo 3 frases: por qué sí y qué podría salir mal), selecciones (arreglo con UN objeto {partido, pick, cuota, hora}).`;
+  const content = [];
+  imgs.forEach((i) => content.push({ type: 'image', source: { type: 'base64', media_type: i.mediaType || 'image/jpeg', data: i.base64 } }));
+  content.push({ type: 'text', text: nota ? 'Partido / lo que busco: ' + nota : 'Analiza el partido que aparece en la imagen.' });
+  const payload = { model: 'claude-sonnet-5', max_tokens: 5000, system, messages: [{ role: 'user', content }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] };
+  let ia = await llamarPay(apiKey, payload, 38000);
+  if (ia.ok && !ia.texto) { delete payload.tools; ia = await llamarPay(apiKey, payload, 20000); } // reintento sin web
+  if (!ia.ok) { res.status(502).json({ error: `Pay no pudo analizar ese partido (IA ${ia.status}).` }); return; }
+  const t = ia.texto;
+  const cand = [];
+  const tag = t.match(/<json>([\s\S]*?)<\/json>/i); if (tag) cand.push(tag[1]);
+  if (t.indexOf('[') >= 0 && t.lastIndexOf(']') > t.indexOf('[')) cand.push(t.slice(t.indexOf('['), t.lastIndexOf(']') + 1));
+  let lista = [];
+  for (const c of cand) { try { const j = JSON.parse(c.trim()); if (Array.isArray(j)) { lista = j; break; } } catch (e) { /* siguiente */ } }
+  lista = lista.filter((x) => x && x.pick).slice(0, 5);
+  if (!lista.length) { res.status(502).json({ error: 'Pay no sacó opciones claras de ese partido. Lo que dijo: ' + (t.replace(/\s+/g, ' ').trim().slice(0, 240) || '(sin respuesta)') }); return; }
+  res.status(200).json({ sugerencias: lista, fuente: 'tu foto del partido' });
+}
+
 // Bajar el riesgo de UNA línea: misma selección/partido pero más segura (cuota menor).
 async function modoPayBajar(apiKey, body, res) {
   const l = body.linea || {};
@@ -451,6 +488,12 @@ module.exports = async function handler(req, res) {
 
   if (body.modo === 'pay_diag') {
     res.status(200).json({ odds: !!process.env.ODDS_API_KEY, eventosEnCaché: cacheCuotas.datos ? cacheCuotas.datos.length : null });
+    return;
+  }
+
+  if (body.modo === 'pay_partido') {
+    try { await modoPayPartido(apiKey, body, res); }
+    catch (e) { console.error('Pay partido:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
     return;
   }
 

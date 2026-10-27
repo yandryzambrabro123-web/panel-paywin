@@ -6593,6 +6593,7 @@ function renderFactory(){
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
           <button class="btn secondary" id="payTalkBtn" type="button">🎙 Hablar con Pay</button>
+          <button class="btn secondary" id="payPartidoBtn" type="button">🔍 Analizar un partido</button>
           <button class="btn secondary" id="payAprBtn" type="button">📸 Enseñarle a Pay</button>
         </div>
         <div id="payAprendeInfo" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
@@ -6815,6 +6816,40 @@ async function payCargarGanadasDB(){
   const el = document.getElementById('payAprendeInfo');
   if(el) el.textContent = payGanadasDB.length ? `Pay ya aprendió de ${payGanadasDB.length} líneas ganadas.` : 'Pay todavía no ha aprendido de tus ganadas.';
 }
+// ---------- Analizar un partido concreto (foto de la casa de apuestas y/o texto) ----------
+function openPayPartido(){
+  let fotos = []; // { base64, mediaType }
+  openModal(`
+    <h3>🔍 Analizar un partido</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube una captura del partido con sus mercados y cuotas (de Mas1x2 u otra casa) y/o escribe cuál es. Pay lo analiza y te dice qué líneas se pueden sacar y con qué riesgo. Si la captura trae las cuotas, usa esas.</div>
+    <input id="payPartidoFiles" type="file" accept="image/*" multiple style="display:none;">
+    <button class="btn secondary" id="payPartidoPick" type="button" style="width:100%;">📸 Elegir captura(s) del partido</button>
+    <div id="payPartidoFotos" style="font-size:12.5px; color:var(--muted); margin:8px 0;"></div>
+    <div class="field"><label>Partido o qué buscas (opcional)</label><textarea id="payPartidoNota" placeholder="Ej: Sevilla vs Betis, busco algo de corners o goles"></textarea></div>
+    <div id="payPartidoEstado" style="font-size:12.5px; color:var(--muted); min-height:18px;"></div>
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button><button class="btn" id="payPartidoGo" type="button">Analizar</button></div>
+  `);
+  const estado = document.getElementById('payPartidoEstado'), go = document.getElementById('payPartidoGo');
+  document.getElementById('payPartidoPick').onclick = ()=>document.getElementById('payPartidoFiles').click();
+  document.getElementById('payPartidoFiles').onchange = async (e)=>{
+    const files = [...e.target.files].slice(0,3); fotos = [];
+    for(const f of files){ try{ const c = await fileToCompressedImage(f); fotos.push({ base64: c.base64, mediaType: c.mediaType }); }catch(err){ console.error(err); } }
+    document.getElementById('payPartidoFotos').textContent = fotos.length ? `✓ ${fotos.length} captura${fotos.length>1?'s':''} lista${fotos.length>1?'s':''}` : 'No pude leer esa imagen.';
+  };
+  go.onclick = async ()=>{
+    const nota = document.getElementById('payPartidoNota').value.trim();
+    if(!fotos.length && !nota){ estado.textContent = 'Sube una captura o escribe el partido.'; return; }
+    go.disabled = true; go.textContent = 'Pay está analizando…'; estado.textContent = 'Revisando el partido, puede tomar hasta un minuto.';
+    try{
+      const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_partido', cupo: payCupo, nota, imagenes: fotos, evitar: payEvitar(false), descartadas: payDescartadasHoy.slice(-40) }) }), 70000);
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.error || 'Pay no pudo analizar ese partido.');
+      paySugerencias = d.sugerencias.map(x=>({ ...x, cupo: payCupo })); paySugerencias.fuente = d.fuente || 'tu foto del partido';
+      closeModal(); pintarPay();
+      const o = document.getElementById('payOut'); if(o) o.scrollIntoView({ behavior:'smooth', block:'start' });
+    }catch(err){ estado.textContent = 'No se pudo: ' + err.message; go.disabled = false; go.textContent = 'Analizar'; }
+  };
+}
 function openPayAprender(){
   let lecturas = []; // { lineas, tipo, cuotaTotal }
   openModal(`
@@ -6895,6 +6930,7 @@ function initPayPanel(){
   }).catch(()=>{});
   pintarPay();
   document.getElementById('payAprBtn').onclick = openPayAprender;
+  document.getElementById('payPartidoBtn').onclick = openPayPartido;
   { const r = payPerdidasYResumen(); const el = document.getElementById('payStatsInfo'); if(el) el.textContent = (r.g + r.p) ? `Tu historial en el panel: ${r.g} ganadas y ${r.p} perdidas. Pay lo usa para evitar lo que te falla.` : 'Marca tus apuestas como Ganada o Perdida en el panel y Pay aprende también de lo que te falla.'; }
   pintarBandejaPay();
   payCargarGanadasDB();
