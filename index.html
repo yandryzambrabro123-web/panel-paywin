@@ -930,6 +930,21 @@
   .slip-sel{ display:flex; align-items:center; gap:8px; font-weight:800; font-size:15.5px; margin-top:1px; }
   .slip-acts{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
   .slip-acts .btn{ padding:5px 9px; font-size:11.5px; border-radius:8px; }
+
+  .ftabs{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; margin-bottom:6px; position:sticky; top:0; z-index:20; background:linear-gradient(var(--bg, #0b0d12) 70%, transparent); -webkit-overflow-scrolling:touch; }
+  .ftab{ --c:#E6C068; display:flex; align-items:center; gap:8px; padding:10px 16px; border-radius:14px; border:1px solid color-mix(in srgb, var(--c) 35%, transparent); background:color-mix(in srgb, var(--c) 8%, #12151c); color:#cfd5e6; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; flex:none; transition:background .15s, transform .15s; }
+  .ftab:hover{ background:color-mix(in srgb, var(--c) 16%, #12151c); }
+  .ftab.on{ background:var(--c); color:#14110a; border-color:var(--c); box-shadow:0 6px 18px color-mix(in srgb, var(--c) 35%, transparent); }
+  .ftab .fi{ font-size:16px; }
+  .ftab .fb{ display:none; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; border-radius:10px; font-size:12px; font-weight:800; background:var(--c); color:#14110a; }
+  .ftab.on .fb{ background:#14110a; color:var(--c); }
+  .ftab-panel{ display:none; border-top:3px solid var(--c, #E6C068) !important; }
+  .ftab-panel.on{ display:block; }
+  .fstep{ display:flex; align-items:center; gap:9px; font-weight:800; font-size:13.5px; color:#e9ecf5; margin:2px 0 9px; }
+  .fstep span{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#E6C068; color:#14110a; font-size:12px; font-weight:900; }
+  .fdet{ margin:0 0 14px; border:1px dashed var(--border); border-radius:12px; padding:8px 12px; }
+  .fdet summary{ cursor:pointer; font-size:13px; color:var(--muted); font-weight:700; }
+  .fdet[open] summary{ margin-bottom:10px; color:#e9ecf5; }
   .slip-foot{ padding:10px 14px 14px; border-top:1px solid #232834; background:#14171e; }
   .slip-why{ font-size:12.5px; color:#9aa2b8; line-height:1.45; margin-bottom:10px; }
   .slip-foot-btns{ display:flex; gap:8px; flex-wrap:wrap; }
@@ -6591,7 +6606,7 @@ function enviadasHoyHTML(){
   filas.sort((a,b)=>String(b.ord).localeCompare(String(a.ord)));
   const rl = (r)=> r==='won' ? '✅ Ganada' : r==='lost' ? '❌ Perdida' : r==='pending' ? '⏳ Pendiente' : '';
   return filas.map(f=>`
-    <div style="display:flex; gap:12px; padding:12px 0; border-top:1px solid var(--border); ${f.ok ? '' : 'background:rgba(255,90,90,.07); border-left:3px solid #ff6b6b; padding-left:10px;'}">
+    <div data-env="1" style="display:flex; gap:12px; padding:12px 0; border-top:1px solid var(--border); ${f.ok ? '' : 'background:rgba(255,90,90,.07); border-left:3px solid #ff6b6b; padding-left:10px;'}">
       ${f.img ? `<a href="${esc(f.img)}" target="_blank" rel="noopener" style="flex:none;"><img src="${esc(f.img)}" alt="Foto de la apuesta" loading="lazy" style="width:92px; height:92px; object-fit:cover; border-radius:10px; border:1px solid var(--border);"></a>` : ''}
       <div style="flex:1; min-width:0;">
         <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">${[f.t, f.hora, f.grupos.join(', ')].filter(Boolean).map(esc).join(' · ')}${f.odds ? ' · @ ' + esc(String(f.odds)) : ''}${rl(f.result) ? ' · ' + rl(f.result) : ''}</div>
@@ -6609,24 +6624,30 @@ function renderFactory(){
         <div class="page-sub">Aquí se va a armar toda la producción de apuestas</div>
       </div>
     </div>
+    <div class="ftabs" id="ftabs" role="tablist">
+      <button type="button" class="ftab" data-ftab-btn="armar" style="--c:#E6C068;"><span class="fi">⚡</span><span class="ft">Armar</span></button>
+      <button type="button" class="ftab" data-ftab-btn="reservadas" style="--c:#5aa9ff;"><span class="fi">📌</span><span class="ft">Reservadas</span><span class="fb" id="fbReservadas"></span></button>
+      <button type="button" class="ftab" data-ftab-btn="enviadas" style="--c:#4fd18b;"><span class="fi">✅</span><span class="ft">Enviadas hoy</span><span class="fb" id="fbEnviadas"></span></button>
+      <button type="button" class="ftab" data-ftab-btn="auto" style="--c:#b48cff;"><span class="fi">🤖</span><span class="ft">Pay solo</span><span class="fb" id="fbAuto"></span></button>
+      <button type="button" class="ftab" data-ftab-btn="ganadas" style="--c:#ff9a4d;"><span class="fi">🏆</span><span class="ft">Ganadas</span><span class="fb" id="fbGanadas">${ganadas || ''}</span></button>
+    </div>
     <div class="grid-2">
-      <div class="card" style="grid-column:1/-1;">
+      <div class="card ftab-panel" data-ftab="armar" style="grid-column:1/-1; --c:#E6C068;">
         <div class="card-title">Pay · analista deportivo</div>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Pay arma combinadas de líneas seguras (cada una de cuota baja) en todos los deportes. Pon la cuota total que quieres. Revisa siempre antes de apostar.</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+        <div class="fstep"><span>1</span>¿Para qué cupo es?</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
           ${Object.keys(PAY_CUPOS).map(k=>`<button class="btn secondary" data-pay-cupo="${k}" type="button">${k}</button>`).join('')}
         </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
+        <div class="fstep"><span>2</span>Cuota y cantidad</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
           <div class="field" style="margin:0; width:90px;"><label>Total mín.</label><input id="payMin" inputmode="decimal"></div>
           <div class="field" style="margin:0; width:90px;"><label>Total máx.</label><input id="payMax" inputmode="decimal"></div>
           <div class="field" style="margin:0; width:80px;"><label>Cantidad</label><input id="payCant" inputmode="numeric" value="3"></div>
           <div class="field" style="margin:0; flex:1; min-width:160px;"><label>Indicación (opcional)</label><input id="payNota" placeholder="Ej: solo fútbol, evitar combinadas"></div>
         </div>
-        <div class="field" style="margin:0 0 12px;"><label>Mercados que quiero (opcional)</label>
-          <div id="payMercadosChips" style="display:flex; gap:6px; flex-wrap:wrap;">${['Goles','Corners','Tarjetas','Tiros al arco jugadores','Remates','Asistencias','Triples','Puntos','Tenis','UFC'].map(m=>`<button type="button" class="btn secondary" data-pay-mkt="${m}" style="padding:5px 10px; font-size:12px;">${m}</button>`).join('')}</div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Pay usa sobre todo esos mercados. Los de jugadores salen con cuota real solo si el plan de datos los trae; si no, quedan como aproximados.</div>
-        </div>
-        <div class="field" style="margin:0 0 12px;"><label>Fecha de los partidos</label>
+        <div class="fstep"><span>3</span>¿De qué día?</div>
+        <div class="field" style="margin:0 0 12px;"><label style="display:none;">Fecha</label>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <button class="btn secondary" type="button" data-pay-dia="0" style="padding:6px 12px; font-size:12.5px;">Hoy</button>
             <button class="btn secondary" type="button" data-pay-dia="1" style="padding:6px 12px; font-size:12.5px;">Mañana</button>
@@ -6634,9 +6655,16 @@ function renderFactory(){
           </div>
           <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Pay arma las apuestas con los partidos de ese día (hasta 6 días adelante).</div>
         </div>
+        <details class="fdet"><summary>Más opciones: mercados y búsqueda en la web</summary>
+        <div class="field" style="margin:0 0 12px;"><label>Mercados que quiero (opcional)</label>
+          <div id="payMercadosChips" style="display:flex; gap:6px; flex-wrap:wrap;">${['Goles','Corners','Tarjetas','Tiros al arco jugadores','Remates','Asistencias','Triples','Puntos','Tenis','UFC'].map(m=>`<button type="button" class="btn secondary" data-pay-mkt="${m}" style="padding:5px 10px; font-size:12px;">${m}</button>`).join('')}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Pay usa sobre todo esos mercados. Los de jugadores salen con cuota real solo si el plan de datos los trae; si no, quedan como aproximados.</div>
+        </div>
         <label style="display:flex; gap:8px; align-items:center; font-size:12.5px; margin:0 0 12px; cursor:pointer;"><input type="checkbox" id="payWebChk"> Buscar también líneas de jugadores en la web (más lento, cuotas aproximadas)</label>
+        </details>
+        <div class="fstep"><span>4</span>Generar</div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
+          <button class="btn" id="payGenBtn" type="button" style="padding:12px 22px; font-size:15px;">Generar apuesta ahora</button>
           <button class="btn secondary" id="payTalkBtn" type="button">🎙 Hablar con Pay</button>
           <button class="btn secondary" id="payPartidoBtn" type="button">🔍 Analizar partido / cartelera</button>
           <button class="btn secondary" id="payAprBtn" type="button">📸 Enseñarle a Pay</button>
@@ -6647,31 +6675,53 @@ function renderFactory(){
         <div id="payBandeja"></div>
         <div id="payOut" style="margin-top:14px;"></div>
       </div>
-      <div class="card" style="grid-column:1/-1;">
+      <div class="card ftab-panel" data-ftab="reservadas" style="grid-column:1/-1; --c:#5aa9ff;">
         <div class="card-title">📌 Reservadas para enviar</div>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Boletos que dejaste listos para mandar más tarde. Cuando llegue la hora, apuesta, y toca "Enviar ahora".</div>
         <div id="payReservadas"></div>
       </div>
-      <div class="card" style="grid-column:1/-1;">
-        <div class="card-title">Enviadas hoy</div>
+      <div class="card ftab-panel" data-ftab="enviadas" style="grid-column:1/-1; --c:#4fd18b;">
+        <div class="card-title">✅ Enviadas hoy</div>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Lo que mandaste hoy desde el panel, con su imagen y el texto tal cual salió. Si algo se mandó y no quedó registrado, sale marcado en rojo.</div>
         <div id="enviadasHoy">${enviadasHoyHTML()}</div>
       </div>
-      <div class="card" style="grid-column:1/-1;">
-        <div class="card-title">Lo que Pay encontró solo</div>
+      <div class="card ftab-panel" data-ftab="auto" style="grid-column:1/-1; --c:#b48cff;">
+        <div class="card-title">🤖 Lo que Pay encontró solo</div>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Pay revisa los partidos varias veces al día y te avisa por Telegram. Aquí quedan sus picks de las últimas 36 horas.</div>
         <div id="payAuto"><div style="color:var(--muted); font-size:13px;">Cargando…</div></div>
       </div>
-      <div class="card">
-        <div class="card-title">Ganadas de ayer</div>
+      <div class="card ftab-panel" data-ftab="ganadas" style="grid-column:1/-1; --c:#ff9a4d;">
+        <div class="card-title">🏆 Ganadas de ayer</div>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:14px;">${ganadas ? `Tienes <strong style="color:var(--text);">${ganadas}</strong> guardada${ganadas>1?'s':''} para publicar.` : 'No hay ganadas guardadas para publicar.'}</div>
         <button class="btn" id="factoryGanadasBtn">Abrir ganadas de ayer</button>
       </div>
     </div>
   `;
   document.getElementById('factoryGanadasBtn').onclick = openWinGanadasAyerModal;
+  factoryTabsInit();
   initPayPanel();
   pintarBandejaPay();
+}
+
+
+// ---- Pestañas de Fábrica ----
+let factoryTab = (()=>{ try{ return localStorage.getItem('factoryTab') || 'armar'; }catch(e){ return 'armar'; } })();
+function factoryTabSet(t){
+  factoryTab = t; try{ localStorage.setItem('factoryTab', t); }catch(e){}
+  document.querySelectorAll('[data-ftab-btn]').forEach(b=>b.classList.toggle('on', b.dataset.ftabBtn === t));
+  document.querySelectorAll('.ftab-panel').forEach(p=>p.classList.toggle('on', p.dataset.ftab === t));
+}
+function factoryTabsInit(){
+  if(!document.querySelector('[data-ftab="' + factoryTab + '"]')) factoryTab = 'armar';
+  document.querySelectorAll('[data-ftab-btn]').forEach(b=>b.onclick = ()=>factoryTabSet(b.dataset.ftabBtn));
+  factoryTabSet(factoryTab); factoryBadges();
+}
+function factoryBadges(){
+  const put = (id, n, cls)=>{ const el = document.getElementById(id); if(!el) return; el.textContent = n > 0 ? String(n) : ''; el.style.display = n > 0 ? 'inline-flex' : 'none'; };
+  put('fbReservadas', (typeof payReservadas !== 'undefined' ? payReservadas.length : 0));
+  put('fbEnviadas', document.querySelectorAll('#enviadasHoy [data-env]').length);
+  put('fbAuto', (typeof payAutoLista !== 'undefined' ? payAutoLista.length : 0));
+  put('fbGanadas', winGanadasPendientes().length);
 }
 
 // Una selección puede venir como objeto {partido,pick,cuota,hora} o como texto "Partido: pick @cuota".
@@ -7260,9 +7310,10 @@ async function payReservadasCargar(){
 function payReservar(x){
   payReservadas.push({ id: uid(), creada: new Date().toISOString(), x });
   payReservadasPintar(); payReservadasGuardar();
-  const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">📌 Boleto reservado (lo ves abajo en "Reservadas para enviar"). Sigue armando otros.</span>';
+  const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">📌 Boleto reservado (míralo en la pestaña 📌 Reservadas). Sigue armando otros.</span>';
 }
 function payReservadasPintar(){
+  setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payReservadas'); if(!el) return;
   if(!payReservadas.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">No tienes boletos reservados. En "Mi boleto" toca "Reservar para después".</div>'; return; }
   el.innerHTML = payReservadas.map((r,i)=>{
@@ -7291,6 +7342,7 @@ async function cargarPayAuto(){
   cargarPayAutoPintar();
 }
 function cargarPayAutoPintar(){
+  setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payAuto'); if(!el) return;
   if(!payAutoLista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">Todavía no hay picks de Pay. Revisa a las 9am y 3pm (hora de Ecuador).</div>'; return; }
   el.innerHTML = payAutoLista.map((x,i)=>paySlipHTML(x, 'auto', i, `data-pay-auto="${i}"`, `data-pay-resenaauto="${i}"`)).join('');
@@ -7508,8 +7560,8 @@ function openStakeRegistroModal(texto){
     await pushToOutbox('nueva_apuesta', 'Stake de pago (lo subes tú a Telegram)', texto, thumb, true, 'enviado');
     await persist('winOutbox');
     closeModal();
-    const box = document.getElementById('enviadasHoy'); if(box) box.innerHTML = enviadasHoyHTML();
-    const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">✅ Stake de pago registrado como enviado (lo ves en "Enviadas hoy").</span>';
+    const box = document.getElementById('enviadasHoy'); if(box) box.innerHTML = enviadasHoyHTML(); factoryBadges();
+    const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">✅ Stake de pago registrado como enviado (míralo en la pestaña ✅ Enviadas hoy).</span>';
   };
 }
 function tomarPay(i){
