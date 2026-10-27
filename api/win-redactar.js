@@ -339,6 +339,31 @@ Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: parti
   res.status(200).json({ sugerencias: lista, fuente: 'tu foto del partido' });
 }
 
+// Logos de equipos y fotos de jugadores (TheSportsDB, gratis). Se guarda en memoria para no repetir consultas.
+const cacheImagenes = {};
+async function tsdb(ruta) {
+  for (const k of [process.env.THESPORTSDB_KEY || '123', '3']) {
+    try {
+      const r = await fetch(`https://www.thesportsdb.com/api/v1/json/${k}/${ruta}`);
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j) return j;
+    } catch (e) { /* siguiente clave */ }
+  }
+  return null;
+}
+async function modoPayImagenes(body, res) {
+  const out = { equipos: {}, jugadores: {} };
+  const equipos = (Array.isArray(body.equipos) ? body.equipos : []).map((x) => String(x).slice(0, 60)).slice(0, 14);
+  const jugadores = (Array.isArray(body.jugadores) ? body.jugadores : []).map((x) => String(x).slice(0, 60)).slice(0, 8);
+  const tareas = [
+    ...equipos.map(async (n) => { const k = 'e:' + n.toLowerCase(); if (!(k in cacheImagenes)) { const j = await tsdb('searchteams.php?t=' + encodeURIComponent(n)); const t = j && j.teams && j.teams[0]; cacheImagenes[k] = (t && (t.strBadge || t.strLogo)) || ''; } out.equipos[n] = cacheImagenes[k]; }),
+    ...jugadores.map(async (n) => { const k = 'j:' + n.toLowerCase(); if (!(k in cacheImagenes)) { const j = await tsdb('searchplayers.php?p=' + encodeURIComponent(n)); const t = j && j.player && j.player[0]; cacheImagenes[k] = (t && (t.strCutout || t.strThumb || t.strRender)) || ''; } out.jugadores[n] = cacheImagenes[k]; })
+  ];
+  await Promise.allSettled(tareas);
+  res.status(200).json(out);
+}
+
 // Bet Builder de UNA línea: la misma selección + otros mercados que se refuerzan, del MISMO partido, como una sola selección "Crear apuesta".
 async function modoPayBuilder(apiKey, body, res) {
   const l = body.linea || {};
@@ -523,6 +548,12 @@ module.exports = async function handler(req, res) {
   if (body.modo === 'pay_partido') {
     try { await modoPayPartido(apiKey, body, res); }
     catch (e) { console.error('Pay partido:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
+    return;
+  }
+
+  if (body.modo === 'pay_imagenes') {
+    try { await modoPayImagenes(body, res); }
+    catch (e) { console.error('Pay imágenes:', e); res.status(200).json({ equipos: {}, jugadores: {} }); }
     return;
   }
 

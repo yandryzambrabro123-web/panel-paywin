@@ -902,6 +902,45 @@
     .win-icon-btn{ min-width:0; width:100%; }
     body.win-locked .win-fullscreen{ padding:200px 12px 96px; }
   }
+
+  /* ===== Boleto de apuestas de Pay (estilo casa de apuestas: línea de puntos por evento) ===== */
+  .slip{ background:#171a22; border:1px solid #2a2f3c; border-radius:16px; overflow:hidden; margin-bottom:14px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+  .slip-head{ display:flex; align-items:center; gap:8px; padding:12px 14px; background:linear-gradient(135deg,#232838 0%,#1a1d27 70%); border-bottom:1px solid #2a2f3c; flex-wrap:wrap; }
+  .slip-badge{ background:#FFD54A; color:#14161d; font-weight:800; font-size:12px; letter-spacing:.3px; padding:3px 8px; border-radius:7px; }
+  .slip-badge.simple{ background:#3a4156; color:#e9ecf5; } .slip-badge.combi{ background:#2fbf71; color:#08140d; }
+  .slip-chip{ background:#252a38; color:#cfd5e6; font-weight:700; font-size:12px; padding:3px 8px; border-radius:7px; }
+  .slip-chip.alta{ background:rgba(47,191,113,.18); color:#5fe39c; } .slip-chip.media{ background:rgba(255,213,74,.16); color:#ffd54a; } .slip-chip.baja{ background:rgba(255,107,107,.16); color:#ff8f8f; }
+  .slip-total{ margin-left:auto; text-align:right; line-height:1.05; }
+  .slip-total small{ display:block; font-size:10.5px; color:#8e96ad; font-weight:600; } .slip-total b{ font-size:24px; font-weight:800; color:#FFD54A; font-variant-numeric:tabular-nums; }
+  .slip-ev{ padding:12px 14px 10px; border-top:1px solid #232834; }
+  .slip-ev:first-of-type{ border-top:0; }
+  .slip-meta{ font-size:12px; color:#8e96ad; margin-bottom:6px; display:flex; gap:6px; align-items:center; }
+  .slip-teams{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:15px; }
+  .slip-teams .vs{ color:#8e96ad; font-weight:600; font-size:13px; }
+  .slip-odd{ margin-left:auto; font-weight:800; font-size:17px; color:#e9ecf5; font-variant-numeric:tabular-nums; }
+  .slip-logo{ width:30px; height:30px; border-radius:50%; background:#2a2f3c; color:#cfd5e6; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; flex:none; overflow:hidden; }
+  .slip-logo img{ width:100%; height:100%; object-fit:contain; background:#fff; }
+  .slip-logo.jug{ width:38px; height:38px; } .slip-logo.jug img{ object-fit:cover; background:#2a2f3c; }
+  .slip-tl{ margin:10px 0 2px 8px; }
+  .slip-leg{ position:relative; padding:0 0 12px 24px; }
+  .slip-leg::before{ content:''; position:absolute; left:0; top:5px; width:11px; height:11px; border-radius:50%; background:#FFD54A; box-shadow:0 0 0 3px rgba(255,213,74,.18); }
+  .slip-leg:not(:last-child)::after{ content:''; position:absolute; left:4.5px; top:17px; bottom:-4px; width:2px; background:#FFD54A; opacity:.85; }
+  .slip-leg:last-child{ padding-bottom:4px; }
+  .slip-mkt{ font-size:12.5px; color:#9aa2b8; font-weight:600; }
+  .slip-sel{ display:flex; align-items:center; gap:8px; font-weight:800; font-size:15.5px; margin-top:1px; }
+  .slip-acts{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .slip-acts .btn{ padding:5px 9px; font-size:11.5px; border-radius:8px; }
+  .slip-foot{ padding:10px 14px 14px; border-top:1px solid #232834; background:#14171e; }
+  .slip-why{ font-size:12.5px; color:#9aa2b8; line-height:1.45; margin-bottom:10px; }
+  .slip-foot-btns{ display:flex; gap:8px; flex-wrap:wrap; }
+  @keyframes slipNuevo{ 0%{ background:rgba(255,213,74,.28); } 100%{ background:transparent; } }
+  .slip-ev.nuevo{ animation:slipNuevo 1.4s ease-out 1; }
+  @media (prefers-reduced-motion: reduce){ .slip-ev.nuevo{ animation:none; } }
+  /* Boleto flotante: se va armando arriba mientras eliges líneas */
+  #payFlotante{ position:fixed; top:8px; left:8px; right:8px; max-width:540px; margin:0 auto; z-index:40; display:none; }
+  #payFlotante .slip{ margin:0; box-shadow:0 14px 40px rgba(0,0,0,.6); border-color:#FFD54A55; }
+  #payFlotante .slip-cuerpo{ max-height:60vh; overflow-y:auto; }
+  #payFlotante .slip-bar{ display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; color:inherit; padding:10px 14px; cursor:pointer; font:inherit; text-align:left; }
 </style>
 
 <div id="loginScreen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);">
@@ -6621,6 +6660,7 @@ function renderFactory(){
   `;
   document.getElementById('factoryGanadasBtn').onclick = openWinGanadasAyerModal;
   initPayPanel();
+  pintarBandejaPay();
 }
 
 // Una selección puede venir como objeto {partido,pick,cuota,hora} o como texto "Partido: pick @cuota".
@@ -6629,6 +6669,125 @@ function payNormSel(s){
   const t = String(s||'');
   const m = t.match(/^(.*?):\s*(.*?)\s*@\s*([\d.,]+)\s*$/);
   return m ? { partido:m[1], pick:m[2], cuota:m[3], hora:'' } : { partido:'', pick:t, cuota:'', hora:'' };
+}
+
+// ---------- Boleto gráfico de Pay: patas por evento, logos de equipos y fotos de jugadores ----------
+const payImgCache = (()=>{ try{ return JSON.parse(localStorage.getItem('payImgs') || '{}') || {}; }catch(e){ return {}; } })();
+const payImgGuardar = ()=>{ try{ localStorage.setItem('payImgs', JSON.stringify(payImgCache)); }catch(e){} };
+const payIniciales = (n)=> String(n||'?').replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ ]/g,'').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase() || '?';
+function payLogoHTML(nombre, tipo){
+  const n = String(nombre||'').trim(); const url = payImgCache[(tipo==='jug'?'j:':'e:') + n.toLowerCase()];
+  const ini = esc(payIniciales(n));
+  return `<span class="slip-logo ${tipo==='jug'?'jug':''}" data-pay-img="${esc(n)}" data-pay-tipo="${tipo==='jug'?'jug':'eq'}" title="${esc(n)}">${url ? `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${ini}'">` : ini}</span>`;
+}
+let payImgPendiente = false;
+async function payResolverImagenes(raiz){
+  if(payImgPendiente) return;
+  const nodos = [...(raiz||document).querySelectorAll('[data-pay-img]')];
+  const eq = new Set(), jug = new Set();
+  nodos.forEach(s=>{ const n = s.dataset.payImg, k = (s.dataset.payTipo==='jug'?'j:':'e:') + n.toLowerCase(); if(n && !(k in payImgCache) && !s.querySelector('img')){ (s.dataset.payTipo==='jug' ? jug : eq).add(n); } });
+  if(!eq.size && !jug.size) return;
+  payImgPendiente = true;
+  try{
+    const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_imagenes', equipos:[...eq].slice(0,14), jugadores:[...jug].slice(0,8) }) }), 25000);
+    const d = await r.json().catch(()=>({}));
+    [...eq].forEach(n=>{ payImgCache['e:'+n.toLowerCase()] = (d.equipos && d.equipos[n]) || ''; });
+    [...jug].forEach(n=>{ payImgCache['j:'+n.toLowerCase()] = (d.jugadores && d.jugadores[n]) || ''; });
+    payImgGuardar();
+    nodos.forEach(s=>{ const k = (s.dataset.payTipo==='jug'?'j:':'e:') + s.dataset.payImg.toLowerCase(); const u = payImgCache[k]; if(u && !s.querySelector('img')){ const ini = payIniciales(s.dataset.payImg); s.innerHTML = `<img src="${esc(u)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${ini}'">`; } });
+  }catch(e){ /* sin logos: se quedan las iniciales */ }
+  finally{ payImgPendiente = false; }
+}
+function payClasificarPata(txt){
+  const t = String(txt||'').trim(), l = t.toLowerCase();
+  const mj = t.match(/^(?!gana\b|empate|doble|ambos|más\b|menos\b|total|over|under)([A-ZÁÉÍÓÚÑ][\wáéíóúñ'.\-]+(?:\s+[A-ZÁÉÍÓÚÑ][\wáéíóúñ'.\-]+)+)\s+(?:más|menos)\s+de/);
+  const jugador = mj ? mj[1] : '';
+  let mercado = 'Selección';
+  if(/ambos (equipos )?marcan/.test(l)) mercado = 'Ambos marcan';
+  else if(/doble oportunidad|o empate|empate o/.test(l)) mercado = 'Doble oportunidad';
+  else if(/esquina|corner/.test(l)) mercado = 'Total tiros de esquina';
+  else if(/tarjeta/.test(l)) mercado = 'Tarjetas';
+  else if(/triple/.test(l)) mercado = jugador ? 'Triples del jugador' : 'Triples';
+  else if(/asistencia/.test(l)) mercado = jugador ? 'Asistencias del jugador' : 'Asistencias';
+  else if(/rebote/.test(l)) mercado = jugador ? 'Rebotes del jugador' : 'Rebotes';
+  else if(/remate|tiros? (al arco|a puerta)/.test(l)) mercado = jugador ? 'Remates del jugador' : 'Remates';
+  else if(/\bset\b|sets/.test(l)) mercado = 'Sets';
+  else if(/h[áa]ndicap|handicap|[+-]\d+(\.\d)?\s*$/.test(l)) mercado = 'Hándicap';
+  else if(/puntos/.test(l)) mercado = jugador ? 'Puntos del jugador' : 'Total de puntos';
+  else if(/goles|juegos|total/.test(l)) mercado = 'Total';
+  else if(/^gana|gana el|victoria|ganador/.test(l)) mercado = '1x2';
+  return { texto: t, mercado, jugador };
+}
+function payPatas(pick){
+  let t = String(pick||'').trim();
+  const bb = /^crear apuesta\s*:/i.test(t);
+  t = t.replace(/^crear apuesta\s*:\s*/i,'');
+  const partes = t.split(/\s+\+\s+/).map(s=>s.trim()).filter(Boolean);
+  return { bb, patas: (partes.length ? partes : [t]).map(payClasificarPata) };
+}
+const payEquiposDe = (partido)=> String(partido||'').split(/\s+(?:vs\.?|v|-)\s+/i).map(s=>s.trim()).filter(Boolean).slice(0,2);
+function payDeporteEmoji(liga, partido, pick){
+  const pk = String(pick||'').toLowerCase();
+  if(/esquina|corner|goles|ambos|remate|tarjeta|doble oportunidad/.test(pk)) return '⚽';
+  if(/triple|rebote|asistencia|puntos/.test(pk)) return '🏀';
+  if(/\bset\b|sets|juegos/.test(pk)) return '🎾';
+  const t = ((String(liga||'').includes('/') ? '' : liga) + ' ' + (partido||'')).toLowerCase();
+  if(/nba|euroleague|basket|baloncesto|acb|wnba/.test(t)) return '🏀';
+  if(/atp|wta|tenis|tennis|masters/.test(t)) return '🎾';
+  if(/ufc|mma/.test(t)) return '🥊';
+  if(/mlb|beisbol|béisbol|baseball/.test(t)) return '⚾';
+  if(/nhl|hockey/.test(t)) return '🏒';
+  if(/nfl|americano/.test(t)) return '🏈';
+  return '⚽';
+}
+const payFmtCuota = (v)=>{ const n = Number(String(v).replace(',','.')); return isFinite(n) && n > 0 ? n.toFixed(2) : String(v||''); };
+function payFechaCorta(){ const f = payFechaElegida().split('-'); return `${f[2]}/${f[1]}/${f[0]}`; }
+// Un bloque de evento del boleto: equipos con logo, cuota y la línea de puntos con cada pata
+function payEventoHTML(s, liga, acciones, nuevo){
+  const { bb, patas } = payPatas(s.pick);
+  const eq = payEquiposDe(s.partido);
+  const emoji = payDeporteEmoji(liga, s.partido, s.pick);
+  const teams = eq.length === 2
+    ? `${payLogoHTML(eq[0],'eq')}<span>${esc(eq[0])}</span><span class="vs">vs</span><span>${esc(eq[1])}</span>${payLogoHTML(eq[1],'eq')}`
+    : `<span>${esc(s.partido||'')}</span>`;
+  return `<div class="slip-ev ${nuevo ? 'nuevo' : ''}">
+    <div class="slip-meta"><span>${emoji}</span>${bb || patas.length > 1 ? '<span class="slip-badge" style="padding:1px 6px; font-size:10.5px;">BB</span>' : ''}<span>${esc(payFechaCorta())}${s.hora ? ' • ' + esc(s.hora) : ''}${liga && !String(liga).includes('/') ? ' • ' + esc(liga) : ''}</span></div>
+    <div class="slip-teams">${teams}<span class="slip-odd">${esc(payFmtCuota(s.cuota))}</span></div>
+    <div class="slip-tl">${patas.map(p=>`<div class="slip-leg"><div class="slip-mkt">${esc(p.mercado)}</div><div class="slip-sel">${p.jugador ? payLogoHTML(p.jugador,'jug') : ''}<span>${esc(p.texto)}</span></div></div>`).join('')}</div>
+    ${acciones ? `<div class="slip-acts">${acciones}</div>` : ''}
+  </div>`;
+}
+// Tarjeta/boleto completo de una combinada generada por Pay
+function paySlipHTML(x, origen, idx, tomarAttr, resenaAttr){
+  const sels = (x.selecciones||[]).map(payNormSel);
+  const nPatas = sels.reduce((a,s)=>a + payPatas(s.pick).patas.length, 0) || 1;
+  const hayBB = sels.some(s=>{ const q = payPatas(s.pick); return q.bb || q.patas.length > 1; }) || /bet builder|crear apuesta/i.test(x.pick||'');
+  const tipo = hayBB ? ['BB','bb'] : (sels.length > 1 ? ['COMBINADA','combi'] : ['SIMPLE','simple']);
+  const conf = String(x.confianza||'').toLowerCase().replace(/[^a-záéíóú-]/g,'');
+  const confCls = /alta/.test(conf) && !/media/.test(conf) ? 'alta' : /baja/.test(conf) ? 'baja' : 'media';
+  const cuerpo = sels.length ? sels.map((s,i)=>{
+    const k = payClaveLinea(s), on = paySeleccion.some(q=>q.k===k), ref = `${origen}:${idx}:${i}`;
+    const acc = `<button type="button" class="btn ${on ? '' : 'secondary'}" data-pay-like="${ref}" title="Me gusta esta línea">${on ? '♥ En mi boleto' : '♡ Me gusta'}</button>
+      <button type="button" class="btn secondary" data-pay-builder="${ref}" title="Armar Bet Builder con esta línea">Bet Builder</button>
+      <button type="button" class="btn secondary" data-pay-bajar="${ref}" title="Bajar el riesgo de esta línea">↓ Riesgo</button>
+      <button type="button" class="btn secondary" data-pay-descartar="${ref}" title="No me gusta: se quita y Pay no la repite">Descartar</button>
+      <button type="button" class="btn secondary" data-pay-excluir="${ref}" title="Ya la mandé: Pay no la repite hoy">Ya la usé</button>`;
+    return payEventoHTML(s, x.liga, acc, false);
+  }).join('') : `<div class="slip-ev"><div class="slip-sel">${esc(x.pick||'')}</div></div>`;
+  return `<div class="slip">
+    <div class="slip-head">
+      <span class="slip-badge ${tipo[1]==='simple' ? 'simple' : tipo[1]==='combi' ? 'combi' : ''}">${tipo[0]}</span>
+      <span class="slip-chip">${nPatas} ${nPatas>1 ? 'selecciones' : 'selección'}</span>
+      <span class="slip-chip ${confCls}">confianza ${esc(x.confianza||'-')}</span>
+      ${x.cupo ? `<span class="slip-chip">${esc(x.cupo)}</span>` : ''}
+      <span class="slip-total"><small>Cuota total</small><b>${esc(payFmtCuota(x.cuota))}</b></span>
+    </div>
+    ${cuerpo}
+    <div class="slip-foot">
+      ${x.analisis ? `<div class="slip-why">${esc(x.analisis)}</div>` : ''}
+      <div class="slip-foot-btns"><button class="btn" ${tomarAttr} type="button">La tomo</button><button class="btn secondary" ${resenaAttr} type="button">🎙 Reseña: ¿por qué?</button></div>
+    </div>
+  </div>`;
 }
 function payLineasHTML(x, origen, idx){
   const sel = (x.selecciones||[]).map(payNormSel);
@@ -6662,35 +6821,51 @@ function payToggleLinea(ref){
   const l = (x.selecciones||[]).map(payNormSel)[+i]; if(!l) return;
   const k = payClaveLinea(l);
   const pos = paySeleccion.findIndex(s=>s.k===k);
-  if(pos >= 0) paySeleccion.splice(pos,1); else paySeleccion.push({ k, ...l, cupo: x.cupo || payCupo });
+  if(pos >= 0) paySeleccion.splice(pos,1); else { paySeleccion.push({ k, ...l, liga: x.liga || '', cupo: x.cupo || payCupo }); payUltimaK = k; payFlotanteAbierto = true; }
   pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
 }
 function pintarAutoSiHay(){ if(typeof cargarPayAutoPintar === 'function') cargarPayAutoPintar(); }
+let payFlotanteAbierto = true, payUltimaK = '';
 function pintarBandejaPay(){
-  const el = document.getElementById('payBandeja'); if(!el) return;
-  if(!paySeleccion.length){ el.innerHTML = ''; return; }
+  let el = document.getElementById('payFlotante');
+  if(!el){ el = document.createElement('div'); el.id = 'payFlotante'; document.body.appendChild(el); }
+  const viejo = document.getElementById('payBandeja'); if(viejo) viejo.innerHTML = '';
+  if(state.view !== 'factory' || !paySeleccion.length){ el.style.display = 'none'; el.innerHTML = ''; return; }
   const total = payCuotaSel();
   const partidos = paySeleccion.map(s=>s.partido).filter(Boolean);
   const repetido = partidos.length !== new Set(partidos).size;
-  el.innerHTML = `
-    <div style="border:1px solid var(--gold, #D4AF6A); border-radius:12px; padding:12px 14px; margin:12px 0;">
-      <div style="font-weight:800; margin-bottom:6px;">♥ Mis líneas elegidas (${paySeleccion.length})</div>
-      ${paySeleccion.map((s,i)=>`<div style="display:flex; gap:8px; align-items:center; padding:5px 0; border-top:1px solid var(--border);"><div style="flex:1; min-width:0;"><div style="font-size:12px; color:var(--muted);">${esc(s.partido)}</div><div style="font-size:14px; font-weight:600;">${esc(s.pick)}</div></div><div style="font-weight:700;">@ ${esc(String(s.cuota))}</div> <button type="button" class="btn secondary" data-pay-builder-sel="${i}" title="Armar Bet Builder con esta línea" style="padding:4px 8px; font-size:12px;">Bet Builder</button><button type="button" class="btn secondary" data-pay-bajar-sel="${i}" title="Bajar el riesgo de esta línea" style="padding:4px 8px; font-size:12px;">↓ Riesgo</button><button type="button" class="btn secondary" data-pay-quitar="${i}" style="padding:4px 9px;">✕</button></div>`).join('')}
-      <div style="display:flex; justify-content:space-between; padding:8px 0 4px; font-weight:800; border-top:1px solid var(--border);"><span>Cuota total</span><span style="color:var(--gold, #D4AF6A);">@ ${total.toFixed(2)}</span></div>
-      ${repetido ? '<div style="font-size:12px; color:#ff7a7a;">⚠️ Tienes dos líneas del mismo partido: están relacionadas y la casa puede no dejarte combinarlas.</div>' : ''}
-      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-        <button class="btn" id="payQuedarmeBtn" type="button">Quedarme con esta combinada</button>
-        <button class="btn secondary" id="payResenaSelBtn" type="button">🎙 Reseña</button>
-        <button class="btn secondary" id="payVaciarBtn" type="button">Vaciar</button>
-      </div>
-    </div>`;
+  const nPatas = paySeleccion.reduce((a,s)=>a + payPatas(s.pick).patas.length, 0);
+  const hayBB = paySeleccion.some(s=>{ const q = payPatas(s.pick); return q.bb || q.patas.length > 1; });
+  const tipo = hayBB ? ['BB',''] : (paySeleccion.length > 1 ? ['COMBINADA','combi'] : ['SIMPLE','simple']);
+  const eventos = paySeleccion.map((s,i)=>payEventoHTML(s, s.liga, `
+      <button type="button" class="btn secondary" data-pay-builder-sel="${i}">Bet Builder</button>
+      <button type="button" class="btn secondary" data-pay-bajar-sel="${i}">↓ Riesgo</button>
+      <button type="button" class="btn secondary" data-pay-quitar="${i}">✕ Quitar</button>`, s.k === payUltimaK)).join('');
+  el.style.display = 'block';
+  el.innerHTML = `<div class="slip">
+    <button type="button" class="slip-bar" id="payFlotanteBar" aria-expanded="${payFlotanteAbierto}">
+      <span style="font-size:18px;">🎟</span>
+      <span class="slip-badge ${tipo[1]}">${tipo[0]}</span>
+      <span class="slip-chip">${nPatas} ${nPatas>1 ? 'selecciones' : 'selección'}</span>
+      <span class="slip-total"><small>Mi boleto · cuota total</small><b>${total.toFixed(2)}</b></span>
+      <span style="color:#8e96ad;">${payFlotanteAbierto ? '▴' : '▾'}</span>
+    </button>
+    ${payFlotanteAbierto ? `<div class="slip-cuerpo">${eventos}
+      <div class="slip-foot">
+        ${repetido ? '<div class="slip-why" style="color:#ff8f8f;">⚠️ Tienes dos líneas del mismo partido: están relacionadas y la casa puede no dejarte combinarlas (usa Bet Builder).</div>' : ''}
+        <div class="slip-foot-btns"><button class="btn" id="payQuedarmeBtn" type="button">Quedarme con este boleto</button><button class="btn secondary" id="payResenaSelBtn" type="button">🎙 Reseña</button><button class="btn secondary" id="payVaciarBtn" type="button">Vaciar</button></div>
+      </div></div>` : ''}
+  </div>`;
+  payUltimaK = '';
+  document.getElementById('payFlotanteBar').onclick = ()=>{ payFlotanteAbierto = !payFlotanteAbierto; pintarBandejaPay(); };
   el.querySelectorAll('[data-pay-builder-sel]').forEach(b=>b.onclick=()=>payAlternativas(paySeleccion[+b.dataset.payBuilderSel], paySeleccion[+b.dataset.payBuilderSel].k, 'builder'));
   el.querySelectorAll('[data-pay-bajar-sel]').forEach(b=>b.onclick=()=>payAlternativas(paySeleccion[+b.dataset.payBajarSel], paySeleccion[+b.dataset.payBajarSel].k, 'bajar'));
   el.querySelectorAll('[data-pay-quitar]').forEach(b=>b.onclick=()=>{ paySeleccion.splice(+b.dataset.payQuitar,1); pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); });
-  document.getElementById('payVaciarBtn').onclick = ()=>{ paySeleccion = []; pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); };
+  const vac = document.getElementById('payVaciarBtn'); if(vac) vac.onclick = ()=>{ paySeleccion = []; pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); };
   const combi = ()=>({ cupo: payCupo, partido: `Combinada de ${paySeleccion.length}`, pick: 'Mi combinada', cuota: total.toFixed(2), selecciones: paySeleccion.map(s=>({ partido:s.partido, pick:s.pick, cuota:s.cuota, hora:s.hora })) });
-  document.getElementById('payQuedarmeBtn').onclick = ()=>tomarPay(combi());
-  document.getElementById('payResenaSelBtn').onclick = ()=>payResena(combi());
+  const q = document.getElementById('payQuedarmeBtn'); if(q) q.onclick = ()=>tomarPay(combi());
+  const rs = document.getElementById('payResenaSelBtn'); if(rs) rs.onclick = ()=>payResena(combi());
+  payResolverImagenes(el);
 }
 // ---- Bajar el riesgo de una línea: Pay propone alternativas más seguras (cuota menor) del mismo partido ----
 function payBajarDesde(ref, tipo){
@@ -6712,8 +6887,8 @@ async function payAlternativas(linea, claveOriginal, tipo){
     out.innerHTML = alts.map((a,n)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;"><div style="display:flex; gap:8px; align-items:center;"><div style="flex:1; font-weight:700;">${esc(a.pick)}</div><div style="font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(String(a.cuota))}${a.aprox ? ' <span style="font-size:11px; color:var(--muted);">aprox</span>' : ''}</div></div>${a.nota ? `<div style="font-size:12.5px; color:var(--muted); margin:4px 0 8px;">${esc(a.nota)}</div>` : ''}<button class="btn" type="button" data-pay-alt="${n}">Usar esta línea</button></div>`).join('') + `<div style="font-size:11.5px; color:var(--muted);">${esBuilder ? 'La cuota del Bet Builder es estimada: ármalo en Crear apuesta de Mas1x2 y usa la cuota exacta que te dé la casa.' : 'Verifica la cuota en tu casa: las "aprox" son estimadas.'}</div>`;
     out.querySelectorAll('[data-pay-alt]').forEach(b=>b.onclick=()=>{
       const a = alts[+b.dataset.payAlt];
-      const nueva = { partido: a.partido || linea.partido, pick: a.pick, cuota: a.cuota, hora: a.hora || linea.hora || '', cupo: linea.cupo || payCupo };
-      nueva.k = payClaveLinea(nueva);
+      const nueva = { partido: a.partido || linea.partido, pick: a.pick, cuota: a.cuota, hora: a.hora || linea.hora || '', liga: linea.liga || '', cupo: linea.cupo || payCupo };
+      nueva.k = payClaveLinea(nueva); payUltimaK = nueva.k; payFlotanteAbierto = true;
       const pos = paySeleccion.findIndex(s=>s.k === claveOriginal);
       if(pos >= 0) paySeleccion[pos] = nueva; else if(!paySeleccion.some(s=>s.k === nueva.k)) paySeleccion.push(nueva);
       closeModal(); pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
@@ -6956,16 +7131,7 @@ async function cargarPayAuto(){
 function cargarPayAutoPintar(){
   const el = document.getElementById('payAuto'); if(!el) return;
   if(!payAutoLista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">Todavía no hay picks de Pay. Revisa a las 9am y 3pm (hora de Ecuador).</div>'; return; }
-  el.innerHTML = payAutoLista.map((x,i)=>`
-    <div style="border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;">
-      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <strong>${esc(x.cupo||'Pick')} · ${esc(x.partido||'')}</strong><span style="color:var(--gold, #D4AF6A); font-weight:700;">@ ${esc(String(x.cuota||''))}</span>
-      </div>
-      <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
-      ${payLineasHTML(x, 'auto', i)}
-      <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn" data-pay-auto="${i}" type="button">La tomo</button><button class="btn secondary" data-pay-resenaauto="${i}" type="button">🎙 Reseña: ¿por qué?</button></div>
-    </div>`).join('');
+  el.innerHTML = payAutoLista.map((x,i)=>paySlipHTML(x, 'auto', i, `data-pay-auto="${i}"`, `data-pay-resenaauto="${i}"`)).join('');
   el.querySelectorAll('[data-pay-auto]').forEach(b=>b.onclick=()=>tomarPay(payAutoLista[+b.dataset.payAuto]));
   el.querySelectorAll('[data-pay-resenaauto]').forEach(b=>b.onclick=()=>payResena(payAutoLista[+b.dataset.payResenaauto]));
   el.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
@@ -6973,6 +7139,7 @@ function cargarPayAutoPintar(){
   el.querySelectorAll('[data-pay-builder]').forEach(b=>b.onclick=()=>payBajarDesde(b.dataset.payBuilder, 'builder'));
   el.querySelectorAll('[data-pay-excluir]').forEach(b=>b.onclick=()=>payExcluir(b.dataset.payExcluir));
   el.querySelectorAll('[data-pay-descartar]').forEach(b=>b.onclick=()=>payDescartar(b.dataset.payDescartar));
+  payResolverImagenes(el);
 }
 function payFechaElegida(){ const v = ((document.getElementById('payFecha')||{}).value || '').trim(); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : payHoyEC(); }
 async function generarPay(otras){
@@ -6998,16 +7165,7 @@ async function generarPay(otras){
 function pintarPay(){
   const out = document.getElementById('payOut'); if(!out || !paySugerencias.length) return;
   out.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;"><div style="font-size:11.5px; color:var(--muted);">Fuente: ${esc(paySugerencias.fuente||'')} · Verifica la cuota en tu casa antes de apostar.</div><button class="btn secondary" id="payOtrasBtn" type="button" title="Generar otras" style="flex:none; padding:8px 12px;">↻ Otras</button></div>` +
-    paySugerencias.map((x,i)=>`
-    <div style="border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;">
-      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <strong>${esc(x.partido||'')}</strong><span style="color:var(--gold, #D4AF6A); font-weight:700;">@ ${esc(String(x.cuota||''))}</span>
-      </div>
-      <div style="font-size:12.5px; color:var(--muted); margin:2px 0 6px;">${esc(x.liga||'')} · ${esc(x.hora||'')} · confianza ${esc(x.confianza||'-')}</div>
-      ${payLineasHTML(x, 'gen', i)}
-      <div style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">${esc(x.analisis||'')}</div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn" data-pay-tomar="${i}" type="button">La tomo</button><button class="btn secondary" data-pay-resena="${i}" type="button">🎙 Reseña: ¿por qué?</button></div>
-    </div>`).join('');
+    paySugerencias.map((x,i)=>paySlipHTML(x, 'gen', i, `data-pay-tomar="${i}"`, `data-pay-resena="${i}"`)).join('');
   out.querySelectorAll('[data-pay-tomar]').forEach(b=>b.onclick=()=>tomarPay(+b.dataset.payTomar));
   out.querySelectorAll('[data-pay-resena]').forEach(b=>b.onclick=()=>payResena(paySugerencias[+b.dataset.payResena]));
   out.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
@@ -7016,6 +7174,7 @@ function pintarPay(){
   out.querySelectorAll('[data-pay-excluir]').forEach(b=>b.onclick=()=>payExcluir(b.dataset.payExcluir));
   out.querySelectorAll('[data-pay-descartar]').forEach(b=>b.onclick=()=>payDescartar(b.dataset.payDescartar));
   const otras = document.getElementById('payOtrasBtn'); if(otras) otras.onclick = ()=>generarPay(true);
+  payResolverImagenes(out);
 }
 // ---------- Pay: chat por voz y texto ----------
 let payChatMsgs = [], payChatBusy = false, payRec = null, payRecChunks = [], payStream = null, payAudioEl = null, payVozOn = true;
@@ -7174,6 +7333,7 @@ function tomarPay(i){
 /* ---------- ROUTER ---------- */
 function render(){
   if(!state.loaded) return;
+  if(state.view !== 'factory'){ const fl = document.getElementById('payFlotante'); if(fl) fl.style.display = 'none'; }
   document.getElementById('syncStatus').style.display = state.syncError ? 'block' : 'none';
   updateNavBadges();
   if(state.view==='dashboard') renderDashboard();
