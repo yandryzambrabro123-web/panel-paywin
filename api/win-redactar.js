@@ -445,6 +445,77 @@ Responde SOLO con un arreglo JSON: [{"pick":"texto claro de la línea","cuota":1
 }
 
 const descartadas0 = (b) => (Array.isArray(b.descartadas) ? b.descartadas : []).slice(0, 60).map((x) => String(x).slice(0, 120)).join(' ; ');
+
+// ---- Armado local de combinadas con las cuotas reales (sin IA): da variedad y evita que Pay se quede sin picks ----
+function limitesPierna(cupo) {
+  const c = String(cupo || '').toLowerCase();
+  if (/stake|regalito/.test(c)) return [1.10, 1.40];
+  if (/vip/.test(c)) return [1.15, 1.45];
+  return [1.20, 1.60];
+}
+function armarLocal(datos, o) {
+  const { cupo, min, max, cantidad, yaUsada, partidosUsados } = o;
+  const [lmin, lmax] = limitesPierna(cupo);
+  const ahora = Date.now();
+  const horaEC = (iso) => new Date(Date.parse(iso) - 5 * 3600e3).toISOString().slice(11, 16);
+  const eventos = [];
+  for (const fila of datos || []) {
+    const p = String(fila).split(' | ');
+    if (p.length < 4 || !/^[a-z]+_/.test(p[0])) continue;
+    const [liga, partido, inicio] = p;
+    const t = Date.parse(inicio);
+    if (!(t > ahora + 5 * 60e3)) continue;
+    const deporte = /basketball/.test(liga) ? 'baloncesto' : /americanfootball/.test(liga) ? 'nfl' : /baseball/.test(liga) ? 'beisbol' : /icehockey/.test(liga) ? 'hockey' : /tennis/.test(liga) ? 'tenis' : /^mma/.test(liga) ? 'mma' : 'futbol';
+    const unidad = deporte === 'baloncesto' || deporte === 'nfl' ? 'puntos' : deporte === 'beisbol' ? 'carreras' : deporte === 'tenis' ? 'juegos' : 'goles';
+    const legs = [];
+    for (const item of p.slice(3).join(' | ').split(' ; ')) {
+      const m = item.match(/^([a-z0-9_]+)\|(.+?):\s*([\d.]+)$/);
+      if (!m) continue;
+      const mk = m[1], nombre = m[2], cuota = Number(m[3]);
+      if (!(cuota >= lmin && cuota <= lmax)) continue;
+      let pick = '';
+      if (mk === 'h2h') { if (/^draw$/i.test(nombre)) continue; pick = `Gana ${nombre}`; }
+      else if (mk === 'totals') { const t2 = nombre.match(/^(Over|Under)\s+([\d.]+)/i); if (!t2) continue; pick = `${/over/i.test(t2[1]) ? 'Más' : 'Menos'} de ${t2[2]} ${unidad}`; }
+      else if (mk === 'double_chance') pick = `Doble oportunidad: ${nombre.replace(/\s+or\s+/i, ' o ').replace(/Draw/i, 'empate')}`;
+      else if (mk === 'btts') pick = /yes/i.test(nombre) ? 'Ambos equipos marcan: Sí' : 'Ambos equipos marcan: No';
+      else continue;
+      const leg = { deporte, partido, pick, cuota, hora: horaEC(inicio) };
+      if (yaUsada && yaUsada(leg)) continue;
+      legs.push(leg);
+    }
+    if (legs.length) eventos.push({ liga, partido, inicio, t, legs });
+  }
+  const azar = (a) => { const r = a.slice(); for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; } return r; };
+  const libres = () => eventos.filter((e) => !partidosUsados.has(e.partido));
+  const nMin = Math.max(1, Math.ceil(Math.log(min) / Math.log(lmax) - 1e-9));
+  const nMax = Math.min(6, Math.max(nMin, Math.floor(Math.log(max) / Math.log(lmin) + 1e-9)));
+  const salida = [];
+  for (let intento = 0; intento < 4000 && salida.length < cantidad; intento++) {
+    const pool = azar(libres().filter((e) => !salida.some((c) => c.partidosSet.has(e.partido))));
+    const n = nMin + (nMax > nMin && Math.random() < 0.4 ? 1 : 0);
+    if (pool.length < n) break;
+    const elegidos = [];
+    let prod = 1;
+    for (let i = 0; i < n - 1; i++) { const leg = azar(pool[i].legs)[0]; elegidos.push(leg); prod *= leg.cuota; }
+    const objetivoMin = min / prod, objetivoMax = max / prod;
+    let ultimo = null;
+    for (const e of pool.slice(n - 1)) { const ok = azar(e.legs).find((l) => l.cuota >= objetivoMin - 0.0001 && l.cuota <= objetivoMax + 0.0001); if (ok) { ultimo = ok; break; } }
+    if (!ultimo) continue;
+    elegidos.push(ultimo); prod *= ultimo.cuota;
+    elegidos.sort((a, b) => a.hora.localeCompare(b.hora));
+    const ligas = [...new Set(elegidos.map((l) => { const ev = eventos.find((e) => e.partido === l.partido); return ev ? String(ev.liga).replace(/^[a-z]+_/, '').replace(/_/g, ' ') : ''; }).filter(Boolean))];
+    salida.push({
+      partido: `Combinada de ${elegidos.length}`, liga: ligas.join(' + '), hora: elegidos[0].hora, pick: elegidos.map((l) => `${l.partido}: ${l.pick}`).join(' + '),
+      cuota: Number(prod.toFixed(2)), confianza: 'media',
+      analisis: `Armada con las cuotas reales de hoy: cada selección entre ${lmin.toFixed(2)} y ${lmax.toFixed(2)}, todas en partidos distintos. Revisa alineaciones y noticias antes de apostar.`,
+      selecciones: elegidos.map((l) => ({ deporte: l.deporte, partido: l.partido, pick: l.pick, cuota: Number(l.cuota.toFixed(2)), hora: l.hora })),
+      local: true, partidosSet: new Set(elegidos.map((l) => l.partido))
+    });
+  }
+  salida.forEach((c) => { c.partidosSet.forEach((x) => partidosUsados.add(x)); delete c.partidosSet; });
+  return salida;
+}
+
 async function modoPay(apiKey, body, res) {
   const T0 = Date.now(); const restante = () => 55000 - (Date.now() - T0); // Vercel corta a los 60 s
   const cuotaMin = Number(body.cuotaMin) || 1.8, cuotaMax = Number(body.cuotaMax) || 2;
@@ -489,11 +560,11 @@ Reglas:
   // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
   if (!conDatos || body.web) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }];
   const ia = await llamarPay(apiKey, payload, Math.max(15000, Math.min(35000, restante() - 6000)));
-  if (!ia.ok) {
+  if (!ia.ok && !(conDatos && !lote)) {
     res.status(502).json({ error: `Pay no pudo analizar ahora (servicio de IA, código ${ia.status}). ${ia.detalle || ''}` });
     return;
   }
-  let texto = ia.texto;
+  let texto = ia.ok ? (ia.texto || '') : '';
   if (!texto && payload.tools && conDatos && restante() > 14000) { // se quedó buscando en la web: se reintenta solo con las cuotas reales
     delete payload.tools;
     const ia2 = await llamarPay(apiKey, payload, Math.min(25000, restante() - 3000));
@@ -542,21 +613,17 @@ Reglas:
     sinRepetir.forEach((x) => { const pr = productoDe(x); if (pr) x.cuota = Number(pr.toFixed(2)); });
     const rangoDe = (x) => { const c = lote && lote.find((q) => String(q.cupo) === String(x.cupo)); return c ? [Number(c.min), Number(c.max)] : [cuotaMin, cuotaMax]; };
     const enRango = sinRepetir.filter((x) => { const [mn, mx] = rangoDe(x); return Number(x.cuota) >= mn - 0.03 && Number(x.cuota) <= mx + 0.03; });
-    return { todas: sugerencias, validas: enRango };
+    return { todas: sugerencias, validas: enRango, yaUsada, palabrasDe, partidosVistos };
   };
-  let ev = evaluar(texto);
-  // ESTRICTO: solo se devuelven combinadas dentro del rango; si faltan, se le pide a Pay completar (hasta 2 reintentos)
-  for (let ronda = 0; ronda < 2 && !lote && ev.validas.length < cantidad && conDatos && restante() > 14000; ronda++) {
-    const faltan = cantidad - ev.validas.length;
-    const prev = ev.todas.map((x) => `${String(x.pick).slice(0, 80)} => cuota total real ${x.cuota}`).join(' | ');
-    const msg2 = `Tu respuesta anterior NO cumplió: necesito ${cantidad} combinadas con cuota total (producto de las cuotas) ENTRE ${cuotaMin} y ${cuotaMax}, y solo ${ev.validas.length} cumplen. ${prev ? 'Resultado de tus combinadas (cuota real = producto): ' + prev + '. ' : ''}Dame AHORA ${faltan} combinada(s) NUEVAS (partidos distintos a los ya usados) cuyo producto de cuotas quede dentro de ${cuotaMin}-${cuotaMax}: suma o quita selecciones hasta lograrlo, usando solo líneas de los datos reales. Mismo formato JSON dentro de <json></json>.`;
-    const p2 = { ...payload, messages: [...payload.messages, { role: 'assistant', content: texto }, { role: 'user', content: msg2 }] };
-    delete p2.tools;
-    const ia3 = await llamarPay(apiKey, p2, Math.min(30000, restante() - 3000));
-    if (!ia3.ok || !ia3.texto) break;
-    const ev2 = evaluar(ia3.texto);
-    const vistas = new Set(ev.validas.map((x) => norm(x.partido + x.pick)));
-    ev = { todas: [...ev.todas, ...ev2.todas], validas: [...ev.validas, ...ev2.validas.filter((x) => !vistas.has(norm(x.partido + x.pick)))] };
+  let ev = evaluar(texto || '');
+  // Si faltan combinadas dentro del rango, se completan con cuotas reales (sin esperar más a la IA): da variedad y no se queda sin picks
+  let completadas = 0;
+  if (!lote && ev.validas.length < cantidad && conDatos) {
+    const usadosPartidos = new Set();
+    ev.validas.forEach((x) => (x.selecciones || []).forEach((l) => l && l.partido && usadosPartidos.add(l.partido)));
+    const nuevas = armarLocal(datos, { cupo, min: cuotaMin, max: cuotaMax, cantidad: cantidad - ev.validas.length, yaUsada: ev.yaUsada, partidosUsados: usadosPartidos });
+    completadas = nuevas.length;
+    ev = { ...ev, todas: [...ev.todas, ...nuevas], validas: [...ev.validas, ...nuevas] };
   }
   const hubo = ev.todas.length;
   const faltaron = !lote && ev.validas.length < cantidad ? cantidad - ev.validas.length : 0;
@@ -564,11 +631,11 @@ Reglas:
   if (hubo && !sugerencias.length && !lote) { res.status(502).json({ error: `Pay no logró armar combinadas dentro de tu rango (${cuotaMin} a ${cuotaMax}) con partidos que no hayas usado. Prueba otra fecha, amplía un poco el rango o toca generar de nuevo.` }); return; }
   if (!sugerencias.length && lote) { res.status(200).json({ sugerencias: [], fuente: 'sin picks claros', razon: texto.trim().slice(0, 400) }); return; }
   if (!sugerencias.length) {
-    console.error('Pay sin picks. Respuesta:', texto.slice(0, 600));
-    res.status(502).json({ error: 'Pay no armó una combinada en ese rango. Lo que dijo: ' + (texto.replace(/\s+/g, ' ').trim().slice(0, 220) || `(sin respuesta; fuente: ${conDatos ? 'cuotas reales, ' + datos.length + ' eventos' : 'solo web, sin ODDS_API_KEY'}; fin: ${ia.stop || '-'})`) });
+    console.error('Pay sin picks. Respuesta:', String(texto || '').slice(0, 600));
+    res.status(502).json({ error: 'Pay no armó una combinada en ese rango. Lo que dijo: ' + (String(texto || '').replace(/\s+/g, ' ').trim().slice(0, 220) || `(sin respuesta; fuente: ${conDatos ? 'cuotas reales, ' + datos.length + ' eventos' : 'solo web, sin ODDS_API_KEY'}; fin: ${ia.stop || '-'})`) });
     return;
   }
-  res.status(200).json({ sugerencias, aviso: faltaron ? `Pedías ${cantidad} pero solo pude armar ${sugerencias.length} dentro del rango ${cuotaMin} a ${cuotaMax} sin repetir partidos.` : '', fuente: conDatos ? 'cuotas reales (The Odds API) + búsqueda web para otros deportes' : 'búsqueda en la web (cuotas aproximadas)' });
+  res.status(200).json({ sugerencias, aviso: faltaron ? `Pedías ${cantidad} pero solo pude armar ${sugerencias.length} dentro del rango ${cuotaMin} a ${cuotaMax} sin repetir partidos.` : (completadas ? `Pay armó ${completadas} con las cuotas reales de hoy (sin análisis largo de la IA). Revísalas antes de apostar.` : ''), fuente: conDatos ? 'cuotas reales (The Odds API) + búsqueda web para otros deportes' : 'búsqueda en la web (cuotas aproximadas)' });
 }
 
 module.exports = async function handler(req, res) {
@@ -720,3 +787,4 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
     res.status(500).json({ error: 'No se pudo redactar el texto.', caption: '' });
   }
 };
+module.exports.armarLocal = armarLocal;
