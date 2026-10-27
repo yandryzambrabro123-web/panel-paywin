@@ -6581,6 +6581,14 @@ function renderFactory(){
           <div class="field" style="margin:0; width:80px;"><label>Cantidad</label><input id="payCant" inputmode="numeric" value="3"></div>
           <div class="field" style="margin:0; flex:1; min-width:160px;"><label>Indicación (opcional)</label><input id="payNota" placeholder="Ej: solo fútbol, evitar combinadas"></div>
         </div>
+        <div class="field" style="margin:0 0 12px;"><label>Fecha de los partidos</label>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn secondary" type="button" data-pay-dia="0" style="padding:6px 12px; font-size:12.5px;">Hoy</button>
+            <button class="btn secondary" type="button" data-pay-dia="1" style="padding:6px 12px; font-size:12.5px;">Mañana</button>
+            <input type="date" id="payFecha" style="flex:1; min-width:140px;">
+          </div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Pay arma las apuestas con los partidos de ese día (hasta 6 días adelante).</div>
+        </div>
         <label style="display:flex; gap:8px; align-items:center; font-size:12.5px; margin:0 0 12px; cursor:pointer;"><input type="checkbox" id="payWebChk"> Buscar también líneas de jugadores en la web (más lento, cuotas aproximadas)</label>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn" id="payGenBtn" type="button">Generar apuesta ahora</button>
@@ -6863,6 +6871,14 @@ const PAY_CUPOS = {
 let payCupo = 'VIP';
 let paySugerencias = [];
 function initPayPanel(){
+  const fIn = document.getElementById('payFecha');
+  if(fIn){
+    const sumar = (n)=> new Date(Date.now() - 5*3600e3 + n*86400e3).toISOString().slice(0,10);
+    fIn.value = payHoyEC(); fIn.min = payHoyEC(); fIn.max = sumar(6);
+    const marcar = ()=> document.querySelectorAll('[data-pay-dia]').forEach(b=>{ b.className = 'btn ' + (sumar(+b.dataset.payDia) === fIn.value ? '' : 'secondary'); b.style.padding = '6px 12px'; b.style.fontSize = '12.5px'; });
+    document.querySelectorAll('[data-pay-dia]').forEach(b=>b.onclick=()=>{ fIn.value = sumar(+b.dataset.payDia); marcar(); });
+    fIn.onchange = marcar; marcar();
+  }
   const setCupo = (k)=>{
     payCupo = k;
     document.getElementById('payMin').value = PAY_CUPOS[k].min.toFixed(2);
@@ -6918,6 +6934,7 @@ function cargarPayAutoPintar(){
   el.querySelectorAll('[data-pay-excluir]').forEach(b=>b.onclick=()=>payExcluir(b.dataset.payExcluir));
   el.querySelectorAll('[data-pay-descartar]').forEach(b=>b.onclick=()=>payDescartar(b.dataset.payDescartar));
 }
+function payFechaElegida(){ const v = ((document.getElementById('payFecha')||{}).value || '').trim(); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : payHoyEC(); }
 async function generarPay(otras){
   const out = document.getElementById('payOut'), btn = document.getElementById('payGenBtn');
   btn.disabled = true; btn.textContent = 'Pay está analizando…';
@@ -6926,7 +6943,7 @@ async function generarPay(otras){
     const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       modo:'pay', cupo: payCupo, cuotaMin: document.getElementById('payMin').value, cuotaMax: document.getElementById('payMax').value,
       cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value,
-      evitar: payEvitar(otras === true), descartadas: payDescartadasHoy.slice(-40), historial: payHistorial(), perdidas: payPerdidasYResumen().perdidas, resumen: payPerdidasYResumen().resumen, web: !!(document.getElementById('payWebChk')||{}).checked
+      fecha: payFechaElegida(), evitar: payEvitar(otras === true), descartadas: payDescartadasHoy.slice(-40), historial: payHistorial(), perdidas: payPerdidasYResumen().perdidas, resumen: payPerdidasYResumen().resumen, web: !!(document.getElementById('payWebChk')||{}).checked
     }) });
     const raw = await r.text();
     let d = {}; try{ d = JSON.parse(raw); }catch(e){}

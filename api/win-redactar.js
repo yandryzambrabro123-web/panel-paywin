@@ -82,6 +82,7 @@ const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 16;
 
 // Caché de 3 horas: cada consulta gasta créditos del plan (500 al mes en el gratis).
 let cacheCuotas = { t: 0, datos: null };
+const cachePorFecha = {}; // cuotas por día elegido (YYYY-MM-DD, hora de Ecuador)
 // Líneas de jugadores (remates, tiros al arco, asistencias, rebotes, triples, puntos). Gastan MUCHOS créditos
 // (mercados x partidos), así que solo se piden si en Vercel pones ODDS_PROPS=1 (plan de pago recomendado).
 async function lineasJugadores(key, eventos, limiteMs) {
@@ -111,10 +112,12 @@ async function lineasJugadores(key, eventos, limiteMs) {
   return filas;
 }
 
-async function cuotasReales() {
+async function cuotasReales(fecha) {
   const key = process.env.ODDS_API_KEY;
   if (!key) return null;
-  if (cacheCuotas.datos && Date.now() - cacheCuotas.t < 3 * 3600 * 1000) return cacheCuotas.datos;
+  const fechaOk = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : '';
+  if (fechaOk) { const c = cachePorFecha[fechaOk]; if (c && Date.now() - c.t < 3 * 3600 * 1000) return c.datos; }
+  else if (cacheCuotas.datos && Date.now() - cacheCuotas.t < 3 * 3600 * 1000) return cacheCuotas.datos;
   // Lista de deportes activos hoy (esta consulta no gasta créditos)
   let ligas = [];
   if (process.env.ODDS_SPORTS) ligas = process.env.ODDS_SPORTS.split(',').map((x) => x.trim()).filter(Boolean);
@@ -133,7 +136,9 @@ async function cuotasReales() {
     if (!ligas.length) ligas = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'basketball_nba'];
   }
   ligas = ligas.slice(0, PAY_MAX_LIGAS);
-  const limite = Date.now() + 40 * 3600 * 1000; // solo partidos de las próximas 40 horas
+  // Con fecha elegida: solo los partidos de ese día (hora de Ecuador) que no han empezado; sin fecha: próximas 40 horas
+  const desde = fechaOk ? Math.max(Date.now(), Date.parse(fechaOk + 'T00:00:00-05:00')) : 0;
+  const limite = fechaOk ? Date.parse(fechaOk + 'T23:59:59-05:00') : Date.now() + 40 * 3600 * 1000;
   const eventos = [];
   const evs = [];
   for (const liga of ligas) {
@@ -144,7 +149,7 @@ async function cuotasReales() {
       const lista = await r.json();
       let porLiga = 0;
       for (const e of lista) {
-        if (Date.parse(e.commence_time) > limite) continue;
+        if (Date.parse(e.commence_time) > limite || Date.parse(e.commence_time) < desde) continue;
         const mk = {};
         for (const b of e.bookmakers || []) for (const m of b.markets || []) for (const o of m.outcomes || []) {
           const k = `${m.key}|${o.name}${o.point != null ? ' ' + o.point : ''}`;
@@ -159,8 +164,9 @@ async function cuotasReales() {
   }
   let extra = [];
   if (process.env.ODDS_PROPS === '1') { try { extra = await lineasJugadores(key, evs, limite); } catch (e) { extra = []; } }
-  cacheCuotas = { t: Date.now(), datos: [...eventos.slice(0, 220), ...extra] };
-  return cacheCuotas.datos;
+  const resultado = [...eventos.slice(0, 220), ...extra];
+  if (fechaOk) cachePorFecha[fechaOk] = { t: Date.now(), datos: resultado }; else cacheCuotas = { t: Date.now(), datos: resultado };
+  return resultado;
 }
 
 // Llama a Anthropic (con búsqueda web opcional) y sigue si el turno se pausa; respeta un tiempo máximo.
@@ -324,9 +330,12 @@ async function modoPay(apiKey, body, res) {
   const lote = Array.isArray(body.cupos) && body.cupos.length ? body.cupos.slice(0, 6) : null; // revisión automática: una combinada por cupo
   const cantidad = lote ? lote.length : Math.max(1, Math.min(5, Number(body.cantidad) || 3));
   const cupo = String(body.cupo || 'apuesta').slice(0, 40);
-  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  const hoyReal = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  const maxFecha = new Date(Date.now() - 5 * 3600e3 + 6 * 86400e3).toISOString().slice(0, 10);
+  const hoy = /^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || '')) && body.fecha >= hoyReal && body.fecha <= maxFecha ? String(body.fecha) : hoyReal;
+  const esOtroDia = hoy !== hoyReal;
   let datos = null;
-  try { datos = await cuotasReales(); } catch (e) { datos = null; }
+  try { datos = await cuotasReales(esOtroDia ? hoy : ''); } catch (e) { datos = null; }
   // Solo partidos de HOY (fecha de Ecuador) que todavía no han empezado
   const ahoraMs = Date.now();
   const finDiaMs = Date.parse(hoy + 'T23:59:59-05:00');
@@ -334,11 +343,11 @@ async function modoPay(apiKey, body, res) {
   const conDatos = datos && datos.length;
   if (datos && !datos.length && process.env.ODDS_API_KEY) {
     if (lote) { res.status(200).json({ sugerencias: [], fuente: 'sin partidos de hoy', razon: 'No quedan partidos de hoy por empezar en las ligas activas.' }); return; }
-    res.status(502).json({ error: 'Ya no quedan partidos de hoy por empezar en las ligas que reviso. Pay solo arma apuestas del día.' });
+    res.status(502).json({ error: esOtroDia ? `No encontré partidos del ${hoy} en las ligas que reviso (a veces las casas todavía no los publican). Prueba otra fecha o activa la búsqueda en la web.` : 'Ya no quedan partidos de hoy por empezar en las ligas que reviso. Prueba con la fecha de mañana.' });
     return;
   }
   const historial = [...(Array.isArray(body.historial) ? body.historial.slice(0, 30).map((x) => String(x).slice(0, 140)) : []), ...PAY_SEMILLA];
-  const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). ${PAY_PERFIL}
+  const system = `Eres Pay, el analista deportivo de la agencia de pronósticos PayWin (Ecuador). Hoy es ${hoyReal} (hora de Ecuador). ${esOtroDia ? 'Los partidos que armas son del día ' + hoy + ' (NO de hoy).' : ''} ${PAY_PERFIL}
 ${PAY_CONOCIMIENTO}
 Tu trabajo es armar apuestas de BAJO RIESGO para un cupo concreto, con análisis breve y honesto. El dueño revisa y analiza cada pick antes de apostar.
 ${lote ? 'Cada cupo tiene su NIVEL DE SEGURIDAD, que manda sobre el resto de reglas de cuota por selección:\n' + lote.map((c) => nivelPay(c.cupo)).join('\n') : nivelPay(cupo)}
@@ -347,11 +356,11 @@ Deportes y mercados que puedes usar, todos: fútbol (goles, corners, tarjetas, r
 Reglas:
 - VARIEDAD DE EVENTOS: cada combinada debe usar PARTIDOS DISTINTOS a los de las otras combinadas de esta respuesta (ningún partido aparece en dos combinadas) y distintos a los ya usados. Reparte entre deportes y ligas. Incluye al menos una combinada con una línea Bet Builder (\"Crear apuesta:\") cuando haya un partido adecuado.
 - NINGUNA línea (partido + selección) puede repetirse con las que el jefe ya usó hoy (te las doy en la indicación) ni entre combinadas distintas.
-- Solo partidos de HOY (${hoy}, hora de Ecuador) que todavía no hayan empezado; NUNCA de mañana ni de otro día. Deben existir de verdad (en los datos${conDatos ? ' que te doy o' : ''} que encuentres buscando en la web). NUNCA inventes partidos, horarios, líneas ni cuotas. Si no confirmas una cuota, di que es aproximada.
+- Solo partidos del día ${hoy} (hora de Ecuador) que todavía no hayan empezado; NUNCA de otro día. Deben existir de verdad (en los datos${conDatos ? ' que te doy o' : ''} que encuentres buscando en la web). NUNCA inventes partidos, horarios, líneas ni cuotas. Si no confirmas una cuota, di que es aproximada.
 - Baja el riesgo: prefiere líneas con margen amplio (por ejemplo un total que el equipo o jugador supera con holgura en sus últimos partidos), evita partidos con bajas importantes, rotaciones, finales parejas o información dudosa. Si una selección no te convence, no la pongas.
 - Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
 - Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de OBJETOS, uno por línea, cada uno con: partido ("Local vs Visitante"), pick (la selección clara, ej. "Más de 215.5 puntos" o "Gana Sevilla"), cuota (número) y hora (hora de Ecuador))${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
-  const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Todos los partidos deben ser de HOY. Dame ${cantidad} combinada(s) distintas.`}${Array.isArray(body.evitar) && body.evitar.length ? '\nLÍNEAS YA USADAS HOY, prohibido repetirlas (ni el mismo partido con la misma selección; busca otras): ' + body.evitar.slice(0, 100).map((x) => String(x).slice(0, 120)).join(' ; ') : ''}${descartadas0(body) ? '\nLÍNEAS QUE EL JEFE DESCARTÓ porque no le gustan (no las pongas, y evita líneas del mismo tipo y mismo estilo de riesgo): ' + descartadas0(body) : ''}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${body.resumen ? '\nEstadística real del jefe: ' + String(body.resumen).slice(0, 300) + '. Si el acierto es bajo, sé MÁS conservador de lo normal.' : ''}${Array.isArray(body.perdidas) && body.perdidas.length ? '\nApuestas que el jefe PERDIÓ (analiza el patrón: mercados, cuotas y tipos de línea que le fallan, y EVÍTALOS): ' + body.perdidas.slice(0, 40).map((x) => String(x).slice(0, 140)).join(' ; ') : ''}${historial.length ? '\nApuestas que el jefe ya GANÓ antes (aprende qué tipo de líneas y cuotas le funcionan; NO las repitas tal cual): ' + historial.join(' ; ') : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web SOLO los partidos de hoy que aún no empiezan, con sus cuotas aproximadas.'}`;
+  const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Todos los partidos deben ser del día ${hoy}. Dame ${cantidad} combinada(s) distintas.`}${Array.isArray(body.evitar) && body.evitar.length ? '\nLÍNEAS YA USADAS HOY, prohibido repetirlas (ni el mismo partido con la misma selección; busca otras): ' + body.evitar.slice(0, 100).map((x) => String(x).slice(0, 120)).join(' ; ') : ''}${descartadas0(body) ? '\nLÍNEAS QUE EL JEFE DESCARTÓ porque no le gustan (no las pongas, y evita líneas del mismo tipo y mismo estilo de riesgo): ' + descartadas0(body) : ''}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${body.resumen ? '\nEstadística real del jefe: ' + String(body.resumen).slice(0, 300) + '. Si el acierto es bajo, sé MÁS conservador de lo normal.' : ''}${Array.isArray(body.perdidas) && body.perdidas.length ? '\nApuestas que el jefe PERDIÓ (analiza el patrón: mercados, cuotas y tipos de línea que le fallan, y EVÍTALOS): ' + body.perdidas.slice(0, 40).map((x) => String(x).slice(0, 140)).join(' ; ') : ''}${historial.length ? '\nApuestas que el jefe ya GANÓ antes (aprende qué tipo de líneas y cuotas le funcionan; NO las repitas tal cual): ' + historial.join(' ; ') : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web SOLO los partidos del día ${hoy} que aún no empiezan, con sus cuotas aproximadas.'}`;
   const payload = { model: 'claude-sonnet-5', max_tokens: 6000, system, messages: [{ role: 'user', content: userMsg }] };
   // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
   if (!conDatos || body.web) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }];
