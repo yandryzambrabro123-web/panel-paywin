@@ -7513,11 +7513,11 @@ async function generarPay(otras){
   btn.disabled = true; btn.textContent = 'Pay está analizando…';
   out.innerHTML = '<div style="color:var(--muted); font-size:13px;">Revisando partidos y cuotas, toma unos segundos.</div>';
   try{
-    const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       modo:'pay', cupo: payCupo, cuotaMin: document.getElementById('payMin').value, cuotaMax: document.getElementById('payMax').value,
       cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value,
       fecha: payFechaElegida(), mercados: [...payMercadosSel], vistos: payVistosSesion.slice(-100), evitar: payEvitar(otras === true), descartadas: payDescartadasHoy.slice(-40), historial: payHistorial(), perdidas: payPerdidasYResumen().perdidas, resumen: payPerdidasYResumen().resumen, web: !!(document.getElementById('payWebChk')||{}).checked
-    }) });
+    }) }), 75000, 'Pay tardó demasiado en responder. Toca Generar de nuevo (a veces ayuda bajar la cantidad o cambiar el rango).');
     const raw = await r.text();
     let d = {}; try{ d = JSON.parse(raw); }catch(e){}
     if(!r.ok) throw new Error(d.error || `Pay no pudo responder (código ${r.status}${r.status===504||r.status===500 ? ', se agotó el tiempo' : ''}). ${d.error ? '' : raw.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)}`);

@@ -446,6 +446,7 @@ Responde SOLO con un arreglo JSON: [{"pick":"texto claro de la línea","cuota":1
 
 const descartadas0 = (b) => (Array.isArray(b.descartadas) ? b.descartadas : []).slice(0, 60).map((x) => String(x).slice(0, 120)).join(' ; ');
 async function modoPay(apiKey, body, res) {
+  const T0 = Date.now(); const restante = () => 55000 - (Date.now() - T0); // Vercel corta a los 60 s
   const cuotaMin = Number(body.cuotaMin) || 1.8, cuotaMax = Number(body.cuotaMax) || 2;
   const lote = Array.isArray(body.cupos) && body.cupos.length ? body.cupos.slice(0, 6) : null; // revisión automática: una combinada por cupo
   const cantidad = lote ? lote.length : Math.max(1, Math.min(5, Number(body.cantidad) || 3));
@@ -487,15 +488,15 @@ Reglas:
   const payload = { model: 'claude-sonnet-5', max_tokens: 6000, system, messages: [{ role: 'user', content: userMsg }] };
   // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
   if (!conDatos || body.web) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }];
-  const ia = await llamarPay(apiKey, payload, 35000);
+  const ia = await llamarPay(apiKey, payload, Math.max(15000, Math.min(35000, restante() - 6000)));
   if (!ia.ok) {
     res.status(502).json({ error: `Pay no pudo analizar ahora (servicio de IA, código ${ia.status}). ${ia.detalle || ''}` });
     return;
   }
   let texto = ia.texto;
-  if (!texto && payload.tools && conDatos) { // se quedó buscando en la web: se reintenta solo con las cuotas reales
+  if (!texto && payload.tools && conDatos && restante() > 14000) { // se quedó buscando en la web: se reintenta solo con las cuotas reales
     delete payload.tools;
-    const ia2 = await llamarPay(apiKey, payload, 25000);
+    const ia2 = await llamarPay(apiKey, payload, Math.min(25000, restante() - 3000));
     if (ia2.ok) texto = ia2.texto;
   }
   const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
@@ -545,13 +546,13 @@ Reglas:
   };
   let ev = evaluar(texto);
   // ESTRICTO: solo se devuelven combinadas dentro del rango; si faltan, se le pide a Pay completar (hasta 2 reintentos)
-  for (let ronda = 0; ronda < 2 && !lote && ev.validas.length < cantidad && conDatos; ronda++) {
+  for (let ronda = 0; ronda < 2 && !lote && ev.validas.length < cantidad && conDatos && restante() > 14000; ronda++) {
     const faltan = cantidad - ev.validas.length;
     const prev = ev.todas.map((x) => `${String(x.pick).slice(0, 80)} => cuota total real ${x.cuota}`).join(' | ');
     const msg2 = `Tu respuesta anterior NO cumplió: necesito ${cantidad} combinadas con cuota total (producto de las cuotas) ENTRE ${cuotaMin} y ${cuotaMax}, y solo ${ev.validas.length} cumplen. ${prev ? 'Resultado de tus combinadas (cuota real = producto): ' + prev + '. ' : ''}Dame AHORA ${faltan} combinada(s) NUEVAS (partidos distintos a los ya usados) cuyo producto de cuotas quede dentro de ${cuotaMin}-${cuotaMax}: suma o quita selecciones hasta lograrlo, usando solo líneas de los datos reales. Mismo formato JSON dentro de <json></json>.`;
     const p2 = { ...payload, messages: [...payload.messages, { role: 'assistant', content: texto }, { role: 'user', content: msg2 }] };
     delete p2.tools;
-    const ia3 = await llamarPay(apiKey, p2, 30000);
+    const ia3 = await llamarPay(apiKey, p2, Math.min(30000, restante() - 3000));
     if (!ia3.ok || !ia3.texto) break;
     const ev2 = evaluar(ia3.texto);
     const vistas = new Set(ev.validas.map((x) => norm(x.partido + x.pick)));
