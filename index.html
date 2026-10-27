@@ -6665,7 +6665,7 @@ function renderFactory(){
 
 // Una selección puede venir como objeto {partido,pick,cuota,hora} o como texto "Partido: pick @cuota".
 function payNormSel(s){
-  if(s && typeof s === 'object') return { partido: s.partido||'', pick: s.pick||s.seleccion||'', cuota: s.cuota||'', hora: s.hora||'' };
+  if(s && typeof s === 'object') return { partido: s.partido||'', pick: s.pick||s.seleccion||'', cuota: s.cuota||'', hora: s.hora||'', deporte: s.deporte||'' };
   const t = String(s||'');
   const m = t.match(/^(.*?):\s*(.*?)\s*@\s*([\d.,]+)\s*$/);
   return m ? { partido:m[1], pick:m[2], cuota:m[3], hora:'' } : { partido:'', pick:t, cuota:'', hora:'' };
@@ -6726,7 +6726,9 @@ function payPatas(pick){
   return { bb, patas: (partes.length ? partes : [t]).map(payClasificarPata) };
 }
 const payEquiposDe = (partido)=> String(partido||'').split(/\s+(?:vs\.?|v|-)\s+/i).map(s=>s.trim()).filter(Boolean).slice(0,2);
-function payDeporteEmoji(liga, partido, pick){
+function payDeporteEmoji(liga, partido, pick, deporte){
+  const dp = String(deporte||'').toLowerCase();
+  if(dp){ if(/balonc|basket|nba/.test(dp)) return '🏀'; if(/tenis de mesa|ping/.test(dp)) return '🏓'; if(/tenis|tennis/.test(dp)) return '🎾'; if(/mma|ufc/.test(dp)) return '🥊'; if(/beis|base/.test(dp)) return '⚾'; if(/hockey|nhl/.test(dp)) return '🏒'; if(/nfl|americ/.test(dp)) return '🏈'; if(/esport|e-sport/.test(dp)) return '🎮'; if(/f[uú]tbol|soccer/.test(dp)) return '⚽'; }
   const pk = String(pick||'').toLowerCase();
   if(/esquina|corner|goles|ambos|remate|tarjeta|doble oportunidad/.test(pk)) return '⚽';
   if(/triple|rebote|asistencia|puntos/.test(pk)) return '🏀';
@@ -6740,13 +6742,14 @@ function payDeporteEmoji(liga, partido, pick){
   if(/nfl|americano/.test(t)) return '🏈';
   return '⚽';
 }
+const payProducto = (sels)=>{ const c = (sels||[]).map(s=>Number(String(s.cuota).replace(',','.'))); return c.length && c.every(n=>n>1) ? c.reduce((a,b)=>a*b,1) : 0; };
 const payFmtCuota = (v)=>{ const n = Number(String(v).replace(',','.')); return isFinite(n) && n > 0 ? n.toFixed(2) : String(v||''); };
 function payFechaCorta(){ const f = payFechaElegida().split('-'); return `${f[2]}/${f[1]}/${f[0]}`; }
 // Un bloque de evento del boleto: equipos con logo, cuota y la línea de puntos con cada pata
 function payEventoHTML(s, liga, acciones, nuevo){
   const { bb, patas } = payPatas(s.pick);
   const eq = payEquiposDe(s.partido);
-  const emoji = payDeporteEmoji(liga, s.partido, s.pick);
+  const emoji = payDeporteEmoji(liga, s.partido, s.pick, s.deporte);
   const teams = eq.length === 2
     ? `${payLogoHTML(eq[0],'eq')}<span>${esc(eq[0])}</span><span class="vs">vs</span><span>${esc(eq[1])}</span>${payLogoHTML(eq[1],'eq')}`
     : `<span>${esc(s.partido||'')}</span>`;
@@ -6780,7 +6783,7 @@ function paySlipHTML(x, origen, idx, tomarAttr, resenaAttr){
       <span class="slip-chip">${nPatas} ${nPatas>1 ? 'selecciones' : 'selección'}</span>
       <span class="slip-chip ${confCls}">confianza ${esc(x.confianza||'-')}</span>
       ${x.cupo ? `<span class="slip-chip">${esc(x.cupo)}</span>` : ''}
-      <span class="slip-total"><small>Cuota total</small><b>${esc(payFmtCuota(x.cuota))}</b></span>
+      <span class="slip-total"><small>Cuota total</small><b>${esc(payFmtCuota(payProducto(sels) || x.cuota))}</b></span>
     </div>
     ${cuerpo}
     <div class="slip-foot">
@@ -6945,6 +6948,7 @@ function payTextoSel(x){
 const payHoyEC = ()=> new Date(Date.now() - 5*3600e3).toISOString().slice(0,10);
 let payTomadasHoy = [];
 let payDescartadasHoy = [];
+let payVistosSesion = []; // líneas que Pay ya me mostró en esta sesión (para no repetirlas)
 async function payCargarTomadas(){
   try{
     const r = await fetch(`${SHEETS_API_URL}?sheet=PayTomadas`); const j = await r.json();
@@ -7150,13 +7154,14 @@ async function generarPay(otras){
     const r = await fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
       modo:'pay', cupo: payCupo, cuotaMin: document.getElementById('payMin').value, cuotaMax: document.getElementById('payMax').value,
       cantidad: document.getElementById('payCant').value, instruccion: document.getElementById('payNota').value,
-      fecha: payFechaElegida(), evitar: payEvitar(otras === true), descartadas: payDescartadasHoy.slice(-40), historial: payHistorial(), perdidas: payPerdidasYResumen().perdidas, resumen: payPerdidasYResumen().resumen, web: !!(document.getElementById('payWebChk')||{}).checked
+      fecha: payFechaElegida(), vistos: payVistosSesion.slice(-100), evitar: payEvitar(otras === true), descartadas: payDescartadasHoy.slice(-40), historial: payHistorial(), perdidas: payPerdidasYResumen().perdidas, resumen: payPerdidasYResumen().resumen, web: !!(document.getElementById('payWebChk')||{}).checked
     }) });
     const raw = await r.text();
     let d = {}; try{ d = JSON.parse(raw); }catch(e){}
     if(!r.ok) throw new Error(d.error || `Pay no pudo responder (código ${r.status}${r.status===504||r.status===500 ? ', se agotó el tiempo' : ''}). ${d.error ? '' : raw.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)}`);
     const fuente = d.fuente;
     paySugerencias = d.sugerencias.map(x=>({ ...x, cupo: payCupo })); paySugerencias.fuente = fuente;
+    paySugerencias.forEach(x=>(x.selecciones||[]).map(payNormSel).forEach(s=>{ if(s.pick) payVistosSesion.push(`${s.partido}: ${s.pick}`); }));
     pintarPay();
   }catch(e){
     out.innerHTML = `<div style="color:#ff7a7a; font-size:13px;">${esc(e.message)}</div>`;
