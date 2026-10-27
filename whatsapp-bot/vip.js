@@ -233,6 +233,10 @@ async function vincularTelegram(regId, userId) {
 // ---- Envío al grupo VIP de TELEGRAM (reemplaza al grupo VIP de WhatsApp) ----
 // Todo lo que antes iba al grupo VIP de WhatsApp (buenos días, apuestas, ganadas) sale por aquí.
 const VIP_WHATSAPP_JID = '120363411532196622@g.us'; // solo el grupo "VIP" (no "VIP Más Parley")
+// Convierte el formato de WhatsApp (*negrita*) a HTML de Telegram y escapa lo demás
+function aHtmlTelegram(t) {
+  return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
+}
 async function enviarAlGrupoVip({ texto, imagenes }) {
   const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
   if (!cfg || !cfg.chatId) throw new Error('Falta el grupo VIP de Telegram: escribe /vipgrupo dentro del grupo.');
@@ -240,10 +244,10 @@ async function enviarAlGrupoVip({ texto, imagenes }) {
   const fotos = (imagenes || []).filter((i) => i && (i.base64 || i.url));
   const token = H.TG_TOKEN();
   const subir = async (img, caption) => {
-    if (img.url) return H.tg('sendPhoto', { chat_id, photo: img.url, ...(caption ? { caption } : {}) });
+    if (img.url) return H.tg('sendPhoto', { chat_id, photo: img.url, ...(caption ? { caption: aHtmlTelegram(caption), parse_mode: 'HTML' } : {}) });
     const fd = new FormData();
     fd.append('chat_id', chat_id);
-    if (caption) fd.append('caption', caption);
+    if (caption) { fd.append('caption', aHtmlTelegram(caption)); fd.append('parse_mode', 'HTML'); }
     fd.append('photo', new Blob([Buffer.from(img.base64, 'base64')], { type: img.mediaType || 'image/jpeg' }), 'foto.jpg');
     const r = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: fd });
     const j = await r.json().catch(() => ({}));
@@ -253,7 +257,7 @@ async function enviarAlGrupoVip({ texto, imagenes }) {
   const t = String(texto || '');
   if (fotos.length === 1 && t.length <= 1000) { await subir(fotos[0], t); return; }
   for (const f of fotos) await subir(f, '');
-  if (t) await H.tg('sendMessage', { chat_id, text: t });
+  if (t) await H.tg('sendMessage', { chat_id, text: aHtmlTelegram(t), parse_mode: 'HTML' });
 }
 
 function montar(app, stakes, extra) {

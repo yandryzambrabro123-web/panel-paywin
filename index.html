@@ -5866,8 +5866,8 @@ const WIN_TELEFONO = '0987264212';
 const winSoloVip = (g)=>{ const l = Array.isArray(g) ? g : String(g||'').split(','); const n = l.map(x=>String(x).trim()).filter(Boolean); return n.length > 0 && n.every(x=>/vip/i.test(x)); };
 const winTelPara = (g)=> winSoloVip(g) ? '' : WIN_TELEFONO;
 const WIN_CTA_POR_TIPO = {
-  nueva_apuesta: n => `📲 ¿Quieres entrar al VIP? Escríbenos al ${n}`,
-  ganada: n => `📲 Súmate y gana con nosotros: escríbenos al ${n}`,
+  nueva_apuesta: n => `📲 *¿Quieres entrar al VIP?* Escríbenos al *${n}*`,
+  ganada: n => `📲 *Súmate y gana con nosotros:* escríbenos al *${n}*`,
   partidos_dia: n => `📲 Pregúntanos por los picks de hoy: ${n}`,
   collage: n => `📲 Recarga y retira con confianza: ${n}`,
   stake_pago: n => `📲 Pide tu stake escribiéndonos al ${n}`,
