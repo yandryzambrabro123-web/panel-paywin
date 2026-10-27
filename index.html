@@ -3342,6 +3342,7 @@ function renderWin(){
         <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
         <button class="win-quick-btn" id="winQuickApuestaBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta</span></button>
         <button class="win-quick-btn" id="winQuickGanadaBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta ganada</span></button>
+        <button class="win-quick-btn" id="winQuickPartidosBtn" type="button">${winIcon('difusion')}<span>Mandar publicidad del día</span></button>
         <button class="win-quick-btn" id="winQuickRegalitoBtn" type="button">${winIcon('regalo')}<span>Mandar regalito del día</span></button>
       </div>
       <button class="win-type-toggle" id="winTypeToggleBtn">Prefiero escribir</button>
@@ -3373,6 +3374,7 @@ function renderWin(){
   document.getElementById('winQuickStakeBtn').onclick = ()=>{ playWinSfx('action'); openStakePagoUploadModal(); };
   document.getElementById('winQuickApuestaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva',''); };
   document.getElementById('winQuickGanadaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('ganada',''); };
+  document.getElementById('winQuickPartidosBtn').onclick = ()=>{ playWinSfx('action'); openPartidosDiaModal(); };
   document.getElementById('winQuickRegalitoBtn').onclick = ()=>{ playWinSfx('action'); openRegalitoDiaModal(); };
   winPowerRefresh = actualizarPower;
   actualizarPower();
