@@ -78,7 +78,7 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
 // Deportes y ligas por prioridad (se usan las que estén activas hoy en The Odds API, hasta ODDS_MAX_LIGAS).
 // Se puede fijar una lista propia con la variable ODDS_SPORTS en Vercel (separada por comas).
 const PAY_PRIORIDAD = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'basketball_nba', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_europa_league', 'soccer_conmebol_copa_libertadores', 'soccer_brazil_campeonato', 'soccer_argentina_primera_division', 'soccer_mexico_ligamx', 'soccer_usa_mls', 'tennis_atp', 'tennis_wta', 'mma_mixed_martial_arts', 'basketball_euroleague', 'icehockey_nhl', 'baseball_mlb', 'americanfootball_nfl', 'soccer_netherlands_eredivisie', 'soccer_portugal_primeira_liga', 'soccer_turkey_super_league', 'soccer_efl_champ', 'soccer_colombia_primera_a', 'soccer_chile_campeonato'];
-const PAY_CACHE_MS = (Number(process.env.ODDS_CACHE_HORAS) || 5) * 3600 * 1000; // cuánto tiempo se reutilizan las cuotas (ahorra créditos)
+const PAY_CACHE_MS = (Number(process.env.ODDS_CACHE_HORAS) || 3) * 3600 * 1000; // cuánto tiempo se reutilizan las cuotas (ahorra créditos)
 const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 60;
 
 // Caché de 3 horas: cada consulta gasta créditos del plan (500 al mes en el gratis).
@@ -106,7 +106,7 @@ async function lineasJugadores(key, eventos, limiteMs) {
           const k = `${m.key.replace('player_', '')} ${o.description || ''} ${o.name}${o.point != null ? ' ' + o.point : ''}`;
           (mk[k] = mk[k] || []).push(o.price);
         }
-        const lineas = Object.entries(mk).map(([k, v]) => [k, v.reduce((a, b) => a + b, 0) / v.length]).filter(([, p]) => p >= 1.15 && p <= 1.9).slice(0, 40).map(([k, p]) => `${k}: ${p.toFixed(2)}`);
+        const lineas = Object.entries(mk).map(([k, v]) => [k, Math.max(...v)]).filter(([, p]) => p >= 1.15 && p <= 1.9).slice(0, 40).map(([k, p]) => `${k}: ${p.toFixed(2)}`);
         if (lineas.length) filas.push(`${c.etiqueta || 'JUGADORES'} ${e.liga} | ${e.casa} vs ${e.fuera} | ${e.inicio} | ${lineas.join(' ; ')}`);
       } catch (err) { /* sin líneas de ese partido */ }
     }
@@ -182,7 +182,7 @@ async function cuotasReales(fecha) {
             const k = `${m.key}|${o.name}${o.point != null ? ' ' + o.point : ''}`;
             (mk[k] = mk[k] || []).push(o.price);
           }
-          const resumen = Object.entries(mk).map(([k, v]) => `${k}: ${(v.reduce((a2, b2) => a2 + b2, 0) / v.length).toFixed(2)}`);
+          const resumen = Object.entries(mk).map(([k, v]) => `${k}: ${Math.max(...v).toFixed(2)}`);
           if (++porLiga > 12) continue;
           porIndice[idx].eventos.push(`${liga} | ${e.home_team} vs ${e.away_team} | ${e.commence_time} | ${resumen.join(' ; ')}`);
           porIndice[idx].evs.push({ liga, id: e.id, casa: e.home_team, fuera: e.away_team, inicio: e.commence_time });

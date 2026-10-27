@@ -6646,6 +6646,11 @@ function renderFactory(){
         <div id="payOut" style="margin-top:14px;"></div>
       </div>
       <div class="card" style="grid-column:1/-1;">
+        <div class="card-title">📌 Reservadas para enviar</div>
+        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Boletos que dejaste listos para mandar más tarde. Cuando llegue la hora, apuesta, y toca "Enviar ahora".</div>
+        <div id="payReservadas"></div>
+      </div>
+      <div class="card" style="grid-column:1/-1;">
         <div class="card-title">Enviadas hoy</div>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Lo que mandaste hoy desde el panel, con su imagen y el texto tal cual salió. Si algo se mandó y no quedó registrado, sale marcado en rojo.</div>
         <div id="enviadasHoy">${enviadasHoyHTML()}</div>
@@ -6750,7 +6755,7 @@ const payProducto = (sels)=>{ const c = (sels||[]).map(s=>Number(String(s.cuota)
 const payFmtCuota = (v)=>{ const n = Number(String(v).replace(',','.')); return isFinite(n) && n > 0 ? n.toFixed(2) : String(v||''); };
 function payFechaCorta(){ const f = payFechaElegida().split('-'); return `${f[2]}/${f[1]}/${f[0]}`; }
 // Un bloque de evento del boleto: equipos con logo, cuota y la línea de puntos con cada pata
-function payEventoHTML(s, liga, acciones, nuevo){
+function payEventoHTML(s, liga, acciones, nuevo, editIdx){
   const { bb, patas } = payPatas(s.pick);
   const eq = payEquiposDe(s.partido);
   const emoji = payDeporteEmoji(liga, s.partido, s.pick, s.deporte);
@@ -6759,7 +6764,7 @@ function payEventoHTML(s, liga, acciones, nuevo){
     : `<span>${esc(s.partido||'')}</span>`;
   return `<div class="slip-ev ${nuevo ? 'nuevo' : ''}">
     <div class="slip-meta"><span>${emoji}</span>${bb || patas.length > 1 ? '<span class="slip-badge" style="padding:1px 6px; font-size:10.5px;">BB</span>' : ''}<span>${esc(payFechaCorta())}${s.hora ? ' • ' + esc(s.hora) : ''}${liga && !String(liga).includes('/') ? ' • ' + esc(liga) : ''}</span></div>
-    <div class="slip-teams">${teams}<span class="slip-odd">${esc(payFmtCuota(s.cuota))}</span></div>
+    <div class="slip-teams">${teams}${editIdx != null ? `<span class="slip-odd" data-pay-edcuota="${editIdx}" style="cursor:pointer; border-bottom:1px dashed #8e96ad;" title="Toca para poner la cuota real de la casa">${esc(payFmtCuota(s.cuota))} ✎</span>` : `<span class="slip-odd">${esc(payFmtCuota(s.cuota))}</span>`}</div>
     <div class="slip-tl">${patas.map(p=>`<div class="slip-leg"><div class="slip-mkt">${esc(p.mercado)}</div><div class="slip-sel">${p.jugador ? payLogoHTML(p.jugador,'jug') : ''}<span>${esc(p.texto)}</span></div></div>`).join('')}</div>
     ${acciones ? `<div class="slip-acts">${acciones}</div>` : ''}
   </div>`;
@@ -6847,7 +6852,7 @@ function pintarBandejaPay(){
   const eventos = paySeleccion.map((s,i)=>payEventoHTML(s, s.liga, `
       <button type="button" class="btn secondary" data-pay-builder-sel="${i}">Bet Builder</button>
       <button type="button" class="btn secondary" data-pay-bajar-sel="${i}">↓ Riesgo</button>
-      <button type="button" class="btn secondary" data-pay-quitar="${i}">✕ Quitar</button>`, s.k === payUltimaK)).join('');
+      <button type="button" class="btn secondary" data-pay-quitar="${i}">✕ Quitar</button>`, s.k === payUltimaK, i)).join('');
   el.style.display = 'block';
   el.innerHTML = `<div class="slip">
     <button type="button" class="slip-bar" id="payFlotanteBar" aria-expanded="${payFlotanteAbierto}">
@@ -6860,17 +6865,25 @@ function pintarBandejaPay(){
     ${payFlotanteAbierto ? `<div class="slip-cuerpo">${eventos}
       <div class="slip-foot">
         ${repetido ? '<div class="slip-why" style="color:#ff8f8f;">⚠️ Tienes dos líneas del mismo partido: están relacionadas y la casa puede no dejarte combinarlas (usa Bet Builder).</div>' : ''}
-        <div class="slip-foot-btns"><button class="btn" id="payQuedarmeBtn" type="button">Quedarme con este boleto</button><button class="btn secondary" id="payResenaSelBtn" type="button">🎙 Reseña</button><button class="btn secondary" id="payVaciarBtn" type="button">Vaciar</button></div>
+        <div class="slip-foot-btns"><button class="btn" id="payQuedarmeBtn" type="button">Quedarme con este boleto</button><button class="btn secondary" id="payReservarBtn" type="button">📌 Reservar para después</button><button class="btn secondary" id="payResenaSelBtn" type="button">🎙 Reseña</button><button class="btn secondary" id="payVaciarBtn" type="button">Vaciar</button></div>
       </div></div>` : ''}
   </div>`;
   payUltimaK = '';
   document.getElementById('payFlotanteBar').onclick = ()=>{ payFlotanteAbierto = !payFlotanteAbierto; pintarBandejaPay(); };
   el.querySelectorAll('[data-pay-builder-sel]').forEach(b=>b.onclick=()=>payAlternativas(paySeleccion[+b.dataset.payBuilderSel], paySeleccion[+b.dataset.payBuilderSel].k, 'builder'));
   el.querySelectorAll('[data-pay-bajar-sel]').forEach(b=>b.onclick=()=>payAlternativas(paySeleccion[+b.dataset.payBajarSel], paySeleccion[+b.dataset.payBajarSel].k, 'bajar'));
+  el.querySelectorAll('[data-pay-edcuota]').forEach(b=>b.onclick=(ev)=>{
+    ev.stopPropagation(); const i = +b.dataset.payEdcuota; const s0 = paySeleccion[i]; if(!s0) return;
+    b.outerHTML = `<input id="payEdIn" type="number" step="0.01" inputmode="decimal" value="${esc(String(s0.cuota).replace(',','.'))}" style="width:84px; padding:4px 6px; font-size:16px; font-weight:800; text-align:right; margin-left:auto;">`;
+    const inp = document.getElementById('payEdIn'); inp.focus(); inp.select();
+    let hecho = false; const ok = ()=>{ if(hecho) return; hecho = true; const v = Number(String(inp.value).replace(',','.')); if(v > 1) s0.cuota = v.toFixed(2); pintarBandejaPay(); };
+    inp.onkeydown = (e)=>{ if(e.key === 'Enter') ok(); }; inp.onblur = ok;
+  });
   el.querySelectorAll('[data-pay-quitar]').forEach(b=>b.onclick=()=>{ paySeleccion.splice(+b.dataset.payQuitar,1); pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); });
   const vac = document.getElementById('payVaciarBtn'); if(vac) vac.onclick = ()=>{ paySeleccion = []; pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); };
   const combi = ()=>({ cupo: payCupo, partido: `Combinada de ${paySeleccion.length}`, pick: 'Mi combinada', cuota: total.toFixed(2), selecciones: paySeleccion.map(s=>({ partido:s.partido, pick:s.pick, cuota:s.cuota, hora:s.hora })) });
   const q = document.getElementById('payQuedarmeBtn'); if(q) q.onclick = ()=>tomarPay(combi());
+  const rv = document.getElementById('payReservarBtn'); if(rv) rv.onclick = ()=>{ payReservar(combi()); paySeleccion = []; pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); };
   const rs = document.getElementById('payResenaSelBtn'); if(rs) rs.onclick = ()=>payResena(combi());
   payResolverImagenes(el);
 }
@@ -7212,6 +7225,42 @@ function initPayPanel(){
   payCargarGanadasDB();
   payCargarTomadas();
   cargarPayAuto();
+  payReservadasCargar();
+}
+
+// ---- Boletos reservados para enviar más tarde (se guardan en la hoja PayReservadas) ----
+let payReservadas = [];
+async function payReservadasGuardar(){
+  try{ await fetch(SHEETS_API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet:'PayReservadas', data: payReservadas.map(r=>({ id:r.id, creada:r.creada, cupo:r.x.cupo||'', cuota:r.x.cuota||'', json: JSON.stringify(r.x) })) }) }); }
+  catch(e){ console.error('No se pudo guardar la reserva:', e); }
+}
+async function payReservadasCargar(){
+  try{
+    const r = await fetch(`${SHEETS_API_URL}?sheet=PayReservadas`); const j = await r.json();
+    const corte = Date.now() - 3*86400e3;
+    payReservadas = (Array.isArray(j.data) ? j.data : []).map(f=>{ try{ return { id:f.id, creada:f.creada, x: JSON.parse(f.json) }; }catch(e){ return null; } }).filter(r=>r && r.x && (Date.parse(r.creada)||Date.now()) >= corte);
+  }catch(e){ /* se queda con lo que haya en memoria */ }
+  payReservadasPintar();
+}
+function payReservar(x){
+  payReservadas.push({ id: uid(), creada: new Date().toISOString(), x });
+  payReservadasPintar(); payReservadasGuardar();
+  const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">📌 Boleto reservado (lo ves abajo en "Reservadas para enviar"). Sigue armando otros.</span>';
+}
+function payReservadasPintar(){
+  const el = document.getElementById('payReservadas'); if(!el) return;
+  if(!payReservadas.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">No tienes boletos reservados. En "Mi boleto" toca "Reservar para después".</div>'; return; }
+  el.innerHTML = payReservadas.map((r,i)=>{
+    const sels = (r.x.selecciones||[]).map(payNormSel);
+    const hora = (()=>{ const d = new Date(r.creada); return isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(11,16); })();
+    return `<div style="border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:10px;">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px;"><b>${esc(r.x.cupo||'')}</b><span style="color:var(--muted); font-size:12px;">reservado ${esc(hora)}</span><span style="margin-left:auto; font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(payFmtCuota(payProducto(sels) || r.x.cuota))}</span></div>
+      ${sels.map(l=>`<div style="font-size:13px; padding:2px 0;">${esc(l.partido||'')} — <b>${esc(l.pick||'')}</b> <span style="color:var(--muted);">@${esc(String(l.cuota))}${l.hora ? ' · ' + esc(l.hora) : ''}</span></div>`).join('')}
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resenviar="${i}">Enviar ahora</button><button class="btn secondary" type="button" data-pay-resquitar="${i}">Eliminar</button></div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('[data-pay-resenviar]').forEach(b=>b.onclick=()=>{ const i = +b.dataset.payResenviar; const r = payReservadas[i]; if(!r) return; payReservadas.splice(i,1); payReservadasGuardar(); payReservadasPintar(); tomarPay(r.x); });
+  el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ payReservadas.splice(+b.dataset.payResquitar,1); payReservadasGuardar(); payReservadasPintar(); });
 }
 let payAutoLista = [];
 async function cargarPayAuto(){
