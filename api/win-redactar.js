@@ -78,7 +78,8 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
 // Deportes y ligas por prioridad (se usan las que estén activas hoy en The Odds API, hasta ODDS_MAX_LIGAS).
 // Se puede fijar una lista propia con la variable ODDS_SPORTS en Vercel (separada por comas).
 const PAY_PRIORIDAD = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'basketball_nba', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_europa_league', 'soccer_conmebol_copa_libertadores', 'soccer_brazil_campeonato', 'soccer_argentina_primera_division', 'soccer_mexico_ligamx', 'soccer_usa_mls', 'tennis_atp', 'tennis_wta', 'mma_mixed_martial_arts', 'basketball_euroleague', 'icehockey_nhl', 'baseball_mlb', 'americanfootball_nfl', 'soccer_netherlands_eredivisie', 'soccer_portugal_primeira_liga', 'soccer_turkey_super_league', 'soccer_efl_champ', 'soccer_colombia_primera_a', 'soccer_chile_campeonato'];
-const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 30;
+const PAY_CACHE_MS = (Number(process.env.ODDS_CACHE_HORAS) || 5) * 3600 * 1000; // cuánto tiempo se reutilizan las cuotas (ahorra créditos)
+const PAY_MAX_LIGAS = Number(process.env.ODDS_MAX_LIGAS) || 60;
 
 // Caché de 3 horas: cada consulta gasta créditos del plan (500 al mes en el gratis).
 let cacheCuotas = { t: 0, datos: null };
@@ -117,8 +118,8 @@ async function cuotasReales(fecha) {
   const key = process.env.ODDS_API_KEY;
   if (!key) return null;
   const fechaOk = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : '';
-  if (fechaOk) { const c = cachePorFecha[fechaOk]; if (c && Date.now() - c.t < 4 * 3600 * 1000) return c.datos; }
-  else if (cacheCuotas.datos && Date.now() - cacheCuotas.t < 4 * 3600 * 1000) return cacheCuotas.datos;
+  if (fechaOk) { const c = cachePorFecha[fechaOk]; if (c && Date.now() - c.t < PAY_CACHE_MS) return c.datos; }
+  else if (cacheCuotas.datos && Date.now() - cacheCuotas.t < PAY_CACHE_MS) return cacheCuotas.datos;
   // Lista de deportes activos hoy (esta consulta no gasta créditos)
   let ligas = [];
   if (process.env.ODDS_SPORTS) ligas = process.env.ODDS_SPORTS.split(',').map((x) => x.trim()).filter(Boolean);
@@ -159,35 +160,41 @@ async function cuotasReales(fecha) {
   // Con fecha elegida: solo los partidos de ese día (hora de Ecuador) que no han empezado; sin fecha: próximas 40 horas
   const desde = fechaOk ? Math.max(Date.now(), Date.parse(fechaOk + 'T00:00:00-05:00')) : 0;
   const limite = fechaOk ? Date.parse(fechaOk + 'T23:59:59-05:00') : Date.now() + 40 * 3600 * 1000;
-  const eventos = [];
-  const evs = [];
-  for (const liga of ligas) {
-    try {
-      const basicos = /^(soccer|basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals' : 'h2h';
-      // Fútbol: además ambos marcan y doble oportunidad; básquet/hockey/NFL/béisbol: hándicap. Si esa liga no los trae, se pide lo básico.
-      const mercados = liga.startsWith('soccer_') ? 'h2h,totals,btts,double_chance' : /^(basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals,spreads' : basicos;
-      let r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${mercados}&oddsFormat=decimal`);
-      if (!r.ok && mercados !== basicos) r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${basicos}&oddsFormat=decimal`);
-      if (!r.ok) continue;
-      const lista = await r.json();
-      let porLiga = 0;
-      for (const e of lista) {
-        if (Date.parse(e.commence_time) > limite || Date.parse(e.commence_time) < desde) continue;
-        const mk = {};
-        for (const b of e.bookmakers || []) for (const m of b.markets || []) for (const o of m.outcomes || []) {
-          const k = `${m.key}|${o.name}${o.point != null ? ' ' + o.point : ''}`;
-          (mk[k] = mk[k] || []).push(o.price);
+  const porIndice = ligas.map(() => ({ eventos: [], evs: [] }));
+  const cola = ligas.map((liga, i) => [liga, i]);
+  // Se consultan varias ligas a la vez (con muchas ligas, de a una se pasaría del tiempo de la función)
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    while (cola.length) {
+      const [liga, idx] = cola.shift();
+      try {
+        const basicos = /^(soccer|basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals' : 'h2h';
+        // Las 25 ligas principales traen más mercados (fútbol: ambos marcan y doble oportunidad; resto: hándicap). Las demás, lo básico para ahorrar créditos.
+        const mercados = idx >= 25 ? basicos : liga.startsWith('soccer_') ? 'h2h,totals,btts,double_chance' : /^(basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals,spreads' : basicos;
+        let r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${mercados}&oddsFormat=decimal`);
+        if (!r.ok && mercados !== basicos) r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${basicos}&oddsFormat=decimal`);
+        if (!r.ok) continue;
+        const lista = await r.json();
+        let porLiga = 0;
+        for (const e of lista) {
+          if (Date.parse(e.commence_time) > limite || Date.parse(e.commence_time) < desde) continue;
+          const mk = {};
+          for (const bk of e.bookmakers || []) for (const m of bk.markets || []) for (const o of m.outcomes || []) {
+            const k = `${m.key}|${o.name}${o.point != null ? ' ' + o.point : ''}`;
+            (mk[k] = mk[k] || []).push(o.price);
+          }
+          const resumen = Object.entries(mk).map(([k, v]) => `${k}: ${(v.reduce((a2, b2) => a2 + b2, 0) / v.length).toFixed(2)}`);
+          if (++porLiga > 12) continue;
+          porIndice[idx].eventos.push(`${liga} | ${e.home_team} vs ${e.away_team} | ${e.commence_time} | ${resumen.join(' ; ')}`);
+          porIndice[idx].evs.push({ liga, id: e.id, casa: e.home_team, fuera: e.away_team, inicio: e.commence_time });
         }
-        const resumen = Object.entries(mk).map(([k, v]) => `${k}: ${(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2)}`);
-        if (++porLiga > 12) continue;
-        eventos.push(`${liga} | ${e.home_team} vs ${e.away_team} | ${e.commence_time} | ${resumen.join(' ; ')}`);
-        evs.push({ liga, id: e.id, casa: e.home_team, fuera: e.away_team, inicio: e.commence_time });
-      }
-    } catch (e) { /* esa liga no respondió: se sigue con las demás */ }
-  }
+      } catch (e) { /* esa liga no respondió: se sigue con las demás */ }
+    }
+  }));
+  const eventos = porIndice.flatMap((x) => x.eventos);
+  const evs = porIndice.flatMap((x) => x.evs);
   let extra = [];
   if (process.env.ODDS_PROPS === '1') { try { extra = await lineasJugadores(key, evs, limite); } catch (e) { extra = []; } }
-  const resultado = [...eventos.slice(0, 220), ...extra];
+  const resultado = [...eventos.slice(0, 320), ...extra];
   if (fechaOk) cachePorFecha[fechaOk] = { t: Date.now(), datos: resultado }; else cacheCuotas = { t: Date.now(), datos: resultado };
   return resultado;
 }
