@@ -7627,13 +7627,19 @@ async function payReservar(x){
   payReservadasPintar();
   const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">📌 Boleto reservado (míralo en la pestaña 📌 Reservadas). Sigue armando otros.</span>';
   try{ await persist('payReservadas'); }catch(e){ console.error('No se pudo guardar la reserva en la hoja (queda en este navegador):', e); }
-  // comprobación: ¿de verdad quedó en la hoja? si no, avisa (igual queda guardada en este navegador)
-  try{
-    const r = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES.payReservadas}`); const j = await r.json();
-    const ok = (j.data || []).some(row => String(row.id) === nueva.id);
-    const st2 = document.getElementById('payEstado');
-    if(!ok && st2) st2.innerHTML = '<span style="color:#ff9d6b;">⚠️ La reserva quedó guardada solo en ESTE navegador (no en la hoja). Avísale a Claude para revisar la hoja PayReservadas.</span>';
-  }catch(e){}
+  // comprobación: ¿de verdad quedó en la hoja? Google tarda unos segundos en reflejarlo: se revisa varias veces y, si no aparece, se reintenta el guardado una vez
+  const estaEnHoja = async ()=>{ try{ const r = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES.payReservadas}&_=${Date.now()}`); const j = await r.json(); return (j.data || []).some(row => String(row.id) === nueva.id); }catch(e){ return false; } };
+  let ok = false;
+  for(const espera of [2000, 4000, 'reintento', 4000, 6000]){
+    if(espera === 'reintento'){ try{ await persist('payReservadas'); }catch(e){} continue; }
+    await new Promise(r=>setTimeout(r, espera));
+    if(await estaEnHoja()){ ok = true; break; }
+  }
+  const st2 = document.getElementById('payEstado');
+  if(st2){
+    if(ok) st2.innerHTML = '<span style="color:#7be39a;">📌 Boleto reservado y guardado en la hoja. Sigue armando otros.</span>';
+    else st2.innerHTML = '<span style="color:#ff9d6b;">⚠️ La reserva quedó guardada solo en ESTE navegador (la hoja no la confirmó). Avísale a Claude.</span>';
+  }
 }
 async function payReservadaQuitar(id){
   state.payReservadas = (state.payReservadas || []).filter(r=>r.id !== id);
