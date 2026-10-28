@@ -58,9 +58,9 @@ async function leerHoja(hoja) {
 // del propio mensaje de Telegram (el aviso trae nombre, cédula, etc.) para que igual se pueda aprobar.
 async function recuperarRegistro(hoja, id, cq, tipo) {
   try {
-    if ((await leerHoja(hoja)).some((f) => String(f.id) === String(id))) return false;
+    if ((await leerHoja(hoja)).some((f) => String(f.id) === String(id))) return null;
     const texto = String((cq && cq.message && cq.message.text) || '');
-    if (!texto) return false;
+    if (!texto) return null;
     const c = {};
     texto.split('\n').forEach((l) => { const m = l.match(/^([^:]{2,20}):\s*(.+)$/); if (m) c[m[1].trim().toLowerCase()] = m[2].trim(); });
     const completo = (c['nombre'] || '').split(/\s+/);
@@ -74,14 +74,27 @@ async function recuperarRegistro(hoja, id, cq, tipo) {
       const sec = secs.find((x) => String(x.day || '').slice(0, 10) === dia) || secs[0] || null;
       fila = { ...base, sectionId: sec ? sec.id : '', price: sec ? Number(sec.price) || 0 : 0, telegram: String(c['telegram'] || '').replace(/^@/, '') };
     }
-    await cambiarHoja(hoja, (filas) => filas.some((f) => String(f.id) === String(id)) ? filas : [...filas, fila]);
+    try { await cambiarHoja(hoja, (filas) => filas.some((f) => String(f.id) === String(id)) ? filas : [...filas, fila]); } catch (e) { console.error('No se pudo re-guardar el registro:', e.message); }
     console.log('Registro recuperado desde Telegram:', tipo, id);
-    return true;
-  } catch (e) { console.error('No se pudo recuperar el registro:', e.message); return false; }
+    return fila; // se devuelve aunque la hoja no lo guarde: así igual se puede aprobar
+  } catch (e) { console.error('No se pudo recuperar el registro:', e.message); return null; }
 }
 async function guardarHoja(hoja, data) {
   const r = await fetch(SHEETS, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ sheet: hoja, data }) });
   if (!r.ok) throw new Error('No se pudo guardar ' + hoja);
+  verificarGuardado(hoja, data); // en segundo plano: avisa si Google no guardó de verdad
+}
+const avisosHoja = {};
+async function verificarGuardado(hoja, data) {
+  try {
+    await new Promise((ok) => setTimeout(ok, 2500));
+    const leidas = await leerHoja(hoja);
+    if (leidas.length >= (Array.isArray(data) ? data.length : 0)) return;
+    console.error('La hoja no confirmó el guardado:', hoja, leidas.length, '<', data.length);
+    if (Date.now() - (avisosHoja[hoja] || 0) < 30 * 60 * 1000) return;
+    avisosHoja[hoja] = Date.now();
+    await tg('sendMessage', { chat_id: TG_ADMIN(), text: `⚠️ Google Sheets NO está guardando la hoja "${hoja}" (mandé ${data.length} filas y solo hay ${leidas.length}). Por eso los registros o botones pueden decir "No encontré ese registro". Revisa el Apps Script o la hoja.` });
+  } catch (e) { /* sin verificación */ }
 }
 // Lee, aplica el cambio y guarda. Si la lectura falla NO guarda (así nunca se borra nada).
 function cambiarHoja(hoja, fn) {
@@ -141,7 +154,7 @@ async function avisarJefe(reg, sec) {
 // Otros módulos pueden decidir si un stake ya no está disponible (los pagos quedan "en cola")
 const gancho = { stakeCerrado: async () => false };
 
-async function resolverRegistro(id, aprobar) {
+async function resolverRegistro(id, aprobar, respaldo) {
   let reg = null, ya = false, enCola = false;
   let cerrado = false;
   if (aprobar) {
@@ -157,6 +170,7 @@ async function resolverRegistro(id, aprobar) {
     if (aprobar && cerrado) { enCola = true; return { ...f, estado: 'cola', resueltoAt: new Date().toISOString() }; }
     return { ...f, estado: aprobar ? 'aprobado' : 'rechazado', resueltoAt: new Date().toISOString() };
   }));
+  if (!reg && respaldo) reg = { ...respaldo, estado: aprobar ? 'aprobado' : 'rechazado' }; // la hoja no lo tenía: se usa lo que traía el mensaje de Telegram
   if (!reg) return { error: 'No encontré ese registro.' };
   if (ya) return { error: `Ese registro ya estaba ${reg.estado}.`, reg };
   if (aprobar) {
@@ -191,8 +205,8 @@ async function procesarUpdate(u) {
     if (!deAdmin) { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'No autorizado.' }).catch(() => {}); return; }
     try {
       if (accion === 'ap' || accion === 're') {
-        await recuperarRegistro(HOJA_REGISTROS, a, cq, 'stake');
-        const r = await resolverRegistro(a, accion === 'ap');
+        const rec = await recuperarRegistro(HOJA_REGISTROS, a, cq, 'stake');
+        const r = await resolverRegistro(a, accion === 'ap', rec);
         const txt = r.error ? `⚠️ ${r.error}` : (r.enCola ? '🕒 Cobrado: queda en cola hasta el próximo stake' : accion === 'ap' ? '✅ Aprobado' : '❌ Rechazado');
         await tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt });
         if (cq.message) await tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: txt, callback_data: 'x' }]] } }).catch(() => {});

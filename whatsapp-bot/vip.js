@@ -310,8 +310,9 @@ function montar(app, stakes, extra) {
     if (cq.message) await H.tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: txt, callback_data: 'x' }]] } }).catch(() => {});
   };
   H.manejadores.vp = async (cq, [id, p]) => {
-    await H.recuperarRegistro(HOJA_REGISTROS, id, cq, 'vip');
-    const r = await aprobar(id, PLANES[p] || 'mensual');
+    const rec = await H.recuperarRegistro(HOJA_REGISTROS, id, cq, 'vip');
+    const r = await aprobar(id, PLANES[p] || 'mensual', rec);
+    if (r.ok && r.link) await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `✅ Aprobado: ${r.nombre || ''}\nTeléfono: ${r.telefono || ''}\nLink de un solo uso al grupo VIP (si la persona no ve su link en pantalla, mándaselo tú):\n${r.link}` }).catch(() => {});
     await marcar(cq, r.error ? `⚠️ ${r.error}` : `✅ Aprobado (${PLANES[p] || 'mensual'})`);
   };
   H.manejadores.vc = async (cq, [id]) => {
@@ -335,7 +336,7 @@ function montar(app, stakes, extra) {
     await marcar(cq, hecho ? '❌ Rechazado' : `⚠️ Ya estaba ${previo || 'resuelto'}`);
   };
 
-  async function aprobar(id, plan) {
+  async function aprobar(id, plan, respaldo) {
     let reg = null, ya = false;
     // Antes de aprobar: tiene que existir el grupo VIP y poder crear el link de un solo uso
     const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
@@ -350,6 +351,7 @@ function montar(app, stakes, extra) {
       reg = f; if (f.estado !== 'pendiente') { ya = true; return f; }
       return { ...f, estado: 'aprobado', plan, link, resueltoAt: new Date().toISOString() };
     }));
+    if (!reg && respaldo) reg = respaldo; // la hoja no lo tenía: se usa lo que traía el mensaje de Telegram
     if (!reg) return { error: 'No encontré ese registro.' };
     if (ya) return { error: `Ese registro ya estaba ${reg.estado}.` };
     const hoy = H.hoyEC();
@@ -365,7 +367,7 @@ function montar(app, stakes, extra) {
       }
       return [...filas, { id: H.nuevoId(), name: `${reg.nombre} ${reg.apellido}`, contact: reg.telefono, cedula: reg.cedula, city: reg.ciudad, plan, joinDate: hoy, notes: notas, status: 'active', noReconsumo: false, giftPending: false, removidoVip: '', avisoVip: '', telegramId: '', registroId: reg.id }];
     });
-    return { ok: true };
+    return { ok: true, link, nombre: `${reg.nombre} ${reg.apellido}`, telefono: reg.telefono };
   }
 
 
