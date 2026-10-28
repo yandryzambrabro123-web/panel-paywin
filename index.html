@@ -953,7 +953,15 @@
   .slip-ev.nuevo{ animation:slipNuevo 1.4s ease-out 1; }
   @media (prefers-reduced-motion: reduce){ .slip-ev.nuevo{ animation:none; } }
   /* Boleto flotante: se va armando arriba mientras eliges líneas */
-  #payFlotante{ position:fixed; top:8px; left:8px; right:8px; max-width:540px; margin:0 auto; z-index:40; display:none; }
+  #payFlotante{ position:fixed; right:12px; bottom:100px; width:min(540px, calc(100vw - 24px)); z-index:40; display:none; }
+  #payFlotante.cerrada{ width:auto; }
+  .pbub{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; width:88px; height:88px; margin-left:auto; border-radius:50%; border:0; cursor:pointer; background:radial-gradient(circle at 30% 25%, #ffe27a, #f2b705 70%); color:#1a1405; box-shadow:0 10px 28px rgba(0,0,0,.55), 0 0 0 4px rgba(255,213,74,.18); font:inherit; }
+  .pbub b{ font-size:21px; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; }
+  .pbub small{ font-size:10px; font-weight:800; opacity:.7; margin-top:2px; }
+  .pbub .pb-n{ position:absolute; top:-4px; right:-2px; min-width:26px; height:26px; padding:0 6px; border-radius:13px; background:#1a1d26; color:#ffd54a; border:2px solid #f2b705; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:900; }
+  .pbub.pulso{ animation:pbPulso .6s ease 1; }
+  @keyframes pbPulso{ 0%{ transform:scale(1);} 40%{ transform:scale(1.18);} 100%{ transform:scale(1);} }
+  #payFlotante .slip-cerrar{ display:flex; justify-content:flex-end; padding:6px 10px 0; }
   #payFlotante .slip{ margin:0; box-shadow:0 14px 40px rgba(0,0,0,.6); border-color:#FFD54A55; }
   #payFlotante .slip-cuerpo{ max-height:60vh; overflow-y:auto; }
   #payFlotante .slip-bar{ display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; color:inherit; padding:10px 14px; cursor:pointer; font:inherit; text-align:left; }
@@ -7095,11 +7103,11 @@ function payToggleLinea(ref){
   const l = (x.selecciones||[]).map(payNormSel)[+i]; if(!l) return;
   const k = payClaveLinea(l);
   const pos = paySeleccion.findIndex(s=>s.k===k);
-  if(pos >= 0) paySeleccion.splice(pos,1); else { paySeleccion.push({ k, ...l, liga: x.liga || '', cupo: x.cupo || payCupo }); payUltimaK = k; payFlotanteAbierto = true; }
+  if(pos >= 0) paySeleccion.splice(pos,1); else { paySeleccion.push({ k, ...l, liga: x.liga || '', cupo: x.cupo || payCupo }); payUltimaK = k; }
   pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
 }
 function pintarAutoSiHay(){ if(typeof cargarPayAutoPintar === 'function') cargarPayAutoPintar(); }
-let payFlotanteAbierto = true, payUltimaK = '';
+let payFlotanteAbierto = false, payUltimaK = '';
 function pintarBandejaPay(){
   let el = document.getElementById('payFlotante');
   if(!el){ el = document.createElement('div'); el.id = 'payFlotante'; document.body.appendChild(el); }
@@ -7116,6 +7124,13 @@ function pintarBandejaPay(){
       <button type="button" class="btn secondary" data-pay-bajar-sel="${i}">↓ Riesgo</button>
       <button type="button" class="btn secondary" data-pay-quitar="${i}">✕ Quitar</button>`, s.k === payUltimaK, i)).join('');
   el.style.display = 'block';
+  el.classList.toggle('cerrada', !payFlotanteAbierto);
+  if(!payFlotanteAbierto){
+    el.innerHTML = `<button type="button" id="payFlotanteBar" class="pbub ${payUltimaK ? 'pulso' : ''}" aria-label="Abrir mi boleto" title="Abrir mi boleto"><span class="pb-n">${nPatas}</span><b>${total.toFixed(2)}</b><small>${tipo[0]}</small></button>`;
+    payUltimaK = '';
+    document.getElementById('payFlotanteBar').onclick = ()=>{ payFlotanteAbierto = true; pintarBandejaPay(); };
+    return;
+  }
   el.innerHTML = `<div class="slip">
     <button type="button" class="slip-bar" id="payFlotanteBar" aria-expanded="${payFlotanteAbierto}">
       <span style="font-size:18px;">🎟</span>
