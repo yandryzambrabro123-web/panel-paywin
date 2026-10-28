@@ -310,10 +310,12 @@ function montar(app, stakes, extra) {
     if (cq.message) await H.tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: txt, callback_data: 'x' }]] } }).catch(() => {});
   };
   H.manejadores.vp = async (cq, [id, p]) => {
+    await H.recuperarRegistro(HOJA_REGISTROS, id, cq, 'vip');
     const r = await aprobar(id, PLANES[p] || 'mensual');
     await marcar(cq, r.error ? `⚠️ ${r.error}` : `✅ Aprobado (${PLANES[p] || 'mensual'})`);
   };
   H.manejadores.vc = async (cq, [id]) => {
+    await H.recuperarRegistro(HOJA_REGISTROS, id, cq, 'vip');
     let hecho = false, previo = null;
     await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => {
       if (String(f.id) !== String(id)) return f;
@@ -323,6 +325,7 @@ function montar(app, stakes, extra) {
     await marcar(cq, hecho ? '✏️ Le pedí que corrija' : `⚠️ Ya estaba ${previo || 'resuelto'}`);
   };
   H.manejadores.vr = async (cq, [id]) => {
+    await H.recuperarRegistro(HOJA_REGISTROS, id, cq, 'vip');
     let hecho = false, previo = null;
     await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => {
       if (String(f.id) !== String(id)) return f;

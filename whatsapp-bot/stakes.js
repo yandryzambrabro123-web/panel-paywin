@@ -37,10 +37,47 @@ const limpio = (s, max = 80) => String(s || '').replace(/[<>]/g, '').trim().slic
 let cola = Promise.resolve();
 function enCola(fn) { const p = cola.then(fn, fn); cola = p.catch(() => {}); return p; }
 
+// Si Google responde algo raro (error, página de aviso, vacío por fallo) se REINTENTA y luego se lanza error:
+// antes devolvía [] y, al guardar encima, se borraban los registros anteriores de la hoja.
 async function leerHoja(hoja) {
-  const r = await fetch(`${SHEETS}?sheet=${hoja}`);
-  const j = await r.json();
-  return Array.isArray(j.data) ? j.data : [];
+  let ultimo = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(`${SHEETS}?sheet=${hoja}&_=${Date.now()}`);
+      const j = await r.json();
+      if (Array.isArray(j.data)) return j.data;
+      if (j && j.error && /exist|encontr|found|no hay/i.test(String(j.error))) return []; // hoja todavía no creada
+      ultimo = new Error('Respuesta inesperada de la hoja ' + hoja + (j && j.error ? ': ' + String(j.error).slice(0, 80) : ''));
+    } catch (e) { ultimo = e; }
+    await new Promise((ok) => setTimeout(ok, 700 * (i + 1)));
+  }
+  throw ultimo || new Error('No se pudo leer ' + hoja);
+}
+
+// Si el botón de Telegram apunta a un registro que ya no está en la hoja, se reconstruye con los datos
+// del propio mensaje de Telegram (el aviso trae nombre, cédula, etc.) para que igual se pueda aprobar.
+async function recuperarRegistro(hoja, id, cq, tipo) {
+  try {
+    if ((await leerHoja(hoja)).some((f) => String(f.id) === String(id))) return false;
+    const texto = String((cq && cq.message && cq.message.text) || '');
+    if (!texto) return false;
+    const c = {};
+    texto.split('\n').forEach((l) => { const m = l.match(/^([^:]{2,20}):\s*(.+)$/); if (m) c[m[1].trim().toLowerCase()] = m[2].trim(); });
+    const completo = (c['nombre'] || '').split(/\s+/);
+    const nombre = completo.slice(0, Math.ceil(completo.length / 2)).join(' '), apellido = completo.slice(Math.ceil(completo.length / 2)).join(' ');
+    const dia = cq.message.date ? new Date(cq.message.date * 1000 - 5 * 3600e3).toISOString().slice(0, 10) : hoyEC();
+    const base = { id: String(id), createdAt: new Date((cq.message.date || Date.now() / 1000) * 1000).toISOString(), day: dia, cedula: soloDigitos(c['cédula'] || c['cedula']), nombre, apellido, telefono: soloDigitos(c['teléfono'] || c['telefono']), estado: 'pendiente', recurrente: /ya había/i.test(texto), resueltoAt: '' };
+    let fila;
+    if (tipo === 'vip') fila = { ...base, ciudad: c['ciudad'] || '', correo: (c['correo'] || '').toLowerCase(), plan: '' };
+    else {
+      const secs = await seccionesAbiertas().catch(() => []);
+      const sec = secs.find((x) => String(x.day || '').slice(0, 10) === dia) || secs[0] || null;
+      fila = { ...base, sectionId: sec ? sec.id : '', price: sec ? Number(sec.price) || 0 : 0, telegram: String(c['telegram'] || '').replace(/^@/, '') };
+    }
+    await cambiarHoja(hoja, (filas) => filas.some((f) => String(f.id) === String(id)) ? filas : [...filas, fila]);
+    console.log('Registro recuperado desde Telegram:', tipo, id);
+    return true;
+  } catch (e) { console.error('No se pudo recuperar el registro:', e.message); return false; }
 }
 async function guardarHoja(hoja, data) {
   const r = await fetch(SHEETS, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ sheet: hoja, data }) });
@@ -154,6 +191,7 @@ async function procesarUpdate(u) {
     if (!deAdmin) { await tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'No autorizado.' }).catch(() => {}); return; }
     try {
       if (accion === 'ap' || accion === 're') {
+        await recuperarRegistro(HOJA_REGISTROS, a, cq, 'stake');
         const r = await resolverRegistro(a, accion === 'ap');
         const txt = r.error ? `⚠️ ${r.error}` : (r.enCola ? '🕒 Cobrado: queda en cola hasta el próximo stake' : accion === 'ap' ? '✅ Aprobado' : '❌ Rechazado');
         await tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt });
@@ -376,4 +414,4 @@ function montar(app) {
   escuchar().catch((e) => console.error('No arrancó la escucha de Telegram:', e.message));
 }
 
-module.exports = { montar, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, gancho, TG_ADMIN, TG_TOKEN };
+module.exports = { montar, recuperarRegistro, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, gancho, TG_ADMIN, TG_TOKEN };
