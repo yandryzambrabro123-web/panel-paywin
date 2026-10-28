@@ -371,6 +371,36 @@ function montar(app, stakes, extra) {
   }
 
 
+  // Prueba de guardado en Google Sheets: abre https://<tu-bot>/diag/hojas (tarda ~25 segundos). Escribe filas de prueba con
+  // distintos contenidos en la hoja "PruebaGuardado" y dice cuáles se guardan y cuánto tarda en verse.
+  app.get('/diag/hojas', async (req, res) => {
+    const HOJA = 'PruebaGuardado';
+    const stamp = Date.now().toString(36);
+    const casos = [
+      { id: stamp + 'a', caso: 'texto normal', valor: 'hola mundo' },
+      { id: stamp + 'b', caso: 'json corto', valor: JSON.stringify([{ partido: 'A vs B', pick: 'Gana A', cuota: 1.5 }]) },
+      { id: stamp + 'c', caso: 'texto largo 3000', valor: 'x'.repeat(3000) },
+      { id: stamp + 'd', caso: 'empieza con +', valor: '+ Más de 2.5' },
+      { id: stamp + 'e', caso: 'empieza con =', valor: '=1+1' },
+      { id: stamp + 'f', caso: 'saltos de línea y tildes', valor: 'línea 1\nlínea 2 ñ é 🔥' }
+    ];
+    const out = { escribio: false, resultados: {}, tiempos: [] };
+    try {
+      await H.cambiarHoja(HOJA, (filas) => [...filas.slice(-20), ...casos]);
+      out.escribio = true;
+      const t0 = Date.now();
+      for (const espera of [1500, 3000, 6000, 12000]) {
+        await new Promise((ok) => setTimeout(ok, espera));
+        const leidas = await H.leerHoja(HOJA);
+        const vistos = casos.filter((c) => leidas.some((f) => String(f.id) === c.id)).map((c) => c.caso);
+        out.tiempos.push({ segundos: Math.round((Date.now() - t0) / 1000), filas_vistas: vistos.length + ' de ' + casos.length, faltan: casos.filter((c) => !vistos.includes(c.caso)).map((c) => c.caso) });
+        if (vistos.length === casos.length) break;
+      }
+      out.conclusion = out.tiempos[out.tiempos.length - 1].faltan.length ? 'Google NO guarda los casos que faltan (revisa el Apps Script o ese tipo de contenido).' : 'Todo se guardó: el problema no es el contenido, mira los tiempos.';
+    } catch (e) { out.error = String(e.message).slice(0, 200); }
+    res.json(out);
+  });
+
   // Revisión rápida para el jefe: abre https://<tu-bot>/diag/registro y dice qué falla en los registros (no muestra claves)
   app.get('/diag/registro', async (req, res) => {
     const out = { telegram_token: H.TG_TOKEN() ? 'ok' : 'FALTA la variable TELEGRAM_BOT_TOKEN en Railway', telegram_chat_id_jefe: H.TG_ADMIN() ? 'ok' : 'FALTA la variable TELEGRAM_CHAT_ID en Railway' };
