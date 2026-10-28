@@ -3438,9 +3438,9 @@ function renderWin(){
   document.getElementById('winQuickTestiBtn').onclick = ()=>{ playWinSfx('action'); openTestimonioUploadModal(); };
   document.getElementById('winQuickComunicadoBtn').onclick = ()=>{ playWinSfx('action'); openWinContentForm('', ['Gratis 1','Gratis 2','Gratis 3'], 'Mandar comunicado'); };
   document.getElementById('winQuickStakeBtn').onclick = ()=>{ playWinSfx('action'); openStakePagoUploadModal(); };
-  document.getElementById('winQuickApuestaVipBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva', ['VIP'], WIN_FIJO.vip); };
-  document.getElementById('winQuickApuestaGratisBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva', ['Gratis 1','Gratis 2','Gratis 3'], WIN_FIJO.gratis); };
-  document.getElementById('winQuickApuestaLiveBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva', ['Gratis 1','Gratis 2','Gratis 3'], WIN_FIJO.live); };
+  document.getElementById('winQuickApuestaVipBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva_apuesta', ['VIP'], WIN_FIJO.vip); };
+  document.getElementById('winQuickApuestaGratisBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva_apuesta', ['Gratis 1','Gratis 2','Gratis 3'], WIN_FIJO.gratis); };
+  document.getElementById('winQuickApuestaLiveBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva_apuesta', ['Gratis 1','Gratis 2','Gratis 3'], WIN_FIJO.live); };
   document.getElementById('winQuickGanadaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('ganada',''); };
   document.getElementById('winQuickPartidosBtn').onclick = ()=>{ playWinSfx('action'); openPartidosDiaModal(); };
   document.getElementById('winQuickRegalitoBtn').onclick = ()=>{ playWinSfx('action'); openRegalitoDiaModal(); };
@@ -8047,7 +8047,7 @@ function tomarPay(i){
   if(x.cupo === 'Regalito'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openRegalitoDiaModal(); return; }
   if(x.cupo === 'Stake de pago'){ openStakeRegistroModal(texto); return; }
   const fijoPay = x.manual ? null : x.cupo === 'VIP' ? WIN_FIJO.vip : (x.cupo === 'Gratis' ? { ...WIN_FIJO.gratis, grupos: (cfg.grupos && cfg.grupos.length ? cfg.grupos : WIN_FIJO.gratis.grupos) } : null);
-  openWinBetForm('nueva', cfg.grupos || [], fijoPay);
+  openWinBetForm('nueva_apuesta', cfg.grupos || [], fijoPay);
   const code = document.getElementById('f-winCode'); if(code) code.value = texto;
   payBoletoFile(x).then(f=>{ if(!f || !document.getElementById('winDropzone')) return; winPendingFile = f; const pv = document.getElementById('winDropPreview'); if(pv) pv.innerHTML = `<img src="${payBoletoDataUrl(x)}" style="max-width:100%; max-height:220px; border-radius:8px; margin-top:10px;"><div style="font-size:11px; color:var(--muted); margin-top:4px;">Foto del boleto (puedes cambiarla subiendo otra)</div>`; });
 }
