@@ -2763,20 +2763,20 @@ function openFinanceTransferForm(rerender){
 
 // Comprime y convierte la imagen del comprobante a base64 antes de mandarla a leer,
 // para que la subida sea rápida y liviana en datos móviles.
-function fileToCompressedImage(file){
+function fileToCompressedImage(file, maxWidth, calidad){
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onload = ()=>{
       const img = new Image();
       img.onload = ()=>{
-        const maxW = 1100;
+        const maxW = maxWidth || 1100;
         const scale = Math.min(1, maxW / img.width);
         const w = Math.max(1, Math.round(img.width * scale));
         const h = Math.max(1, Math.round(img.height * scale));
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        const dataUrl = canvas.toDataURL('image/jpeg', calidad || 0.82);
         resolve({ base64: dataUrl.split(',')[1], mediaType: 'image/jpeg', previewUrl: dataUrl });
       };
       img.onerror = ()=>reject(new Error('No se pudo leer la imagen.'));
@@ -5738,21 +5738,31 @@ async function submitPartidosDia(){
   openModal(`<h3>Redactando...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
   try{
     const images = [];
+    const chicas = []; // copias livianas solo para que la IA redacte (las que se mandan al grupo conservan la calidad)
     for(const file of winPartidosFiles){
-      const { base64, mediaType } = await fileToCompressedImage(file);
-      images.push({ base64, mediaType });
+      try{ const { base64, mediaType } = await fileToCompressedImage(file); images.push({ base64, mediaType }); }
+      catch(err){ console.error('Foto no leída', err); continue; }
+      try{ const c = await fileToCompressedImage(file, 700, 0.6); chicas.push({ base64:c.base64, mediaType:c.mediaType }); }catch(err){ chicas.push(images[images.length-1]); }
     }
+    if(!images.length) throw new Error('No pude leer ninguna de las fotos (¿están en formato HEIC? Prueba con capturas de pantalla o fotos JPG).');
     const thumbs = await Promise.all(winPartidosFiles.map(f=>fileToThumbnail(f).catch(()=>'')));
-    const res = await fetch('/api/win-redactar', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ telefono: winTelPara(grupos), kind: 'partidos_dia', destino: grupos.join(', '), images })
-    });
-    const result = await res.json().catch(()=>({}));
+    // el texto se pide hasta 3 veces (si falla la red o la IA); si aun así no llega, se deja uno por defecto editable
+    let res = null;
+    for(let i = 0; i < 3; i++){
+      try{
+        res = await withTimeout(fetch('/api/win-redactar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telefono: winTelPara(grupos), kind: 'partidos_dia', destino: grupos.join(', '), images: chicas })
+        }), 40000);
+        if(res.ok) break;
+      }catch(err){ console.error('Redactar, intento', i+1, err); res = null; }
+    }
+    const result = res ? await res.json().catch(()=>({})) : {};
     const caption = (result && result.caption) || 'Estos son los partidos de hoy. 🔥⚽';
     openWinPartidosConfirm(grupos, caption, thumbs, images, { kind: 'partidos_dia', destino: grupos.join(', '), images });
   }catch(e){
     console.error(e);
-    alert('No se pudo generar el texto. Intenta de nuevo.');
+    alert('No se pudo generar el texto: ' + ((e && e.message) || 'error desconocido') + '\nIntenta de nuevo.');
     closeModal();
     renderWin();
   }
