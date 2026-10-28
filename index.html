@@ -3358,7 +3358,9 @@ function renderWin(){
         <button class="win-quick-btn" id="winQuickTestiBtn" type="button">${winIcon('testimonio')}<span>Mandar testimonio</span></button>
         <button class="win-quick-btn" id="winQuickComunicadoBtn" type="button">${winIcon('difusion')}<span>Mandar comunicado</span></button>
         <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
-        <button class="win-quick-btn" id="winQuickApuestaBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta</span></button>
+        <button class="win-quick-btn" id="winQuickApuestaVipBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta VIP</span></button>
+        <button class="win-quick-btn" id="winQuickApuestaGratisBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta gratis</span></button>
+        <button class="win-quick-btn" id="winQuickApuestaLiveBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta live</span></button>
         <button class="win-quick-btn" id="winQuickGanadaBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta ganada</span></button>
         <button class="win-quick-btn" id="winQuickPartidosBtn" type="button">${winIcon('difusion')}<span>Mandar publicidad del día</span></button>
         <button class="win-quick-btn" id="winQuickGanadasLibBtn" type="button">${winIcon('trofeo')}<span>Apuestas ganadas</span></button>
@@ -3391,7 +3393,9 @@ function renderWin(){
   document.getElementById('winQuickTestiBtn').onclick = ()=>{ playWinSfx('action'); openTestimonioUploadModal(); };
   document.getElementById('winQuickComunicadoBtn').onclick = ()=>{ playWinSfx('action'); openWinContentForm('', ['Gratis 1','Gratis 2','Gratis 3'], 'Mandar comunicado'); };
   document.getElementById('winQuickStakeBtn').onclick = ()=>{ playWinSfx('action'); openStakePagoUploadModal(); };
-  document.getElementById('winQuickApuestaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva',''); };
+  document.getElementById('winQuickApuestaVipBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva', ['VIP'], WIN_FIJO.vip); };
+  document.getElementById('winQuickApuestaGratisBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva', ['Gratis 1','Gratis 2','Gratis 3'], WIN_FIJO.gratis); };
+  document.getElementById('winQuickApuestaLiveBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva', ['Gratis 1','Gratis 2','Gratis 3'], WIN_FIJO.live); };
   document.getElementById('winQuickGanadaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('ganada',''); };
   document.getElementById('winQuickPartidosBtn').onclick = ()=>{ playWinSfx('action'); openPartidosDiaModal(); };
   document.getElementById('winQuickGanadasLibBtn').onclick = ()=>{ playWinSfx('action'); winSub = 'ganadas'; renderWin(); };
@@ -5023,10 +5027,17 @@ function getCheckedWinGroups(idPrefix){
   return checked;
 }
 
-function openWinBetForm(kind, destinoGuess){
+// Destinos fijos: el botón que aprietas ya decide a dónde va y cómo se registra (no se pregunta).
+const WIN_FIJO = {
+  vip:    { titulo:'Apuesta VIP',    grupos:['VIP'], tipo:'vipBets', nota:'Va al grupo VIP (Telegram) y se registra como Apuesta VIP.' },
+  gratis: { titulo:'Apuesta gratis', grupos:['Gratis 1','Gratis 2','Gratis 3'], tipo:'freeBets', nota:'Va a los grupos Gratis 1, 2 y 3 y se registra como Apuesta gratis.' },
+  live:   { titulo:'Apuesta live',   grupos:['Gratis 1','Gratis 2','Gratis 3'], tipo:'liveBets', blur:true, nota:'La captura se difumina por completo. Va a los grupos Gratis 1, 2 y 3 y se registra como Apuesta Live.' }
+};
+function openWinBetForm(kind, destinoGuess, fijo){
   const isGanada = kind === 'ganada';
   openModal(`
-    <h3>${isGanada ? 'Mandar apuesta ganada' : 'Mandar apuesta a la comunidad'}</h3>
+    <h3>${isGanada ? 'Mandar apuesta ganada' : (fijo ? 'Mandar ' + fijo.titulo.toLowerCase() : 'Mandar apuesta a la comunidad')}</h3>
+    ${fijo ? `<div style="font-size:12.5px; border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px;">📍 ${esc(fijo.nota)}</div>` : ''}
     <div style="font-size:12.5px; color:var(--muted); margin-bottom:14px;">Sube la captura (arrástrala, haz clic, o pégala con Ctrl+V)${isGanada ? '' : ' y el código/texto de la apuesta'}.</div>
     <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin-bottom:14px;">
       <div style="font-size:26px; margin-bottom:6px;">📎</div>
@@ -5035,7 +5046,7 @@ function openWinBetForm(kind, destinoGuess){
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
     ${!isGanada ? `<div class="field"><label>Código / texto de la apuesta</label><textarea id="f-winCode" placeholder="Pick, cuota, stake..."></textarea></div>` : ''}
-    ${!isGanada ? `<div class="field"><label>¿Qué tipo de apuesta es? (se registra en el panel con la foto)</label>
+    ${!isGanada && !fijo ? `<div class="field"><label>¿Qué tipo de apuesta es? (se registra en el panel con la foto)</label>
       <select id="f-winTipo">
         <option value="">Según el grupo (VIP → Apuesta VIP, Gratis → Apuesta gratis)</option>
         ${WIN_REGISTRO_TIPOS.filter(t=>t.key).map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}
@@ -5045,15 +5056,42 @@ function openWinBetForm(kind, destinoGuess){
         <option value="">(que Win la sugiera leyendo la captura)</option>
         ${winApuestasPendientes().map(b=>`<option value="${b._key}|${b.id}">[${b._tag}] ${String(b.pick||'').slice(0,60)} · ${fmtDate(b.date)}</option>`).join('')}
       </select></div>`}
-    <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:0 0 12px; cursor:pointer;"><input type="checkbox" id="f-winCensurar"> ✏️ Quiero censurar la captura yo mismo antes de mandar</label>
-    <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winGroups', destinoGuess)}</div>
+    ${fijo ? '' : `<label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:0 0 12px; cursor:pointer;"><input type="checkbox" id="f-winCensurar"> ✏️ Quiero censurar la captura yo mismo antes de mandar</label>
+    <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winGroups', destinoGuess)}</div>`}
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="winGenerateBtn">Generar y mandar a la bandeja</button>
     </div>
   `);
   wireWinDropzone();
-  document.getElementById('winGenerateBtn').onclick = ()=>submitWinBet(kind);
+  document.getElementById('winGenerateBtn').onclick = ()=>fijo ? submitWinBet(kind, { grupos: fijo.grupos, tipo: fijo.tipo, censurar: false, blur: !!fijo.blur }) : submitWinBet(kind);
+}
+
+
+// Difumina TODA la captura (efecto borroso en vez de cuadros negros). Devuelve un canvas.
+function winDesenfocarArchivo(file){
+  return new Promise((resolve)=>{
+    const rd = new FileReader();
+    rd.onerror = ()=>resolve(null);
+    rd.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>resolve(null);
+      img.onload = ()=>{
+        const sc = Math.min(1, 1100 / img.width);
+        const W = Math.max(1, Math.round(img.width * sc)), H = Math.max(1, Math.round(img.height * sc));
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const ctx = c.getContext('2d');
+        const radio = Math.max(10, Math.round(Math.min(W, H) / 45));
+        ctx.filter = `blur(${radio}px)`;
+        // se dibuja más grande que el lienzo para que los bordes no queden con halo transparente
+        ctx.drawImage(img, -radio * 3, -radio * 3, W + radio * 6, H + radio * 6);
+        ctx.filter = 'none';
+        resolve(c);
+      };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(file);
+  });
 }
 
 let winPendingFile = null;
@@ -5760,8 +5798,13 @@ async function submitWinBet(kind, opts){
   if(!winPendingFile){ alert('Sube la captura primero.'); return; }
   const archivoOriginal = winPendingFile;
   let censurada = null;
-  const quiereCensurar = opts.censurar !== undefined ? opts.censurar : !!(document.getElementById('f-winCensurar') && document.getElementById('f-winCensurar').checked);
-  if(quiereCensurar){
+  const quiereCensurarBase = opts.censurar !== undefined ? opts.censurar : !!(document.getElementById('f-winCensurar') && document.getElementById('f-winCensurar').checked);
+  const quiereCensurar = quiereCensurarBase;
+  if(opts.blur){
+    const canvas = await winDesenfocarArchivo(winPendingFile);
+    if(!canvas){ alert('No pude leer la imagen.'); return; }
+    censurada = { ...canvasToCompressed(canvas), thumb: canvasToThumbnail(canvas) };
+  } else if(quiereCensurar){
     const canvas = await winCensorEditor(winPendingFile, 'Censura la captura antes de mandarla');
     if(!canvas){ winVolverFormularioApuesta(kind, grupos, code, archivoOriginal, tipoSel, ganadaSel); return; }
     censurada = { ...canvasToCompressed(canvas), thumb: canvasToThumbnail(canvas) };
@@ -7723,7 +7766,8 @@ function tomarPay(i){
   const cfg = PAY_CUPOS[x.cupo] || {};
   if(x.cupo === 'Regalito'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openRegalitoDiaModal(); return; }
   if(x.cupo === 'Stake de pago'){ openStakeRegistroModal(texto); return; }
-  openWinBetForm('nueva', cfg.grupos || []);
+  const fijoPay = x.cupo === 'VIP' ? WIN_FIJO.vip : (x.cupo === 'Gratis' ? { ...WIN_FIJO.gratis, grupos: (cfg.grupos && cfg.grupos.length ? cfg.grupos : WIN_FIJO.gratis.grupos) } : null);
+  openWinBetForm('nueva', cfg.grupos || [], fijoPay);
   const code = document.getElementById('f-winCode'); if(code) code.value = texto;
 }
 
