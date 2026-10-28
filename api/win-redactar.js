@@ -821,7 +821,13 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
     instructionText += ' Responde ÚNICAMENTE con el texto final listo para pegar en WhatsApp, sin explicaciones, sin comillas envolventes, sin markdown.';
     userContent.push({ type: 'text', text: instructionText });
 
-    const text = await llamarAnthropic(apiKey, { system: systemPrompt, messages: [{ role: 'user', content: userContent }], max_tokens: 220 });
+    // 700 tokens: con el estilo nuevo (negritas, separadores, emojis) 220 se quedaba corto y cortaba el texto.
+    // Si el servicio de IA falla (a veces pasa de forma intermitente), se reintenta hasta 2 veces más.
+    let text = null;
+    for (let i = 0; i < 3 && text === null; i++) {
+      text = await llamarAnthropic(apiKey, { system: systemPrompt, messages: [{ role: 'user', content: userContent }], max_tokens: 700 });
+      if (text === null) await new Promise((ok) => setTimeout(ok, 800));
+    }
     if (text === null) {
       res.status(502).json({ error: 'No se pudo redactar el texto (servicio de IA).', caption: code || '' });
       return;
