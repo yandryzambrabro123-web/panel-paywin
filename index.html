@@ -5768,7 +5768,7 @@ async function submitPartidosDia(){
   }
 }
 
-function openWinPartidosConfirm(grupos, caption, thumbs, images, redactCtx){
+function openWinPartidosConfirm(grupos, caption, thumbs, images, redactCtx, onBack){
   const groupButtonsHTML = grupos.map((g, i) => {
     const jid = winGroupJid(g);
     const link = winGroupLink(g);
