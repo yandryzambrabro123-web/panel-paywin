@@ -7147,7 +7147,8 @@ function paySlipHTML(x, origen, idx, tomarAttr, resenaAttr){
       ${x.cupo ? `<span class="slip-chip">${esc(x.cupo)}</span>` : ''}
       <span class="slip-total"><small>Cuota total</small><b>${esc(payFmtCuota(payProducto(sels) || x.cuota))}</b></span>
     </div>
-    ${cuerpo}
+    ${sels.length ? `<img src="${payBoletoDataUrl({ cupo:x.cupo, cuota:x.cuota, partido:x.partido, pick:x.pick, selecciones:x.selecciones })}" alt="Boleto" style="width:100%; display:block;">` : ''}
+    <details class="slip-det" ${sels.length ? '' : 'open'}><summary style="cursor:pointer; padding:10px 14px; font-size:13px; font-weight:700; color:var(--gold, #D4AF6A);">Ver líneas · Me gusta · Bet Builder · ↓ Riesgo</summary>${cuerpo}</details>
     <div class="slip-foot">
       ${x.analisis ? `<div class="slip-why">${esc(x.analisis)}</div>` : ''}
       <div class="slip-foot-btns"><button class="btn" ${tomarAttr} type="button">La tomo</button><button class="btn secondary" ${resenaAttr} type="button">🎙 Reseña: ¿por qué?</button></div>
@@ -7678,7 +7679,7 @@ async function cargarPayAuto(){
 function cargarPayAutoPintar(){
   setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payAuto'); if(!el) return;
-  if(!payAutoLista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">Todavía no hay picks de Pay. Revisa a las 9am y 3pm (hora de Ecuador).</div>'; return; }
+  if(!payAutoLista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">Todavía no hay picks de Pay. Revisa cada hora, de 8am a 10pm (hora de Ecuador).</div>'; return; }
   el.innerHTML = payAutoLista.map((x,i)=>paySlipHTML(x, 'auto', i, `data-pay-auto="${i}"`, `data-pay-resenaauto="${i}"`)).join('');
   el.querySelectorAll('[data-pay-auto]').forEach(b=>b.onclick=()=>tomarPay(payAutoLista[+b.dataset.payAuto]));
   el.querySelectorAll('[data-pay-resenaauto]').forEach(b=>b.onclick=()=>payResena(payAutoLista[+b.dataset.payResenaauto]));

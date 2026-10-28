@@ -1,10 +1,12 @@
 // Pay vigilando: revisa los partidos solo, guarda los picks en la hoja "PaySugerencias" (se ven en
 // Fábrica de apuestas del panel) y te avisa por Telegram. NO publica nada en ningún grupo.
 //
-// Horas de revisión (hora de Ecuador): variable de Railway PAY_HORAS, por defecto "9,15" (9am y 3pm).
+// Horas de revisión (hora de Ecuador): variable de Railway PAY_HORAS, por defecto cada hora de 8am a 10pm.
 // Apagar: PAY_AUTO_OFF=1.  Usa el análisis de Pay del panel (Vercel), no necesita claves nuevas.
 
 let H = null;
+const { boletoPNG } = require('./boleto');
+const MAX_EXTRAS_DIA = 14; // después de completar la meta, Pay sigue sugiriendo (1 por revisión) hasta este total del día
 const HOJA = 'PaySugerencias';
 const PANEL = (process.env.PANEL_URL || 'https://panel-paywin.vercel.app').replace(/\/$/, '');
 // Lo que Pay debe completar cada día (en orden de prioridad) y el rango de cuota total de cada uno.
@@ -26,6 +28,11 @@ async function faltantes() {
     const ya = hechas.filter((f) => f.cupo === m.cupo).length;
     for (let i = ya; i < m.cuantos; i++) lista.push({ cupo: m.cupo, min: m.min, max: m.max });
   }
+  // meta del día completa: Pay sigue dando una recomendación extra por hora (VIP y Gratis alternados)
+  if (!lista.length && hechas.length < MAX_EXTRAS_DIA) {
+    const m = META_DIA.find((x) => x.cupo === (hechas.length % 2 ? 'Gratis' : 'VIP'));
+    lista.push({ cupo: m.cupo, min: m.min, max: m.max });
+  }
   return lista.slice(0, MAX_POR_REVISION);
 }
 
@@ -33,7 +40,7 @@ const CORTE_APUESTAS_MS = 1792990800000; // el panel muestra apuestas desde el 2
 const idMs = (id) => { const n = parseInt(String(id || '').slice(0, -5), 36); return Number.isFinite(n) ? n : 0; };
 const HOJAS_APUESTAS = [['ApuestasVIP', 'VIP'], ['ApuestasGratis', 'Gratis'], ['ApuestasLive', 'Live']];
 
-const horasEC = () => String(process.env.PAY_HORAS || '9,15').split(',').map((x) => Number(x.trim())).filter((n) => n >= 0 && n < 24);
+const horasEC = () => String(process.env.PAY_HORAS || '8,9,10,11,12,13,14,15,16,17,18,19,20,21,22').split(',').map((x) => Number(x.trim())).filter((n) => n >= 0 && n < 24);
 const ahoraEC = () => new Date(Date.now() - 5 * 3600e3);
 
 // Líneas ya usadas hoy (tomadas, sugeridas antes y apuestas registradas) para no repetirlas.
@@ -90,6 +97,19 @@ async function revisar(motivo) {
   const corte = Date.now() - 3 * 86400e3;
   await H.cambiarHoja(HOJA, (filas) => [...filas.filter((f) => Date.parse(f.createdAt) >= corte), ...nuevas]);
   const lista = nuevas.map((n) => `• <b>${H.esc(n.cupo || 'Pick')}</b> @ ${H.esc(String(n.cuota))} — ${H.esc(n.pick)}`).join('\n');
+  // cada pick llega también como FOTO del boleto, con el grupo sugerido
+  for (const n of nuevas) {
+    try {
+      let sel = []; try { sel = JSON.parse(n.selecciones || '[]'); } catch (e) { sel = []; }
+      const png = await boletoPNG({ cupo: n.cupo, cuota: n.cuota, selecciones: sel, pick: n.pick, partido: n.partido });
+      if (!png) continue;
+      const fd = new FormData();
+      fd.append('chat_id', H.TG_ADMIN());
+      fd.append('caption', `Pay sugiere: ${n.cupo || 'Pick'} @ ${n.cuota}` + (n.confianza ? ` · confianza ${n.confianza}` : ''));
+      fd.append('photo', new Blob([png], { type: 'image/png' }), 'boleto.png');
+      await fetch(`https://api.telegram.org/bot${H.TG_TOKEN()}/sendPhoto`, { method: 'POST', body: fd });
+    } catch (e) { console.error('Pay foto:', e.message); }
+  }
   await H.tg('sendMessage', {
     chat_id: H.TG_ADMIN(), parse_mode: 'HTML',
     text: `🧠 <b>Pay encontró ${nuevas.length} pick(s)</b>\n\n${lista}\n\nRevisa el análisis y decide en la Fábrica de apuestas. Verifica la cuota en tu casa antes de apostar.`,
