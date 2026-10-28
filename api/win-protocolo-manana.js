@@ -44,6 +44,12 @@ const PROTOCOLO_STEPS = [
   { nombre: 'protocolo apuesta gratis', destinos: GRATIS_JIDS }
 ];
 
+const TELEFONO_VIGENTE = '0987264212';
+const corregirTelefono = (t) => String(t || '').replace(/(?:\+?593[\s-]?|0)9(?:[\s-]?\d){8}/g, (m) => {
+  const d = m.replace(/\D/g, '').replace(/^593/, '0');
+  return d === TELEFONO_VIGENTE ? m : TELEFONO_VIGENTE;
+});
+
 const norm = s => (s || '').toLowerCase().trim();
 
 // Novedades para la Bandeja del panel: solo situaciones (no cada envío). Se guardan en la hoja
@@ -118,7 +124,7 @@ async function enviarPaso(step, templates, botUrl, botKey) {
   // "imageUrl" es la foto en buena calidad guardada en Vercel Blob (publicidades nuevas);
   // "base64" queda de respaldo solo para publicidades guardadas ANTES de este cambio.
   for (const jid of step.destinos) {
-    await enviarAlBot(botUrl, botKey, jid, tpl.texto || '', tpl.imageUrl ? '' : (tpl.base64 || ''), tpl.imageUrl || '', tpl.mediaType || 'image/jpeg');
+    await enviarAlBot(botUrl, botKey, jid, corregirTelefono(tpl.texto || ''), tpl.imageUrl ? '' : (tpl.base64 || ''), tpl.imageUrl || '', tpl.mediaType || 'image/jpeg');
   }
   return true;
 }

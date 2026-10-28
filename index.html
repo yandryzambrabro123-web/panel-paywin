@@ -5520,12 +5520,12 @@ const STAKE_PAGO_TEXT_BASE = `🔥 STAKE DE PAGO DISPONIBLE 🔥
 🕒 Hora: {hora}
 💵 Valor: {valor}
 
-📲 Si lo quieres, escríbenos al 096 385 2803`;
+📲 Si lo quieres, escríbenos al 098 726 4212`;
 
 function buildStakePagoDM(name, cuota, hora, valor){
   const primerNombre = (name || '').trim().split(/\s+/)[0] || '';
   const saludo = primerNombre ? `Hola ${primerNombre}` : 'Hola';
-  return `${saludo}, soy Win, la asistente de PayWin. 👋\n\nTenemos un stake de pago disponible:\n🎯 Cuota: ${cuota}\n🕒 Hora: ${hora}\n💵 Valor: ${valor}\n\nSi lo quieres adquirir, escríbenos al 096 385 2803.`;
+  return `${saludo}, soy Win, la asistente de PayWin. 👋\n\nTenemos un stake de pago disponible:\n🎯 Cuota: ${cuota}\n🕒 Hora: ${hora}\n💵 Valor: ${valor}\n\nSi lo quieres adquirir, escríbenos al 098 726 4212.`;
 }
 
 // Número local guardado (ej: "0991234567") -> jid de WhatsApp para mandar un DM directo.

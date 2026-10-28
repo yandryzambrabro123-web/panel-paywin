@@ -36,6 +36,17 @@ const PROMPTS = {
   collage: `Vas a redactar el texto para publicar un COLLAGE de varios comprobantes de recarga/pago de clientes (ya censurados, solo se ven los montos) en una comunidad de pronósticos deportivos llamada PayWin -- el mensaje de hoy es "mira cuántos clientes confiaron en nosotros hoy". No sabes los montos exactos ni cuántos son, así que no inventes números. Tono: celebración, confianza, orgullo, con 1-2 emojis (🙌🔥💵), para generar ganas de unirse. No menciones nombres ni datos de nadie.${BREVEDAD}`
 };
 
+
+// Teléfono vigente de la agencia: cualquier otro celular ecuatoriano que aparezca en un texto
+// (números viejos guardados en plantillas o copiados de una nota) se cambia por este.
+const TELEFONO_VIGENTE = '0987264212';
+function corregirTelefono(t) {
+  return String(t || '').replace(/(?:\+?593[\s-]?|0)9(?:[\s-]?\d){8}/g, (m) => {
+    const d = m.replace(/\D/g, '').replace(/^593/, '0');
+    return d === TELEFONO_VIGENTE ? m : TELEFONO_VIGENTE;
+  });
+}
+
 function extractText(text) {
   return (text || '').trim().replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
 }
@@ -780,7 +791,7 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
       res.status(502).json({ error: 'No se pudo redactar el texto (servicio de IA).', caption: code || '' });
       return;
     }
-    const caption = extractText(text) || code || '';
+    const caption = corregirTelefono(extractText(text) || code || '');
     res.status(200).json({ caption });
   } catch (e) {
     console.error('Error redactando:', e);
