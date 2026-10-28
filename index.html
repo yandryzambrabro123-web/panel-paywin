@@ -7410,7 +7410,10 @@ function payExcluir(ref){
   pintarPay(); pintarAutoSiHay(); pintarBandejaPay();
 }
 // Guarda el texto de una apuesta que ya mandaste, para que Pay no la vuelva a proponer hoy
+let payResPendienteId = '';
 async function payGuardarEnvio(texto){
+  // si venía de una reserva, solo ahora (ya enviada a un grupo) sale de Reservadas
+  if(payResPendienteId){ const id = payResPendienteId; payResPendienteId = ''; payReservadaQuitar(id); }
   const t = String(texto||'').replace(/\s+/g,' ').trim().slice(0,300); if(!t) return;
   payTomadasHoy.push(t);
   try{
@@ -7666,7 +7669,7 @@ function payReservadasPintar(){
       <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resenviar="${esc(r.id)}">Enviar ahora</button><button class="btn secondary" type="button" data-pay-resquitar="${esc(r.id)}">Eliminar</button></div>
     </div>`;
   }).join('');
-  el.querySelectorAll('[data-pay-resenviar]').forEach(b=>b.onclick=()=>{ const r = payResLista().find(q=>q.id === b.dataset.payResenviar); if(!r) return; payReservadaQuitar(r.id); tomarPay(r.x); });
+  el.querySelectorAll('[data-pay-resenviar]').forEach(b=>b.onclick=()=>{ const r = payResLista().find(q=>q.id === b.dataset.payResenviar); if(!r) return; payResPendienteId = r.id; tomarPay(r.x); });
   el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ if(confirm('¿Eliminar este boleto reservado?')) payReservadaQuitar(b.dataset.payResquitar); });
 }
 let payAutoLista = [];
