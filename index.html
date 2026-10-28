@@ -624,6 +624,13 @@
   .vip-act.danger{ color:#ff8d8d; border-color:rgba(255,120,120,.28); }
   .vip-act.danger:hover{ border-color:#ff8d8d; box-shadow:0 8px 18px -12px rgba(255,100,100,.9); }
   .vip-act:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .win-qgrid{ display:grid; grid-template-columns:repeat(3,auto); gap:12px; justify-content:center; margin-top:12px; width:100%; max-width:1040px; }
+  .win-qg{ --c:#E6C068; border:1px solid color-mix(in srgb, var(--c) 40%, transparent); background:color-mix(in srgb, var(--c) 8%, rgba(10,12,18,.65)); border-radius:16px; padding:10px 12px; text-align:left; }
+  .win-qg-t{ font-size:12.5px; font-weight:800; color:var(--c); margin:0 0 8px 2px; }
+  .win-qrow{ display:flex; flex-wrap:wrap; gap:8px; }
+  .win-qg .win-quick-btn{ padding:9px 14px; border-color:color-mix(in srgb, var(--c) 40%, transparent); }
+  .win-qg .win-quick-btn svg{ color:var(--c); }
+  @media (max-width: 980px){ .win-qgrid{ grid-template-columns:1fr; max-width:560px; } }
   .win-quick-row{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:12px; }
   .win-quick-btn{ display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border-radius:12px; border:1px solid rgba(212,175,106,.35); background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02)); color:#f3ead6; font:600 13px 'Chakra Petch',sans-serif; cursor:pointer; transition:.18s; }
   .win-quick-btn svg{ width:18px; height:18px; color:var(--accent); }
@@ -3365,16 +3372,31 @@ function renderWin(){
         <button class="win-power-btn" id="winPowerOnBtn" type="button">${winIcon('power')}Encender Win</button>
         <button class="win-power-btn" id="winPowerOffBtn" type="button">${winIcon('power')}Apagar Win</button>
       </div>
-      <div class="win-quick-row">
-        <button class="win-quick-btn" id="winQuickTestiBtn" type="button">${winIcon('testimonio')}<span>Mandar testimonio</span></button>
-        <button class="win-quick-btn" id="winQuickComunicadoBtn" type="button">${winIcon('difusion')}<span>Mandar comunicado</span></button>
-        <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
-        <button class="win-quick-btn" id="winQuickApuestaVipBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta VIP</span></button>
-        <button class="win-quick-btn" id="winQuickApuestaGratisBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta gratis</span></button>
-        <button class="win-quick-btn" id="winQuickApuestaLiveBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta live</span></button>
-        <button class="win-quick-btn" id="winQuickGanadaBtn" type="button">${winIcon('trofeo')}<span>Mandar apuesta ganada</span></button>
-        <button class="win-quick-btn" id="winQuickPartidosBtn" type="button">${winIcon('difusion')}<span>Mandar publicidad del día</span></button>
-        <button class="win-quick-btn" id="winQuickRegalitoBtn" type="button">${winIcon('regalo')}<span>Mandar regalito del día</span></button>
+      <div class="win-qgrid">
+        <div class="win-qg" style="--c:#E6C068;">
+          <div class="win-qg-t">Apuestas</div>
+          <div class="win-qrow">
+            <button class="win-quick-btn" id="winQuickApuestaVipBtn" type="button">${winIcon('trofeo')}<span>Apuesta VIP</span></button>
+            <button class="win-quick-btn" id="winQuickApuestaGratisBtn" type="button">${winIcon('trofeo')}<span>Apuesta gratis</span></button>
+            <button class="win-quick-btn" id="winQuickApuestaLiveBtn" type="button">${winIcon('trofeo')}<span>Apuesta live</span></button>
+            <button class="win-quick-btn" id="winQuickGanadaBtn" type="button">${winIcon('trofeo')}<span>Apuesta ganada</span></button>
+          </div>
+        </div>
+        <div class="win-qg" style="--c:#5aa9ff;">
+          <div class="win-qg-t">Stakes y regalitos</div>
+          <div class="win-qrow">
+            <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
+            <button class="win-quick-btn" id="winQuickRegalitoBtn" type="button">${winIcon('regalo')}<span>Regalito del día</span></button>
+          </div>
+        </div>
+        <div class="win-qg" style="--c:#b48cff;">
+          <div class="win-qg-t">Comunidad</div>
+          <div class="win-qrow">
+            <button class="win-quick-btn" id="winQuickPartidosBtn" type="button">${winIcon('difusion')}<span>Publicidad del día</span></button>
+            <button class="win-quick-btn" id="winQuickTestiBtn" type="button">${winIcon('testimonio')}<span>Testimonio</span></button>
+            <button class="win-quick-btn" id="winQuickComunicadoBtn" type="button">${winIcon('difusion')}<span>Comunicado</span></button>
+          </div>
+        </div>
       </div>
       <button class="win-type-toggle" id="winTypeToggleBtn">Prefiero escribir</button>
       <div id="winTypeBox" style="display:none; margin-top:16px; width:100%; max-width:560px; text-align:left;">
