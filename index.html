@@ -1020,7 +1020,7 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', novedades: 'Novedades', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas', winDifusion: 'WinDifusion', winGanadas: 'WinGanadasGuardadas' };
+const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', novedades: 'Novedades', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas', winDifusion: 'WinDifusion', winGanadas: 'WinGanadasGuardadas', payReservadas: 'PayReservadas' };
 
 // ---------- Corte del panel (25-oct-2026, 7:20am Ecuador) ----------
 // El panel NO muestra lo que se registró antes de este momento en estas listas (miembros VIP,
@@ -1063,7 +1063,7 @@ const FINANCE_DAILY_NOTE_PREFIX = 'Saldo inicial del día';
 const FINANCE_LATEST_BASE = {};
 
 let state = {
-  vips: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], winOutbox: [], novedades: [], winReminders: [], winMemory: [], winTemplates: [], winDifusion: [], winGanadas: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
+  vips: [], freeBets: [], vipBets: [], liveBets: [], stakes: [], stakeSales: [], stakeSections: [], gifts: [], financeMovements: [], winOutbox: [], novedades: [], winReminders: [], winMemory: [], winTemplates: [], winDifusion: [], winGanadas: [], payReservadas: [], vipSearch: {}, stakeSectionId: '', failedKeys: [], financeAccountFilter: '',
   view: 'dashboard', loaded: false, syncError: false, role: 'admin',
   filters: { vips:{from:'',to:''}, freeBets:{from:'',to:''}, vipBets:{from:'',to:''}, liveBets:{from:'',to:''}, stakes:{from:'',to:''}, gifts:{from:'',to:''}, financeMovements:{from:'',to:''} }
 };
@@ -1127,6 +1127,9 @@ function coerceRow(key, row){
   }
   if(key === 'winGanadas'){
     return { id:String(row.id||''), date:String(row.date||'').slice(0,10), caption:String(row.caption||''), imageUrl:String(row.imageUrl||''), grupos:String(row.grupos||''), status:row.status||'pendiente', publishedAt:String(row.publishedAt||'') };
+  }
+  if(key === 'payReservadas'){
+    return { id:String(row.id||''), creada:String(row.creada||''), cupo:String(row.cupo||''), cuota:String(row.cuota||''), json:String(row.json||'') };
   }
   if(key === 'novedades'){
     return { id:String(row.id||''), tipo:String(row.tipo||'info'), titulo:String(row.titulo||''), detalle:String(row.detalle||''), createdAt:String(row.createdAt||''), leido: row.leido===true||row.leido==='true' };
@@ -6925,7 +6928,7 @@ function factoryTabsInit(){
 }
 function factoryBadges(){
   const put = (id, n, cls)=>{ const el = document.getElementById(id); if(!el) return; el.textContent = n > 0 ? String(n) : ''; el.style.display = n > 0 ? 'inline-flex' : 'none'; };
-  put('fbReservadas', (typeof payReservadas !== 'undefined' ? payReservadas.length : 0));
+  put('fbReservadas', (state.payReservadas || []).length);
   put('fbEnviadas', document.querySelectorAll('#enviadasHoy [data-env]').length);
   put('fbAuto', (typeof payAutoLista !== 'undefined' ? payAutoLista.length : 0));
   put('fbGanadas', winGanadasPendientes().length);
@@ -7500,40 +7503,55 @@ function initPayPanel(){
   payReservadasCargar();
 }
 
-// ---- Boletos reservados para enviar más tarde (se guardan en la hoja PayReservadas) ----
-let payReservadas = [];
-async function payReservadasGuardar(){
-  try{ await fetch(SHEETS_API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet:'PayReservadas', data: payReservadas.map(r=>({ id:r.id, creada:r.creada, cupo:r.x.cupo||'', cuota:r.x.cuota||'', json: JSON.stringify(r.x) })) }) }); }
-  catch(e){ console.error('No se pudo guardar la reserva:', e); }
+// ---- Boletos reservados para enviar más tarde (se guardan con el sistema normal del panel + copia en este navegador) ----
+const PAY_RES_LS = 'payReservadasLS', PAY_RES_DEL = 'payReservadasDel';
+const payResLeerLS = (k)=>{ try{ return JSON.parse(localStorage.getItem(k) || '[]') || []; }catch(e){ return []; } };
+const payResEscribirLS = (k, v)=>{ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
+function payResLista(){
+  return (state.payReservadas || []).map(r=>{ try{ return { id:r.id, creada:r.creada, x: JSON.parse(r.json) }; }catch(e){ return null; } }).filter(r=>r && r.x);
 }
+function payResCopiaLocal(){ payResEscribirLS(PAY_RES_LS, state.payReservadas || []); }
 async function payReservadasCargar(){
-  try{
-    const r = await fetch(`${SHEETS_API_URL}?sheet=PayReservadas`); const j = await r.json();
-    const corte = Date.now() - 3*86400e3;
-    payReservadas = (Array.isArray(j.data) ? j.data : []).map(f=>{ try{ return { id:f.id, creada:f.creada, x: JSON.parse(f.json) }; }catch(e){ return null; } }).filter(r=>r && r.x && (Date.parse(r.creada)||Date.now()) >= corte);
-  }catch(e){ /* se queda con lo que haya en memoria */ }
+  // recupera lo que haya en la copia local y no esté en la hoja (y que no hayas eliminado a propósito)
+  const borrados = new Set(payResLeerLS(PAY_RES_DEL));
+  const ids = new Set((state.payReservadas || []).map(r=>r.id));
+  const faltan = payResLeerLS(PAY_RES_LS).filter(r=>r && r.id && !ids.has(r.id) && !borrados.has(r.id));
+  if(faltan.length){ state.payReservadas = [...(state.payReservadas || []), ...faltan]; try{ await persist('payReservadas'); }catch(e){} }
+  payResCopiaLocal();
   payReservadasPintar();
 }
-function payReservar(x){
-  payReservadas.push({ id: uid(), creada: new Date().toISOString(), x });
-  payReservadasPintar(); payReservadasGuardar();
+async function payReservar(x){
+  if(!Array.isArray(state.payReservadas)) state.payReservadas = [];
+  state.payReservadas.push({ id: uid(), creada: new Date().toISOString(), cupo: x.cupo || '', cuota: String(x.cuota || ''), json: JSON.stringify(x) });
+  payResCopiaLocal();
+  payReservadasPintar();
   const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">📌 Boleto reservado (míralo en la pestaña 📌 Reservadas). Sigue armando otros.</span>';
+  try{ await persist('payReservadas'); }catch(e){ console.error('No se pudo guardar la reserva en la hoja (queda en este navegador):', e); }
+}
+async function payReservadaQuitar(id){
+  state.payReservadas = (state.payReservadas || []).filter(r=>r.id !== id);
+  payResEscribirLS(PAY_RES_DEL, [...payResLeerLS(PAY_RES_DEL), id].slice(-200));
+  payResCopiaLocal();
+  payReservadasPintar();
+  try{ await persist('payReservadas', { deletedIds: [id] }); }catch(e){ console.error(e); }
 }
 function payReservadasPintar(){
   setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payReservadas'); if(!el) return;
-  if(!payReservadas.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">No tienes boletos reservados. En "Mi boleto" toca "Reservar para después".</div>'; return; }
-  el.innerHTML = payReservadas.map((r,i)=>{
+  const lista = payResLista().sort((a,b)=>String(a.creada).localeCompare(String(b.creada)));
+  if(!lista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">No tienes boletos reservados. En "Mi boleto" toca "Reservar para después".</div>'; return; }
+  el.innerHTML = lista.map((r,i)=>{
     const sels = (r.x.selecciones||[]).map(payNormSel);
-    const hora = (()=>{ const d = new Date(r.creada); return isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(11,16); })();
+    const d = new Date(r.creada);
+    const cuando = isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(5,16).replace('T',' ');
     return `<div style="border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:10px;">
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px;"><b>${esc(r.x.cupo||'')}</b><span style="color:var(--muted); font-size:12px;">reservado ${esc(hora)}</span><span style="margin-left:auto; font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(payFmtCuota(payProducto(sels) || r.x.cuota))}</span></div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px;"><b>${esc(r.x.cupo||'')}</b><span style="color:var(--muted); font-size:12px;">reservado ${esc(cuando)}</span><span style="margin-left:auto; font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(payFmtCuota(payProducto(sels) || r.x.cuota))}</span></div>
       ${sels.map(l=>`<div style="font-size:13px; padding:2px 0;">${esc(l.partido||'')} — <b>${esc(l.pick||'')}</b> <span style="color:var(--muted);">@${esc(String(l.cuota))}${l.hora ? ' · ' + esc(l.hora) : ''}</span></div>`).join('')}
-      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resenviar="${i}">Enviar ahora</button><button class="btn secondary" type="button" data-pay-resquitar="${i}">Eliminar</button></div>
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resenviar="${esc(r.id)}">Enviar ahora</button><button class="btn secondary" type="button" data-pay-resquitar="${esc(r.id)}">Eliminar</button></div>
     </div>`;
   }).join('');
-  el.querySelectorAll('[data-pay-resenviar]').forEach(b=>b.onclick=()=>{ const i = +b.dataset.payResenviar; const r = payReservadas[i]; if(!r) return; payReservadas.splice(i,1); payReservadasGuardar(); payReservadasPintar(); tomarPay(r.x); });
-  el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ payReservadas.splice(+b.dataset.payResquitar,1); payReservadasGuardar(); payReservadasPintar(); });
+  el.querySelectorAll('[data-pay-resenviar]').forEach(b=>b.onclick=()=>{ const r = payResLista().find(q=>q.id === b.dataset.payResenviar); if(!r) return; payReservadaQuitar(r.id); tomarPay(r.x); });
+  el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ if(confirm('¿Eliminar este boleto reservado?')) payReservadaQuitar(b.dataset.payResquitar); });
 }
 let payAutoLista = [];
 async function cargarPayAuto(){
