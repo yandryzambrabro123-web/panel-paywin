@@ -6351,12 +6351,16 @@ async function winRegistrarEnPanel(key, texto, sendImage){
   else if(key === 'gifts') row = { id:uid(), sport:'', pick, odds:0, stake:0, recipient:'', date:hoy, result:'pending' };
   else if(key === 'stakes') row = { id:uid(), description:pick, amount:0, date:hoy, result:'pending' };
   else return false;
+  if((state[key]||[]).some(b=>b.date === hoy && String(b.pick||'').replace(/\s+/g,' ').trim().slice(0,200) === pick && (Date.now() - (parseInt(String(b.id).slice(0,-5), 36) || 0)) < 30*60*1000)) return true;
   // La foto se guarda en Vercel Blob (en su calidad real) y en la hoja solo queda el link.
   if(sendImage){
     const url = await winSubirFotoReintento(sendImage, key);
     if(url) row.imageUrl = url;
     else alert('Se registró, pero la foto no se pudo guardar. Súbela a mano en el registro.');
   }
+  // no registrar dos veces la misma apuesta (mismo texto, mismo tipo, en los últimos 30 min)
+  const dup = (state[key]||[]).some(b=>b.date === hoy && String(b.pick||'').replace(/\s+/g,' ').trim().slice(0,200) === pick && (Date.now() - (parseInt(String(b.id).slice(0,-5), 36) || 0)) < 30*60*1000);
+  if(dup) return true;
   state[key].push(row);
   await persist(key);
   return true;
@@ -6844,16 +6848,29 @@ function renderReminders(){
 
 // ---------- Fábrica de apuestas (espacio creado; se configura después) ----------
 // ---------- Enviadas hoy: lo que se mandó y cómo quedó registrado ----------
-function enviadasHoyHTML(){
+let payEnvFiltro = { modo:'hoy', fecha:'' };
+function payFiltroRango(f){
   const hoy = payHoyEC();
+  const rest = (n)=> new Date(Date.parse(hoy + 'T12:00:00Z') - n*86400000).toISOString().slice(0,10);
+  if(f.modo === 'ayer') return (d)=> d === rest(1);
+  if(f.modo === '7d') return (d)=> d >= rest(6) && d <= hoy;
+  if(f.modo === 'fecha' && f.fecha) return (d)=> d === f.fecha;
+  return (d)=> d === hoy;
+}
+function payFiltroBarraHTML(f, attr){
+  const b = (m, t)=>`<button type="button" class="btn ${f.modo === m ? '' : 'secondary'}" ${attr}="${m}" style="padding:6px 12px; font-size:12.5px;">${t}</button>`;
+  return `<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">${b('hoy','Hoy')}${b('ayer','Ayer')}${b('7d','Últimos 7 días')}<input type="date" ${attr}-fecha value="${esc(f.fecha||'')}" style="padding:5px 8px; font-size:12.5px; background:#0f1320; color:#fff; border:1px solid #2a2f3c; border-radius:8px;"></div>`;
+}
+function enviadasHoyHTML(){
+  const hoy = payHoyEC(); const enRango = payFiltroRango(payEnvFiltro);
   const norm = (t)=>String(t||'').replace(/\s+/g,' ').trim().slice(0,200);
   const fechaEC = (iso)=>{ const d = new Date(iso); return isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(0,10); };
   const horaEC = (iso)=>{ const d = new Date(iso); return isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(11,16); };
-  const salidas = (state.winOutbox||[]).filter(o=>o.kind === 'nueva_apuesta' && o.status === 'enviado' && fechaEC(o.createdAt) === hoy);
+  const salidas = (state.winOutbox||[]).filter(o=>(o.kind === 'nueva_apuesta' || o.kind === 'nueva') && o.status === 'enviado' && enRango(fechaEC(o.createdAt)));
   const usadas = new Set();
   const regs = [
     ...(state.vipBets||[]).map(b=>({ ...b, _t:'VIP' })), ...(state.freeBets||[]).map(b=>({ ...b, _t:'Gratis' })), ...(state.liveBets||[]).map(b=>({ ...b, _t:'Live' }))
-  ].filter(b=>b.date === hoy);
+  ].filter(b=>enRango(String(b.date||'').slice(0,10)));
   const filas = regs.map(b=>{
     const m = salidas.filter(o=>norm(o.caption) === norm(b.pick));
     m.forEach(o=>usadas.add(o.id));
@@ -6864,8 +6881,8 @@ function enviadasHoyHTML(){
   const sueltas = {};
   salidas.filter(o=>!usadas.has(o.id)).forEach(o=>{ const k = norm(o.caption); (sueltas[k] = sueltas[k] || { o, grupos: [] }).grupos.push(o.destino); });
   Object.values(sueltas).forEach(({o, grupos})=>filas.push({ t: grupos.some(g=>/^Stake de pago/.test(g)) ? 'Stake de pago' : '', texto:o.caption, img:o.image || '', odds:0, result:'', grupos:[...new Set(grupos)], hora: horaEC(o.createdAt), ok: grupos.some(g=>/^Stake de pago/.test(g)), t2:1, ord:o.createdAt }));
-  (state.gifts||[]).filter(g=>g.date === hoy).forEach(g=>filas.push({ t:'Regalito', texto:g.pick, img:g.imageUrl||'', odds:g.odds, result:g.result, grupos:[], hora:'', ok:true, ord:'' }));
-  if(!filas.length) return '<div style="color:var(--muted); font-size:13px;">Todavía no mandaste ninguna apuesta hoy.</div>';
+  (state.gifts||[]).filter(g=>enRango(String(g.date||'').slice(0,10))).forEach(g=>filas.push({ t:'Regalito', texto:g.pick, img:g.imageUrl||'', odds:g.odds, result:g.result, grupos:[], hora:'', ok:true, ord:'' }));
+  if(!filas.length) return '<div style="color:var(--muted); font-size:13px;">No hay apuestas enviadas en ese rango de fechas.</div>';
   filas.sort((a,b)=>String(b.ord).localeCompare(String(a.ord)));
   const rl = (r)=> r==='won' ? '✅ Ganada' : r==='lost' ? '❌ Perdida' : r==='pending' ? '⏳ Pendiente' : '';
   return filas.map(f=>`
@@ -6890,7 +6907,7 @@ function renderFactory(){
     <div class="ftabs" id="ftabs" role="tablist">
       <button type="button" class="ftab" data-ftab-btn="armar" style="--c:#E6C068;"><span class="fi">⚡</span><span class="ft">Armar</span></button>
       <button type="button" class="ftab" data-ftab-btn="reservadas" style="--c:#5aa9ff;"><span class="fi">📌</span><span class="ft">Reservadas</span><span class="fb" id="fbReservadas"></span></button>
-      <button type="button" class="ftab" data-ftab-btn="enviadas" style="--c:#4fd18b;"><span class="fi">✅</span><span class="ft">Enviadas hoy</span><span class="fb" id="fbEnviadas"></span></button>
+      <button type="button" class="ftab" data-ftab-btn="enviadas" style="--c:#4fd18b;"><span class="fi">✅</span><span class="ft">Enviadas</span><span class="fb" id="fbEnviadas"></span></button>
       <button type="button" class="ftab" data-ftab-btn="auto" style="--c:#b48cff;"><span class="fi">🤖</span><span class="ft">Pay solo</span><span class="fb" id="fbAuto"></span></button>
       <button type="button" class="ftab" data-ftab-btn="ganadas" style="--c:#ff9a4d;"><span class="fi">🏆</span><span class="ft">Ganadas</span><span class="fb" id="fbGanadas">${ganadas || ''}</span></button>
     </div>
@@ -6945,8 +6962,9 @@ function renderFactory(){
         <div id="payReservadas"></div>
       </div>
       <div class="card ftab-panel" data-ftab="enviadas" style="grid-column:1/-1; --c:#4fd18b;">
-        <div class="card-title">✅ Enviadas hoy</div>
-        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Lo que mandaste hoy desde el panel, con su imagen y el texto tal cual salió. Si algo se mandó y no quedó registrado, sale marcado en rojo.</div>
+        <div class="card-title">✅ Enviadas</div>
+        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Todo lo que mandaste desde el panel (hasta las 12 de la noche de cada día), con su imagen y el texto tal cual salió. Filtra por fecha aquí abajo. Si algo se mandó y no quedó registrado, sale marcado en rojo.</div>
+        <div id="enviadasFiltro">${payFiltroBarraHTML(payEnvFiltro, 'data-env-f')}</div>
         <div id="enviadasHoy">${enviadasHoyHTML()}</div>
       </div>
       <div class="card ftab-panel" data-ftab="auto" style="grid-column:1/-1; --c:#b48cff;">
@@ -7666,7 +7684,8 @@ function initPayPanel(){
   payCargarGanadasDB();
   payCargarTomadas();
   cargarPayAuto();
-  payReservadasCargar();
+  payReservadasCargar(); payFiltrosWire();
+  payFiltrosWire();
 }
 
 // ---- Boletos reservados para enviar más tarde (se guardan con el sistema normal del panel + copia en este navegador) ----
@@ -7804,23 +7823,34 @@ function payReservadasPintar(){
   el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ if(confirm('¿Eliminar este boleto reservado?')) payReservadaQuitar(b.dataset.payResquitar); });
 }
 let payAutoLista = [];
+let payAutoFiltro = { modo:'hoy', fecha:'' };
 async function cargarPayAuto(){
   const el = document.getElementById('payAuto'); if(!el) return;
   try{
     const r = await fetch(`${SHEETS_API_URL}?sheet=PaySugerencias`);
     const j = await r.json();
-    const corte = Date.now() - 36*3600e3;
-    payAutoLista = (Array.isArray(j.data) ? j.data : []).filter(x=>Date.parse(x.createdAt) >= corte)
+    payAutoLista = (Array.isArray(j.data) ? j.data : []).filter(x=>!isNaN(Date.parse(x.createdAt)))
       .sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)))
       .map(x=>{ let sel=[]; try{ sel = JSON.parse(x.selecciones||'[]'); }catch(e){} return { ...x, selecciones: sel }; });
   }catch(e){ payAutoLista = []; }
   cargarPayAutoPintar();
 }
+function payFiltrosWire(){
+  document.querySelectorAll('[data-env-f]').forEach(b=>b.onclick=()=>{ payEnvFiltro = { modo:b.dataset.envF, fecha:'' }; const f = document.getElementById('enviadasFiltro'); if(f) f.innerHTML = payFiltroBarraHTML(payEnvFiltro, 'data-env-f'); const box = document.getElementById('enviadasHoy'); if(box) box.innerHTML = enviadasHoyHTML(); payFiltrosWire(); factoryBadges(); });
+  document.querySelectorAll('[data-env-f-fecha]').forEach(i=>i.onchange=()=>{ if(!i.value) return; payEnvFiltro = { modo:'fecha', fecha:i.value }; const f = document.getElementById('enviadasFiltro'); if(f) f.innerHTML = payFiltroBarraHTML(payEnvFiltro, 'data-env-f'); const box = document.getElementById('enviadasHoy'); if(box) box.innerHTML = enviadasHoyHTML(); payFiltrosWire(); factoryBadges(); });
+  document.querySelectorAll('[data-auto-f]').forEach(b=>b.onclick=()=>{ payAutoFiltro = { modo:b.dataset.autoF, fecha:'' }; cargarPayAutoPintar(); });
+  document.querySelectorAll('[data-auto-f-fecha]').forEach(i=>i.onchange=()=>{ if(!i.value) return; payAutoFiltro = { modo:'fecha', fecha:i.value }; cargarPayAutoPintar(); });
+}
 function cargarPayAutoPintar(){
   setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payAuto'); if(!el) return;
-  if(!payAutoLista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">Todavía no hay picks de Pay. Revisa cada hora, de 8am a 10pm (hora de Ecuador).</div>'; return; }
-  el.innerHTML = payAutoLista.map((x,i)=>paySlipHTML(x, 'auto', i, `data-pay-auto="${i}"`, `data-pay-resenaauto="${i}"`)).join('');
+  const enRangoA = payFiltroRango(payAutoFiltro);
+  const fEC = (iso)=> new Date(Date.parse(iso) - 5*3600e3).toISOString().slice(0,10);
+  const barraA = `<div id="payAutoFiltro">${payFiltroBarraHTML(payAutoFiltro, 'data-auto-f')}</div>`;
+  const visibles = payAutoLista.map((x,i)=>({ x, i })).filter(({x})=>enRangoA(fEC(x.createdAt)));
+  if(!visibles.length){ el.innerHTML = barraA + '<div style="color:var(--muted); font-size:13px;">No hay picks de Pay en esa fecha. Pay revisa cada hora, de 8am a 10pm (hora de Ecuador).</div>'; payFiltrosWire(); return; }
+  el.innerHTML = barraA + visibles.map(({x,i})=>paySlipHTML(x, 'auto', i, `data-pay-auto="${i}"`, `data-pay-resenaauto="${i}"`)).join('');
+  payFiltrosWire();
   el.querySelectorAll('[data-pay-auto]').forEach(b=>b.onclick=()=>tomarPay(payAutoLista[+b.dataset.payAuto]));
   el.querySelectorAll('[data-pay-resenaauto]').forEach(b=>b.onclick=()=>payResena(payAutoLista[+b.dataset.payResenaauto]));
   el.querySelectorAll('[data-pay-like]').forEach(b=>b.onclick=()=>payToggleLinea(b.dataset.payLike));
