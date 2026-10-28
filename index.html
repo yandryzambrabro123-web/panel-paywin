@@ -7713,12 +7713,33 @@ async function payReservadaQuitar(id){
   payReservadasPintar();
   try{ await persist('payReservadas', { deletedIds: [id] }); }catch(e){ console.error(e); }
 }
+function payResSyncWire(el){
+  const b = el.querySelector('#payResSyncBtn'); if(!b) return;
+  b.onclick = async ()=>{
+    const info = el.querySelector('#payResSyncInfo'); b.disabled = true; info.textContent = 'Sincronizando…';
+    try{
+      // 1) trae lo que haya en la hoja y lo mezcla con lo de este dispositivo  2) lo sube  3) cuenta lo que quedó en la hoja
+      let hoja = []; try{ const r0 = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES.payReservadas}&_=${Date.now()}`); hoja = ((await r0.json()).data || []).map(row=>coerceRow('payReservadas', row)); }catch(e){}
+      const ids = new Set((state.payReservadas||[]).map(r=>r.id));
+      const borr = new Set(payResLeerLS(PAY_RES_DEL));
+      hoja.forEach(r=>{ if(r.id && !ids.has(r.id) && !borr.has(r.id)) state.payReservadas.push(r); });
+      payResCopiaLocal();
+      await persist('payReservadas');
+      await new Promise(r=>setTimeout(r, 3000));
+      let nHoja = -1; try{ const r1 = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES.payReservadas}&_=${Date.now()}`); nHoja = ((await r1.json()).data || []).length; }catch(e){}
+      payReservadasPintar();
+      const i2 = document.getElementById('payResSyncInfo');
+      if(i2) i2.innerHTML = nHoja >= (state.payReservadas||[]).length ? `✅ Sincronizado: ${nHoja} en la hoja y en este dispositivo` : `⚠️ Este dispositivo tiene ${(state.payReservadas||[]).length} pero la hoja solo ${nHoja < 0 ? 'no respondió' : nHoja}. Avísale a Claude.`;
+    }catch(e){ info.textContent = 'No se pudo sincronizar: ' + e.message; b.disabled = false; }
+  };
+}
 function payReservadasPintar(){
   setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payReservadas'); if(!el) return;
+  const barra = `<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; font-size:12px; color:var(--muted);"><span id="payResSyncInfo">En este dispositivo: ${(state.payReservadas||[]).length}</span><button class="btn secondary" type="button" id="payResSyncBtn" style="padding:6px 12px; font-size:12px;">🔄 Sincronizar con la hoja</button></div>`;
   const lista = payResLista().sort((a,b)=>String(a.creada).localeCompare(String(b.creada)));
-  if(!lista.length){ el.innerHTML = '<div style="color:var(--muted); font-size:13px;">No tienes boletos reservados. En "Mi boleto" toca "Reservar para después".</div>'; return; }
-  el.innerHTML = lista.map((r,i)=>{
+  if(!lista.length){ el.innerHTML = barra + '<div style="color:var(--muted); font-size:13px;">No tienes boletos reservados. En "Mi boleto" toca "Reservar para después".</div>'; payResSyncWire(el); return; }
+  el.innerHTML = barra + lista.map((r,i)=>{
     const sels = (r.x.selecciones||[]).map(payNormSel);
     const d = new Date(r.creada);
     const cuando = isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(5,16).replace('T',' ');
@@ -7731,6 +7752,7 @@ function payReservadasPintar(){
       <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resenviar="${esc(r.id)}">Enviar ahora</button><button class="btn secondary" type="button" data-pay-resquitar="${esc(r.id)}">Eliminar</button></div>
     </div>`;
   }).join('');
+  payResSyncWire(el);
   el.querySelectorAll('[data-pay-resenviar]').forEach(b=>b.onclick=()=>{ const r = payResLista().find(q=>q.id === b.dataset.payResenviar); if(!r) return; payResPendienteId = r.id; tomarPay(r.x); });
   el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ if(confirm('¿Eliminar este boleto reservado?')) payReservadaQuitar(b.dataset.payResquitar); });
 }
