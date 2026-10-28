@@ -7424,7 +7424,13 @@ function payExcluir(ref){
 let payResPendienteId = '';
 async function payGuardarEnvio(texto){
   // si venía de una reserva, solo ahora (ya enviada a un grupo) sale de Reservadas
-  if(payResPendienteId){ const id = payResPendienteId; payResPendienteId = ''; payReservadaQuitar(id); }
+  if(payResPendienteId){
+    // solo se quita si lo enviado es de ESA reserva (misma cuota total o mismo partido); si diste Cancelar y mandaste otra cosa, la reserva se queda
+    const r = payResLista().find(q=>q.id === payResPendienteId);
+    const tx = String(texto||'').toLowerCase();
+    const coincide = r && ((r.x.cuota && tx.includes(payFmtCuota(r.x.cuota))) || (r.x.selecciones||[]).some(sl=>{ const eq = String(sl.partido||'').toLowerCase().split(/\s+(?:vs\.?|v|-)\s+/)[0].trim(); return eq.length > 3 && tx.includes(eq); }));
+    if(coincide){ const id = payResPendienteId; payResPendienteId = ''; payReservadaQuitar(id); }
+  }
   const t = String(texto||'').replace(/\s+/g,' ').trim().slice(0,300); if(!t) return;
   payTomadasHoy.push(t);
   try{
