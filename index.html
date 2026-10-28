@@ -7217,6 +7217,7 @@ function pintarBandejaPay(){
   const eventos = paySeleccion.map((s,i)=>payEventoHTML(s, s.liga, `
       <button type="button" class="btn secondary" data-pay-builder-sel="${i}">Bet Builder</button>
       <button type="button" class="btn secondary" data-pay-bajar-sel="${i}">↓ Riesgo</button>
+      <button type="button" class="btn secondary" data-pay-modsel="${i}">✏️ Modificar código</button>
       <button type="button" class="btn secondary" data-pay-quitar="${i}">✕ Quitar</button>`, s.k === payUltimaK, i)).join('');
   el.style.display = 'block';
   el.classList.toggle('cerrada', !payFlotanteAbierto);
@@ -7261,6 +7262,7 @@ function pintarBandejaPay(){
     let hecho = false; const ok = ()=>{ if(hecho) return; hecho = true; const v = Number(String(inp.value).replace(',','.')); if(v > 1) s0.cuota = v.toFixed(2); pintarBandejaPay(); };
     inp.onkeydown = (e)=>{ if(e.key === 'Enter') ok(); }; inp.onblur = ok;
   });
+  el.querySelectorAll('[data-pay-modsel]').forEach(b=>b.onclick=()=>{ const i = +b.dataset.payModsel, s0 = paySeleccion[i]; if(!s0) return; payEditarLineas('Modificar línea del boleto', [{ partido:s0.partido, pick:s0.pick, cuota:s0.cuota, hora:s0.hora }], (nv)=>{ const n = nv[0]; s0.partido = n.partido; s0.pick = n.pick; s0.cuota = n.cuota; pintarPay(); pintarBandejaPay(); }); });
   el.querySelectorAll('[data-pay-quitar]').forEach(b=>b.onclick=()=>{ paySeleccion.splice(+b.dataset.payQuitar,1); pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); });
   const vac = document.getElementById('payVaciarBtn'); if(vac) vac.onclick = ()=>{ paySeleccion = []; pintarPay(); pintarAutoSiHay(); pintarBandejaPay(); };
   const combi = ()=>({ manual: true, cupo: payCupo, partido: `Combinada de ${paySeleccion.length}`, pick: 'Mi combinada', cuota: total.toFixed(2), selecciones: paySeleccion.map(s=>({ partido:s.partido, pick:s.pick, cuota:s.cuota, hora:s.hora })) });
@@ -7733,6 +7735,50 @@ function payResSyncWire(el){
     }catch(e){ info.textContent = 'No se pudo sincronizar: ' + e.message; b.disabled = false; }
   };
 }
+// ---- Modificar el código del boleto: cuando una línea se bloquea o no está disponible, la cambias a mano ----
+function payEditarLineas(titulo, lineas, onSave){
+  let L = lineas.map(l=>({ partido:l.partido||'', pick:l.pick||'', cuota:String(l.cuota||''), hora:l.hora||'' }));
+  const pintar = ()=>{
+    const tot = L.reduce((a,l)=>a*(Number(String(l.cuota).replace(',','.'))||1),1);
+    openModal(`<h3>✏️ ${esc(titulo)}</h3>
+      <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Cambia lo que haga falta (una línea bloqueada o no disponible): el partido, la selección o la cuota. La cuota total se recalcula sola.</div>
+      ${L.map((l,i)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:8px;">
+        <div style="display:flex; gap:6px; align-items:center;"><input data-pe-p="${i}" value="${esc(l.partido)}" placeholder="Partido (Local vs Visitante)" style="flex:1; min-width:0; background:#0f1320; color:#fff; border:1px solid #2a2f3c; border-radius:8px; padding:8px 10px; font:inherit;"><button type="button" class="btn secondary" data-pe-x="${i}" style="padding:6px 10px;">✕</button></div>
+        <textarea data-pe-k="${i}" rows="2" placeholder="Selección" style="width:100%; margin-top:6px; background:#0f1320; color:#fff; border:1px solid #2a2f3c; border-radius:8px; padding:8px 10px; font:inherit;">${esc(l.pick)}</textarea>
+        <input data-pe-c="${i}" value="${esc(l.cuota)}" inputmode="decimal" placeholder="Cuota" style="width:100px; margin-top:6px; background:#0f1320; color:#fff; border:1px solid #2a2f3c; border-radius:8px; padding:8px 10px; font:inherit;">
+      </div>`).join('')}
+      <button type="button" class="btn secondary" id="peAdd" style="width:100%;">+ Agregar línea</button>
+      <div style="margin-top:10px; font-weight:800;">Cuota total: <span style="color:var(--gold, #D4AF6A);">${L.length && tot > 1 ? tot.toFixed(2) : '-'}</span></div>
+      <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cancelar</button><button class="btn" id="peSave" type="button">Guardar cambios</button></div>`);
+    const sync = ()=>{
+      document.querySelectorAll('[data-pe-p]').forEach(e=>{ L[+e.dataset.peP].partido = e.value; });
+      document.querySelectorAll('[data-pe-k]').forEach(e=>{ L[+e.dataset.peK].pick = e.value; });
+      document.querySelectorAll('[data-pe-c]').forEach(e=>{ L[+e.dataset.peC].cuota = e.value; });
+    };
+    document.querySelectorAll('[data-pe-c]').forEach(e=>e.onchange = ()=>{ sync(); pintar(); });
+    document.querySelectorAll('[data-pe-x]').forEach(b=>b.onclick = ()=>{ sync(); L.splice(+b.dataset.peX, 1); pintar(); });
+    document.getElementById('peAdd').onclick = ()=>{ sync(); L.push({ partido:'', pick:'', cuota:'', hora:'' }); pintar(); };
+    document.getElementById('peSave').onclick = ()=>{
+      sync();
+      const ok = L.filter(l=>l.pick.trim());
+      if(!ok.length){ alert('Deja al menos una línea con su selección.'); return; }
+      closeModal(); onSave(ok.map(l=>({ ...l, partido:l.partido.trim(), pick:l.pick.trim(), cuota:String(l.cuota).replace(',','.').trim() })));
+    };
+  };
+  pintar();
+}
+async function payReservadaModificar(id){
+  const r = (state.payReservadas||[]).find(q=>q.id === id); if(!r) return;
+  let x; try{ x = JSON.parse(r.json); }catch(e){ return; }
+  const sels = (x.selecciones && x.selecciones.length ? x.selecciones : [{ partido:x.partido, pick:x.pick, cuota:x.cuota }]).map(payNormSel);
+  payEditarLineas('Modificar boleto reservado', sels, async (nuevas)=>{
+    const prod = payProducto(nuevas);
+    x.selecciones = nuevas; x.cuota = prod ? prod.toFixed(2) : x.cuota; x.partido = `Combinada de ${nuevas.length}`;
+    r.json = JSON.stringify(x); r.cuota = String(x.cuota);
+    payResCopiaLocal(); payReservadasPintar();
+    try{ await persist('payReservadas'); }catch(e){ console.error(e); }
+  });
+}
 function payReservadasPintar(){
   setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payReservadas'); if(!el) return;
@@ -7749,10 +7795,11 @@ function payReservadasPintar(){
       <details style="font-size:12px; color:var(--muted);"><summary>Ver en texto</summary>
       ${sels.map(l=>`<div style="font-size:13px; padding:2px 0;">${esc(l.partido||'')} — <b>${esc(l.pick||'')}</b> <span style="color:var(--muted);">@${esc(String(l.cuota))}${l.hora ? ' · ' + esc(l.hora) : ''}</span></div>`).join('')}
       </details>
-      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resenviar="${esc(r.id)}">Enviar ahora</button><button class="btn secondary" type="button" data-pay-resquitar="${esc(r.id)}">Eliminar</button></div>
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resenviar="${esc(r.id)}">Enviar ahora</button><button class="btn secondary" type="button" data-pay-resmod="${esc(r.id)}">✏️ Modificar código</button><button class="btn secondary" type="button" data-pay-resquitar="${esc(r.id)}">Eliminar</button></div>
     </div>`;
   }).join('');
   payResSyncWire(el);
+  el.querySelectorAll('[data-pay-resmod]').forEach(b=>b.onclick=()=>payReservadaModificar(b.dataset.payResmod));
   el.querySelectorAll('[data-pay-resenviar]').forEach(b=>b.onclick=()=>{ const r = payResLista().find(q=>q.id === b.dataset.payResenviar); if(!r) return; payResPendienteId = r.id; tomarPay(r.x); });
   el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ if(confirm('¿Eliminar este boleto reservado?')) payReservadaQuitar(b.dataset.payResquitar); });
 }
