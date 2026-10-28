@@ -377,6 +377,35 @@ Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: parti
   res.status(200).json({ sugerencias: lista, fuente: 'tu foto del partido' });
 }
 
+// Evalúa una apuesta que mandó otra persona (captura de su casa de apuestas): la lee, dice si es buena y la deja lista para reenviar.
+async function modoPayEvaluar(apiKey, body, res) {
+  const imgs = (Array.isArray(body.imagenes) ? body.imagenes : []).filter((i) => i && i.base64).slice(0, 3);
+  if (!imgs.length) { res.status(400).json({ error: 'Sube la captura de la apuesta.' }); return; }
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  const nota = String(body.nota || '').slice(0, 300);
+  const system = `Eres Pay, el analista deportivo de PayWin (Ecuador). Hoy es ${hoy} (hora de Ecuador). Alguien le mandó al jefe una APUESTA YA ARMADA (captura de su casa de apuestas). Tu trabajo:
+1) LEE la apuesta tal cual: cada partido, su selección, su cuota, la hora si se ve, y la cuota total. No cambies ni inventes cuotas; si algo no se lee, déjalo vacío.
+2) EVALÚA con honestidad si es una buena apuesta: forma reciente, bajas, historial, si las cuotas pagan lo justo por el riesgo, si hay líneas relacionadas o demasiado arriesgadas. Busca en la web lo que haga falta (máx. 3 búsquedas). Si no encuentras información, dilo. Nunca prometas ganancia segura.
+3) Da un veredicto: "buena", "regular" o "mala" y la razón en máximo 3 frases claras, en español informal ecuatoriano. Señala cuál es la línea más débil si la hay, y si conviene quitarla o cambiarla.
+Responde SOLO con un objeto JSON dentro de <json></json> con: selecciones (arreglo de {partido, pick, cuota (número), hora}), cuota (número, cuota total), veredicto, razon, linea_debil (texto corto o ""), sugerencia (qué cambiarías, o "") y destino_sugerido ("VIP", "Gratis" o "Stake de pago" según cuota total y confianza: gratis ~1.75-1.90, VIP 1.80-2.00, stake de pago 2.50 o más; si no encaja en ninguno, "").`;
+  const content = [];
+  imgs.forEach((i) => content.push({ type: 'image', source: { type: 'base64', media_type: i.mediaType || 'image/jpeg', data: i.base64 } }));
+  content.push({ type: 'text', text: nota ? 'Nota del jefe: ' + nota : 'Lee y evalúa esta apuesta.' });
+  const payload = { model: 'claude-sonnet-5', max_tokens: 3000, system, messages: [{ role: 'user', content }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] };
+  let ia = await llamarPay(apiKey, payload, 38000);
+  if (ia.ok && !ia.texto) { delete payload.tools; ia = await llamarPay(apiKey, payload, 20000); }
+  if (!ia.ok) { res.status(502).json({ error: `Pay no pudo evaluar esa apuesta (IA ${ia.status}).` }); return; }
+  const t = ia.texto;
+  const cand = [];
+  const tag = t.match(/<json>([\s\S]*?)<\/json>/i); if (tag) cand.push(tag[1]);
+  if (t.indexOf('{') >= 0 && t.lastIndexOf('}') > t.indexOf('{')) cand.push(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1));
+  let o = null;
+  for (const c of cand) { try { const j = JSON.parse(c.trim()); if (j && typeof j === 'object') { o = j; break; } } catch (e) { /* siguiente */ } }
+  const sel = o && Array.isArray(o.selecciones) ? o.selecciones.filter((x) => x && x.pick) : [];
+  if (!sel.length) { res.status(502).json({ error: 'No pude leer la apuesta en esa imagen. Prueba con una captura más clara.' }); return; }
+  res.status(200).json({ selecciones: sel, cuota: o.cuota || '', veredicto: String(o.veredicto || '').toLowerCase(), razon: o.razon || '', linea_debil: o.linea_debil || '', sugerencia: o.sugerencia || '', destino_sugerido: o.destino_sugerido || '' });
+}
+
 // Logos de equipos y fotos de jugadores (TheSportsDB, gratis). Se guarda en memoria para no repetir consultas.
 const cacheImagenes = {};
 async function tsdb(ruta) {
@@ -701,6 +730,12 @@ module.exports = async function handler(req, res) {
   if (body.modo === 'pay_bajar') {
     try { await modoPayBajar(apiKey, body, res); }
     catch (e) { console.error('Pay bajar:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
+    return;
+  }
+
+  if (body.modo === 'pay_evaluar') {
+    try { await modoPayEvaluar(apiKey, body, res); }
+    catch (e) { console.error('Pay evaluar:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
     return;
   }
 

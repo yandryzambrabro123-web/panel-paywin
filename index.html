@@ -6921,6 +6921,7 @@ function renderFactory(){
           <button class="btn secondary" id="payTalkBtn" type="button">🎙 Hablar con Pay</button>
           <button class="btn secondary" id="payPartidoBtn" type="button">🔍 Analizar partido / cartelera</button>
           <button class="btn secondary" id="payAprBtn" type="button">📸 Enseñarle a Pay</button>
+          <button class="btn secondary" id="payEvalBtn" type="button">📥 Cargar apuesta realizada</button>
         </div>
         <div id="payAprendeInfo" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
         <div id="payStatsInfo" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
@@ -7515,6 +7516,50 @@ function openPayPartido(){
     }catch(err){ estado.textContent = 'No se pudo: ' + err.message; go.disabled = false; go.textContent = 'Analizar'; }
   };
 }
+function openPayEvaluar(){
+  let fotos = [], res = null;
+  openModal(`
+    <h3>📥 Cargar apuesta realizada</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube la captura de una apuesta que te mandó un pana. Pay la lee, te dice si es buena o no, y la deja lista para reservar o mandar a un grupo.</div>
+    <input id="payEvFiles" type="file" accept="image/*" multiple style="display:none;">
+    <button class="btn secondary" id="payEvPick" type="button" style="width:100%;">📸 Elegir captura(s) de la apuesta</button>
+    <div id="payEvFotos" style="font-size:12.5px; color:var(--muted); margin:8px 0;"></div>
+    <div class="field"><label>Nota (opcional)</label><textarea id="payEvNota" placeholder="Ej: me la mandó Carlos, quiero saber si la subo al VIP"></textarea></div>
+    <div id="payEvOut" style="margin-top:8px;"></div>
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button><button class="btn" id="payEvGo" type="button">Evaluar</button></div>
+  `);
+  const out = document.getElementById('payEvOut'), go = document.getElementById('payEvGo');
+  document.getElementById('payEvPick').onclick = ()=>document.getElementById('payEvFiles').click();
+  document.getElementById('payEvFiles').onchange = async (e)=>{
+    fotos = [];
+    for(const f of [...e.target.files].slice(0,3)){ try{ const c = await fileToCompressedImage(f); fotos.push({ base64:c.base64, mediaType:c.mediaType }); }catch(err){ console.error(err); } }
+    document.getElementById('payEvFotos').textContent = fotos.length ? `✓ ${fotos.length} captura${fotos.length>1?'s':''} lista${fotos.length>1?'s':''}` : 'No pude leer esa imagen.';
+  };
+  go.onclick = async ()=>{
+    if(!fotos.length){ out.innerHTML = '<div style="color:#ff9d6b;">Sube la captura primero.</div>'; return; }
+    go.disabled = true; go.textContent = 'Pay está evaluando…'; out.innerHTML = '<div style="color:var(--muted); font-size:13px;">Leyendo la apuesta y revisando los partidos, puede tomar hasta un minuto.</div>';
+    try{
+      const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_evaluar', imagenes: fotos, nota: document.getElementById('payEvNota').value.trim() }) }), 75000, 'Pay tardó demasiado. Intenta de nuevo.');
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.error || 'Pay no pudo evaluar esa apuesta.');
+      res = d;
+      const x = { manual:true, cupo:'', sugerido: d.destino_sugerido || '', partido:`Combinada de ${d.selecciones.length}`, pick:'Apuesta cargada', cuota: String(d.cuota || payProducto(d.selecciones.map(payNormSel)) || '').slice(0,8), selecciones: d.selecciones.map(s=>({ partido:s.partido, pick:s.pick, cuota:s.cuota, hora:s.hora })) };
+      const col = d.veredicto==='buena' ? '#7be39a' : d.veredicto==='mala' ? '#ff7a7a' : '#ffd54a';
+      out.innerHTML = `<img src="${payBoletoDataUrl(x)}" alt="Boleto" style="width:100%; border-radius:10px; display:block; margin-bottom:10px;">
+        <div style="border:1px solid ${col}; border-radius:10px; padding:10px 12px; font-size:13px;">
+          <div style="font-weight:800; color:${col}; margin-bottom:4px;">Veredicto de Pay: ${esc((d.veredicto||'sin veredicto').toUpperCase())}</div>
+          <div>${esc(d.razon||'')}</div>
+          ${d.linea_debil ? `<div style="margin-top:6px;"><b>Línea más débil:</b> ${esc(d.linea_debil)}</div>` : ''}
+          ${d.sugerencia ? `<div style="margin-top:6px;"><b>Pay cambiaría:</b> ${esc(d.sugerencia)}</div>` : ''}
+          ${d.destino_sugerido ? `<div style="margin-top:6px; color:var(--muted);">Sugerido para: <b>${esc(d.destino_sugerido)}</b> (tú eliges al mandar)</div>` : ''}
+        </div>
+        <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;"><button class="btn" id="payEvTomar" type="button">La tomo</button><button class="btn secondary" id="payEvRes" type="button">📌 Reservar</button></div>`;
+      document.getElementById('payEvTomar').onclick = ()=>{ closeModal(); tomarPay(x); };
+      document.getElementById('payEvRes').onclick = ()=>{ payReservar(x); closeModal(); };
+      go.textContent = 'Evaluar otra'; go.disabled = false;
+    }catch(err){ out.innerHTML = `<div style="color:#ff7a7a; font-size:13px;">${esc(err.message)}</div>`; go.disabled = false; go.textContent = 'Evaluar'; }
+  };
+}
 function openPayAprender(){
   let lecturas = []; // { lineas, tipo, cuotaTotal }
   openModal(`
@@ -7597,6 +7642,7 @@ function initPayPanel(){
   pintarPay();
   document.getElementById('payAprBtn').onclick = openPayAprender;
   document.getElementById('payPartidoBtn').onclick = openPayPartido;
+  document.getElementById('payEvalBtn').onclick = openPayEvaluar;
   { const r = payPerdidasYResumen(); const el = document.getElementById('payStatsInfo'); if(el) el.textContent = (r.g + r.p) ? `Tu historial en el panel: ${r.g} ganadas y ${r.p} perdidas. Pay lo usa para evitar lo que te falla.` : 'Marca tus apuestas como Ganada o Perdida en el panel y Pay aprende también de lo que te falla.'; }
   pintarBandejaPay();
   payCargarGanadasDB();
@@ -7912,7 +7958,7 @@ function tomarPay(i){
   const x = typeof i === 'object' ? i : paySugerencias[i]; if(!x) return;
   payGuardarTomada(x);
   const texto = (x.selecciones||[]).length ? `${payTextoSel(x)}\nCuota total: @${x.cuota||''}` : `${x.partido||''} — ${x.pick||''} @ ${x.cuota||''}`;
-  const cfg = PAY_CUPOS[x.cupo] || {};
+  const cfg = PAY_CUPOS[x.cupo || x.sugerido] || {};
   if(x.cupo === 'Regalito'){ try{ navigator.clipboard.writeText(texto); }catch(e){} openRegalitoDiaModal(); return; }
   if(x.cupo === 'Stake de pago'){ openStakeRegistroModal(texto); return; }
   const fijoPay = x.manual ? null : x.cupo === 'VIP' ? WIN_FIJO.vip : (x.cupo === 'Gratis' ? { ...WIN_FIJO.gratis, grupos: (cfg.grupos && cfg.grupos.length ? cfg.grupos : WIN_FIJO.gratis.grupos) } : null);
