@@ -373,7 +373,7 @@ function montar(app, stakes, extra) {
 
   // Prueba de guardado en Google Sheets: abre https://<tu-bot>/diag/hojas (tarda ~25 segundos). Escribe filas de prueba con
   // distintos contenidos en la hoja "PruebaGuardado" y dice cuáles se guardan y cuánto tarda en verse.
-  app.get('/diag/hojas', async (req, res) => {
+  async function probarGuardado() {
     const HOJA = 'PruebaGuardado';
     const stamp = Date.now().toString(36);
     const casos = [
@@ -398,8 +398,17 @@ function montar(app, stakes, extra) {
       }
       out.conclusion = out.tiempos[out.tiempos.length - 1].faltan.length ? 'Google NO guarda los casos que faltan (revisa el Apps Script o ese tipo de contenido).' : 'Todo se guardó: el problema no es el contenido, mira los tiempos.';
     } catch (e) { out.error = String(e.message).slice(0, 200); }
-    res.json(out);
-  });
+    return out;
+  }
+  app.get('/diag/hojas', async (req, res) => { res.json(await probarGuardado()); });
+  // Al arrancar el bot, corre la prueba solo y te manda el resultado por Telegram (así no tienes que abrir nada)
+  setTimeout(async () => {
+    try {
+      const o = await probarGuardado();
+      const t = (o.tiempos || []).map((x) => `${x.segundos}s: ${x.filas_vistas}${x.faltan.length ? ' (faltan: ' + x.faltan.join(', ') + ')' : ''}`).join('\n');
+      await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `🔎 Prueba de guardado en Google Sheets\n${o.error ? 'ERROR: ' + o.error : o.conclusion}\n\n${t}` });
+    } catch (e) { console.error('Prueba de guardado:', e.message); }
+  }, 150 * 1000);
 
   // Revisión rápida para el jefe: abre https://<tu-bot>/diag/registro y dice qué falla en los registros (no muestra claves)
   app.get('/diag/registro', async (req, res) => {
