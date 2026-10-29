@@ -5563,7 +5563,7 @@ function openStakePagoUploadModal(){
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
     <div class="field"><label>Link del canal de Telegram de hoy</label><input id="f-stakeTgLink" placeholder="https://t.me/+..." autocomplete="off"><div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se guarda en la sección de hoy en Venta de Stakes. Es el que recibirá cada cliente que apruebes.</div></div>
-    <div class="field"><label>¿A qué grupo va la publicidad?</label>${winGroupPickerHTML('f-stakeGroups', ['Gratis 1','Gratis 2','Gratis 3'])}</div>
+    <div style="font-size:12.5px; border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px;">📍 La publicidad va siempre a Gratis 1, 2 y 3 (ya no se pregunta).</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="submitStakePagoBtn">Procesar</button>
@@ -5585,7 +5585,7 @@ function openRegalitoDiaModal(){
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
     <div class="field"><label>Link del grupo de Telegram de hoy</label><input id="f-regTgLink" placeholder="https://t.me/+..." autocomplete="off"></div>
-    <div class="field"><label>¿A qué grupo va la publicidad?</label>${winGroupPickerHTML('f-regGroups', ['Gratis 1','Gratis 2','Gratis 3'])}</div>
+    <div style="font-size:12.5px; border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px;">📍 La publicidad va siempre a Gratis 1, 2 y 3 (ya no se pregunta).</div>
     <div class="modal-actions">
       <button class="btn secondary" id="regCopyLinkBtn" type="button">Copiar link fijo para clientes</button>
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -5605,7 +5605,7 @@ function openRegalitoDiaModal(){
 }
 
 async function submitRegalitoDia(){
-  const grupos = getCheckedWinGroups('f-regGroups');
+  const grupos = ['Gratis 1','Gratis 2','Gratis 3'];
   const link = ((document.getElementById('f-regTgLink')||{}).value || '').trim();
   if(!/^https?:\/\/\S+$/i.test(link)){ alert('Pega el link del grupo (empieza con https://).'); return; }
   if(!winPendingFile){ alert('Sube la foto primero.'); return; }
@@ -5647,7 +5647,7 @@ async function winCrearSeccionStakePagoHoy(tgLink){
 }
 
 async function submitStakePago(){
-  const grupos = getCheckedWinGroups('f-stakeGroups');
+  const grupos = ['Gratis 1','Gratis 2','Gratis 3'];
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   if(!winPendingFile){ alert('Sube la captura primero.'); return; }
   const file = winPendingFile;
@@ -6323,6 +6323,8 @@ const WIN_REGISTRO_TIPOS = [
   { key:'gifts', label:'Regalito del día' },
   { key:'stakes', label:'Stake del día' }
 ];
+// Botones fijos: lo que se manda se registra solo, sin preguntar
+const WIN_AUTO_REG = { stake_pago:{ key:'stakes', etiqueta:'Stake' }, regalito:{ key:'gifts', etiqueta:'Regalito' } };
 let winPreset = null; // lo que elegiste en el formulario (tipo de apuesta / cuál ganó); el confirm lo preselecciona
 function winRegistroDefault(kind, grupos){
   if(kind === 'nueva_apuesta' && winPreset && winPreset.tipo === 'none') return '';
@@ -6419,10 +6421,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       <div id="winGanadaLeyendo" style="font-size:11.5px; color:var(--muted); margin-top:4px;">${sendImage && sendImage.base64 ? 'Leyendo la captura para sugerir la apuesta y los montos…' : 'Sube captura para que Win lea los montos, o escríbelos.'}</div>
       <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-top:10px; cursor:pointer;"><input type="checkbox" id="f-winGuardarGanada"> 📌 Guardarla también para publicarla mañana (ganadas de ayer)</label>
       <button class="btn secondary" type="button" id="winGuardarGanadaBtn" style="width:100%; margin-top:8px; font-size:12.5px;">📌 Solo guardar para mañana (sin mandar hoy)</button>
-    </div>` : (kind === 'nueva_apuesta' ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel según el grupo al que la mandes (VIP → Apuesta VIP, Gratis → Apuesta gratis), con la foto y el texto.</div>` : `<div class="field"><label>Registrar en el panel como</label>
-      <select id="f-winRegistrar">${WIN_REGISTRO_TIPOS.map(t=>`<option value="${t.key}" ${t.key===winRegistroDefault(kind, grupos)?'selected':''}>${t.label}</option>`).join('')}</select>
-      <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se registra al mandar con la foto, y el recordatorio de Telegram lo cuenta como hecho hoy.</div>
-    </div>`)}
+    </div>` : (kind === 'nueva_apuesta' ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel según el grupo al que la mandes (VIP → Apuesta VIP, Gratis → Apuesta gratis), con la foto y el texto.</div>` : (WIN_AUTO_REG[kind] ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel (${WIN_AUTO_REG[kind].etiqueta}) al mandarla, con la foto y el texto.</div>` : ''))}
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Los grupos con bot conectado se mandan solos en un toque. Los demás copian el texto y abren el chat para pegar y enviar.</div>
     ${groupButtonsHTML}
     <div class="modal-actions">
@@ -6516,10 +6515,10 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       if(winRegistrado) gan.disabled = true;
       return;
     }
-    const sel = document.getElementById('f-winRegistrar');
-    if(!sel || !sel.value) return;
-    try{ winRegistrado = await winRegistrarEnPanel(sel.value, texto, sendImage); }catch(e){ console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
-    if(winRegistrado){ sel.disabled = true; }
+    const auto = WIN_AUTO_REG[kind];
+    if(!auto) return;
+    winRegistrado = true; // se marca antes del await para que mandar a 3 grupos no lo registre 3 veces
+    try{ await winRegistrarEnPanel(auto.key, texto, sendImage); }catch(e){ winRegistrado = false; console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
   };
 
   document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
