@@ -47,6 +47,7 @@ let sock = null;
 let lastQR = null;
 let connected = false;
 let connectingSince = Date.now();
+let ultimoCierre = '';
 
 // Pequeña pausa aleatoria antes de mandar cada mensaje -- no evita un bloqueo si
 // WhatsApp decide marcar el número, pero ayuda a que el patrón de envíos no se vea
@@ -54,6 +55,21 @@ let connectingSince = Date.now();
 function pausaHumana() {
   const ms = 1500 + Math.floor(Math.random() * 2500);
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Borra la sesión guardada (el número viejo) y arranca de cero: genera un QR nuevo para vincular otro número.
+let reiniciando = false;
+async function borrarSesionYReiniciar() {
+  if (reiniciando) return;
+  reiniciando = true;
+  try {
+    try { if (sock) { sock.ev.removeAllListeners('connection.update'); sock.end(undefined); } } catch (e) { /* ya estaba cerrado */ }
+    require('fs').rmSync(AUTH_DIR, { recursive: true, force: true });
+    connected = false; lastQR = null;
+    console.log('Sesión borrada. Generando un QR nuevo...');
+    await new Promise((ok) => setTimeout(ok, 2000));
+    await iniciarConexion();
+  } finally { reiniciando = false; }
 }
 
 async function iniciarConexion() {
@@ -100,7 +116,11 @@ async function iniciarConexion() {
         'mensaje=', lastDisconnect?.error?.message,
         deslogueado ? '-- el número fue desvinculado, hay que escanear el QR de nuevo.' : '-- reconectando...'
       );
-      if (!deslogueado) {
+      ultimoCierre = `statusCode=${statusCode} ${lastDisconnect?.error?.message || ''} (${new Date().toISOString()})`;
+      // Número desvinculado o bloqueado (401 / 403): la sesión guardada ya no sirve. Se borra para que salga un QR nuevo.
+      if (deslogueado || statusCode === 403) {
+        borrarSesionYReiniciar().catch((e) => console.error('No pude reiniciar la sesión:', e.message));
+      } else {
         setTimeout(iniciarConexion, 3000);
       }
     }
@@ -144,7 +164,7 @@ app.get('/qr', async (req, res) => {
     return res.send('<h2 style="font-family:sans-serif;">Ya está conectado. No hace falta escanear nada.</h2>');
   }
   if (!lastQR) {
-    return res.send('<html><head><meta http-equiv="refresh" content="3"></head><body style="font-family:sans-serif; text-align:center; margin-top:60px;"><h2>Generando el código...</h2><p>Esta página se actualiza sola cada 3 segundos.</p></body></html>');
+    return res.send(`<html><head><meta http-equiv="refresh" content="3"></head><body style="font-family:sans-serif; text-align:center; margin-top:60px;"><h2>Generando el código...</h2><p>Esta página se actualiza sola cada 3 segundos.</p><p style="color:#888; font-size:13px;">Último cierre: ${ultimoCierre || '(ninguno todavía)'}</p></body></html>`);
   }
   const png = await qrcode.toDataURL(lastQR);
   res.send(`
@@ -158,6 +178,12 @@ app.get('/qr', async (req, res) => {
       </body>
     </html>
   `);
+});
+
+// Borra la sesión del número viejo y genera un QR nuevo. Abrir: /sesion/borrar?key=TU_API_KEY y luego /qr
+app.get('/sesion/borrar', requireApiKey, async (req, res) => {
+  borrarSesionYReiniciar().catch((e) => console.error('Reiniciar sesión:', e.message));
+  res.send('<html><body style="font-family:sans-serif; text-align:center; margin-top:60px;"><h2>Sesión borrada</h2><p>Abre <a href="/qr">/qr</a> en unos segundos y escanea el código con el número nuevo.</p></body></html>');
 });
 
 app.get('/estado', requireApiKey, (req, res) => {
