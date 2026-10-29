@@ -180,8 +180,9 @@ async function cuotasReales(fecha) {
       try {
         const basicos = /^(soccer|basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals' : 'h2h';
         // Las 25 ligas principales traen más mercados (fútbol: ambos marcan y doble oportunidad; resto: hándicap). Las demás, lo básico para ahorrar créditos.
-        const mercados = idx >= 25 ? basicos : liga.startsWith('soccer_') ? 'h2h,totals,btts,double_chance' : /^(basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals,spreads' : basicos;
+        const mercados = idx >= 25 ? (liga.startsWith('soccer_') ? 'h2h,totals,double_chance' : basicos) : liga.startsWith('soccer_') ? 'h2h,totals,btts,double_chance,draw_no_bet,spreads' : /^(basketball|icehockey|americanfootball|baseball)_/.test(liga) ? 'h2h,totals,spreads' : basicos;
         let r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${mercados}&oddsFormat=decimal`);
+        if (!r.ok && /draw_no_bet|spreads/.test(mercados) && liga.startsWith('soccer_')) r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=h2h,totals,btts,double_chance&oddsFormat=decimal`); // si la liga no trae hándicap / empate no apuesta
         if (!r.ok && mercados !== basicos) r = await fetch(`https://api.the-odds-api.com/v4/sports/${liga}/odds/?apiKey=${key}&regions=eu&markets=${basicos}&oddsFormat=decimal`);
         if (!r.ok) continue;
         const lista = await r.json();
@@ -194,7 +195,7 @@ async function cuotasReales(fecha) {
             (mk[k] = mk[k] || []).push(o.price);
           }
           const resumen = Object.entries(mk).map(([k, v]) => `${k}: ${Math.max(...v).toFixed(2)}`);
-          if (++porLiga > 12) continue;
+          if (++porLiga > 18) continue;
           porIndice[idx].eventos.push(`${liga} | ${e.home_team} vs ${e.away_team} | ${e.commence_time} | ${resumen.join(' ; ')}`);
           porIndice[idx].evs.push({ liga, id: e.id, casa: e.home_team, fuera: e.away_team, inicio: e.commence_time });
         }
@@ -205,7 +206,7 @@ async function cuotasReales(fecha) {
   const evs = porIndice.flatMap((x) => x.evs);
   let extra = [];
   if (process.env.ODDS_PROPS === '1') { try { extra = await lineasJugadores(key, evs, limite); } catch (e) { extra = []; } }
-  const resultado = [...eventos.slice(0, 320), ...extra];
+  const resultado = [...eventos.slice(0, 650), ...extra];
   if (fechaOk) cachePorFecha[fechaOk] = { t: Date.now(), datos: resultado }; else cacheCuotas = { t: Date.now(), datos: resultado };
   return resultado;
 }
@@ -487,6 +488,9 @@ Responde SOLO con un arreglo JSON: [{"pick":"texto claro de la línea","cuota":1
 const descartadas0 = (b) => (Array.isArray(b.descartadas) ? b.descartadas : []).slice(0, 60).map((x) => String(x).slice(0, 120)).join(' ; ');
 
 // ---- Armado local de combinadas con las cuotas reales (sin IA): da variedad y evita que Pay se quede sin picks ----
+// Para la IA se manda una muestra (las ligas prioritarias + todas las líneas de jugadores); el armado local usa TODAS las líneas
+function paraIA(d) { const a = d || []; return [...a.filter((x) => /^[a-z]+_/.test(x)).slice(0, 380), ...a.filter((x) => !/^[a-z]+_/.test(x)).slice(0, 40)]; }
+
 function limitesPierna(cupo) {
   const c = String(cupo || '').toLowerCase();
   if (/stake|regalito/.test(c)) return [1.10, 1.40];
@@ -518,6 +522,8 @@ function armarLocal(datos, o) {
       else if (mk === 'totals') { const t2 = nombre.match(/^(Over|Under)\s+([\d.]+)/i); if (!t2) continue; pick = `${/over/i.test(t2[1]) ? 'Más' : 'Menos'} de ${t2[2]} ${unidad}`; }
       else if (mk === 'double_chance') pick = `Doble oportunidad: ${nombre.replace(/\s+or\s+/i, ' o ').replace(/Draw/i, 'empate')}`;
       else if (mk === 'btts') pick = /yes/i.test(nombre) ? 'Ambos equipos marcan: Sí' : 'Ambos equipos marcan: No';
+      else if (mk === 'draw_no_bet') pick = `Empate no apuesta: ${nombre}`;
+      else if (mk === 'spreads') { const h = nombre.match(/^(.*?)\s+([+-][\d.]+)$/); if (!h) continue; pick = `Hándicap: ${h[1]} ${h[2]}`; }
       else continue;
       const leg = { deporte, partido, pick, cuota, hora: horaEC(inicio) };
       if (yaUsada && yaUsada(leg)) continue;
@@ -595,7 +601,7 @@ Reglas:
 - Baja el riesgo: prefiere líneas con margen amplio (por ejemplo un total que el equipo o jugador supera con holgura en sus últimos partidos), evita partidos con bajas importantes, rotaciones, finales parejas o información dudosa. Si una selección no te convence, no la pongas.
 - Sé honesto: nunca prometas ganancia segura; indica confianza "baja", "media" o "alta" de la combinada.
 - Si el rango pedido es difícil, acércate lo más posible y dilo en el análisis; NUNCA devuelvas la lista vacía si encuentras al menos una combinada razonable. Responde SOLO con un arreglo JSON de ${cantidad} objetos dentro de <json></json> (sin más texto) con: partido (resumen corto, ej. "Combinada de 3"), liga (deportes o ligas incluidas), hora (primer partido, hora de Ecuador), pick (texto corto que resuma la apuesta), cuota (número, total), confianza, analisis (máximo 2 frases del porqué es de bajo riesgo), selecciones (arreglo de OBJETOS, uno por línea, cada uno con: deporte ("futbol","baloncesto","tenis","mma","beisbol","hockey","nfl","tenis de mesa" o "esports"), partido ("Local vs Visitante"), pick (la selección clara, ej. "Más de 215.5 puntos" o "Gana Sevilla"), cuota (número) y hora (hora de Ecuador))${lote ? ', cupo (el nombre del cupo tal cual te lo doy). Cada combinada debe usar selecciones DISTINTAS a las de los otros cupos' : ''}.`;
-  const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Todos los partidos deben ser del día ${hoy}. Dame ${cantidad} combinada(s) distintas.`}${Array.isArray(body.evitar) && body.evitar.length ? '\nLÍNEAS YA USADAS HOY, prohibido repetirlas (ni el mismo partido con la misma selección; busca otras): ' + body.evitar.slice(0, 100).map((x) => String(x).slice(0, 120)).join(' ; ') : ''}${descartadas0(body) ? '\nLÍNEAS QUE EL JEFE DESCARTÓ porque no le gustan (no las pongas, y evita líneas del mismo tipo y mismo estilo de riesgo): ' + descartadas0(body) : ''}${mercadosPedidos.length ? '\nMERCADOS QUE PIDE EL JEFE: ' + mercadosPedidos.join(', ') + '. Usa sobre todo estos mercados y que cada combinada incluya al menos una línea de ellos. Los de jugadores (tiros al arco, remates, asistencias, triples) solo con línea real de los datos (empiezan con JUGADORES) o confirmada en la web; si no hay, usa los de equipo (corners, tarjetas, goles) y marca la cuota como aproximada.' : ''}${vistosSesion.length ? '\nLÍNEAS QUE YA TE MOSTRÉ en esta sesión (NO las repitas; busca otros partidos y otros mercados, el jefe quiere ver líneas nuevas cada vez): ' + vistosSesion.slice(0, 80).map((x) => String(x).slice(0, 110)).join(' ; ') : ''}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${body.resumen ? '\nEstadística real del jefe: ' + String(body.resumen).slice(0, 300) + '. Si el acierto es bajo, sé MÁS conservador de lo normal.' : ''}${Array.isArray(body.perdidas) && body.perdidas.length ? '\nApuestas que el jefe PERDIÓ (analiza el patrón: mercados, cuotas y tipos de línea que le fallan, y EVÍTALOS): ' + body.perdidas.slice(0, 40).map((x) => String(x).slice(0, 140)).join(' ; ') : ''}${historial.length ? '\nApuestas que el jefe ya GANÓ antes (aprende qué tipo de líneas y cuotas le funcionan; NO las repitas tal cual): ' + historial.join(' ; ') : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + datos.join('\n') : '\n\nBusca en la web SOLO los partidos del día ${hoy} que aún no empiezan, con sus cuotas aproximadas.'}`;
+  const userMsg = `${lote ? 'Dame UNA combinada para cada cupo: ' + lote.map((c) => `${String(c.cupo).slice(0, 30)} (cuota total ${Number(c.min)} a ${Number(c.max)})`).join('; ') + '. Si para un cupo no hay nada de bajo riesgo, omítelo.' : `Cupo: ${cupo}. Cuota total objetivo: ${cuotaMin} a ${cuotaMax}. Todos los partidos deben ser del día ${hoy}. Dame ${cantidad} combinada(s) distintas.`}${Array.isArray(body.evitar) && body.evitar.length ? '\nLÍNEAS YA USADAS HOY, prohibido repetirlas (ni el mismo partido con la misma selección; busca otras): ' + body.evitar.slice(0, 100).map((x) => String(x).slice(0, 120)).join(' ; ') : ''}${descartadas0(body) ? '\nLÍNEAS QUE EL JEFE DESCARTÓ porque no le gustan (no las pongas, y evita líneas del mismo tipo y mismo estilo de riesgo): ' + descartadas0(body) : ''}${mercadosPedidos.length ? '\nMERCADOS QUE PIDE EL JEFE: ' + mercadosPedidos.join(', ') + '. Usa sobre todo estos mercados y que cada combinada incluya al menos una línea de ellos. Los de jugadores (tiros al arco, remates, asistencias, triples) solo con línea real de los datos (empiezan con JUGADORES) o confirmada en la web; si no hay, usa los de equipo (corners, tarjetas, goles) y marca la cuota como aproximada.' : ''}${vistosSesion.length ? '\nLÍNEAS QUE YA TE MOSTRÉ en esta sesión (NO las repitas; busca otros partidos y otros mercados, el jefe quiere ver líneas nuevas cada vez): ' + vistosSesion.slice(0, 80).map((x) => String(x).slice(0, 110)).join(' ; ') : ''}${body.instruccion ? ' Indicación del dueño: ' + String(body.instruccion).slice(0, 300) : ''}${body.resumen ? '\nEstadística real del jefe: ' + String(body.resumen).slice(0, 300) + '. Si el acierto es bajo, sé MÁS conservador de lo normal.' : ''}${Array.isArray(body.perdidas) && body.perdidas.length ? '\nApuestas que el jefe PERDIÓ (analiza el patrón: mercados, cuotas y tipos de línea que le fallan, y EVÍTALOS): ' + body.perdidas.slice(0, 40).map((x) => String(x).slice(0, 140)).join(' ; ') : ''}${historial.length ? '\nApuestas que el jefe ya GANÓ antes (aprende qué tipo de líneas y cuotas le funcionan; NO las repitas tal cual): ' + historial.join(' ; ') : ''}${conDatos ? '\n\nAdemás busca en la web tenis, tenis de mesa, e-sports y UFC.\n\nPartidos y cuotas promedio (liga | partido | inicio UTC | mercado: cuota):\n' + paraIA(datos).join('\n') : '\n\nBusca en la web SOLO los partidos del día ${hoy} que aún no empiezan, con sus cuotas aproximadas.'}`;
   const payload = { model: 'claude-sonnet-5', max_tokens: 6000, system, messages: [{ role: 'user', content: userMsg }] };
   // Con cuotas reales NO se usa la web (rápido y confiable); sin ellas, Pay busca en la web.
   if (!conDatos || body.web) payload.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }];
