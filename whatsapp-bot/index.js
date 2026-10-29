@@ -463,6 +463,9 @@ app.post('/grupo/crear', requireApiKey, async (req, res) => {
     const desc = String((req.body && req.body.descripcion) || '').trim();
     if (desc) { try { await sock.groupUpdateDescription(jid, desc.slice(0, 500)); } catch (e) { console.error('Descripción del grupo:', e.message); } }
     for (const a of admins) { try { await sock.groupParticipantsUpdate(jid, [a], 'promote'); } catch (e) { console.error('Promover admin:', e.message); } }
+    // Solo los administradores escriben y cambian los datos del grupo: la gente solo lee.
+    try { await sock.groupSettingUpdate(jid, 'announcement'); } catch (e) { console.error('Solo admins escriben:', e.message); }
+    try { await sock.groupSettingUpdate(jid, 'locked'); } catch (e) { console.error('Bloquear datos del grupo:', e.message); }
     const code = await sock.groupInviteCode(jid);
     const out = { jid, link: `https://chat.whatsapp.com/${code}`, nombre };
     gruposCreadosHoy.set(clave, out);
