@@ -440,8 +440,8 @@ async function sacarDeGrupos(digitos, grupoIds) {
 }
 
 // ---- Grupo global de WhatsApp (stake de pago + regalito) ----
-// Un solo grupo para todos los clientes del día. A la 1 a.m. (hora de Ecuador) el bot saca a todos los
-// miembros (menos los administradores y él mismo) y renueva el link, para que nadie entre con el link viejo.
+// Un solo grupo para todos los clientes del día. El bot NO vacía nada solo: únicamente cuando se pulsa el botón
+// "Vaciar grupo global" del panel saca a todos los miembros (menos los administradores y él mismo) y renueva el link.
 // Hay que poner la variable GRUPO_GLOBAL_JID en Railway (el id sale de /grupos) y el número del bot debe ser ADMIN del grupo.
 // WhatsApp NO permite borrar los mensajes del grupo desde un bot: lo que se vacía son los miembros.
 const grupoGlobalJid = (b) => String((b && b.jid) || process.env.GRUPO_GLOBAL_JID || '').trim();
@@ -480,21 +480,6 @@ app.get('/grupo-global/link', requireApiKey, async (req, res) => {
     res.json({ ok: true, link: `https://chat.whatsapp.com/${code}` });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
-let ultimoVaciado = '';
-setInterval(async () => {
-  try {
-    const d = new Date(Date.now() - 5 * 3600e3);
-    const clave = d.toISOString().slice(0, 10);
-    if (d.getUTCHours() !== 1 || ultimoVaciado === clave || !grupoGlobalJid()) return;
-    ultimoVaciado = clave;
-    const r = await vaciarGrupoGlobal(grupoGlobalJid());
-    await stakes.tg('sendMessage', { chat_id: stakes.TG_ADMIN(), text: `🧹 Grupo global vaciado (1 a.m.): salieron ${r.quitados} de ${r.miembrosAntes}${r.fallidos ? ', fallaron ' + r.fallidos : ''}.\nLink nuevo: ${r.link || '(no pude renovarlo)'}` }).catch(() => {});
-  } catch (e) {
-    console.error('Vaciado automático:', e.message);
-    try { await stakes.tg('sendMessage', { chat_id: stakes.TG_ADMIN(), text: '⚠️ No pude vaciar el grupo global: ' + e.message }); } catch (e2) { /* sin aviso */ }
-  }
-}, 5 * 60 * 1000);
-
 app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
