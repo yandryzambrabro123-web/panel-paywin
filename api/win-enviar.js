@@ -55,6 +55,18 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    if (modo === 'grupo_vaciar' || modo === 'grupo_link') {
+      const botRes = await fetch(`${base}/grupo-global/${modo === 'grupo_vaciar' ? 'vaciar' : 'link'}`, {
+        method: modo === 'grupo_vaciar' ? 'POST' : 'GET',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
+        ...(modo === 'grupo_vaciar' ? { body: '{}' } : {})
+      });
+      const data = await botRes.json().catch(() => ({}));
+      if (!botRes.ok) { res.status(502).json({ error: data.error || 'El bot no pudo con el grupo global.' }); return; }
+      res.status(200).json(data);
+      return;
+    }
+
     if (modo === 'regalito_url') {
       res.status(200).json({ url: `${base}/regalito` });
       return;

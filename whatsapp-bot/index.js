@@ -439,6 +439,62 @@ async function sacarDeGrupos(digitos, grupoIds) {
   return resultados;
 }
 
+// ---- Grupo global de WhatsApp (stake de pago + regalito) ----
+// Un solo grupo para todos los clientes del día. A la 1 a.m. (hora de Ecuador) el bot saca a todos los
+// miembros (menos los administradores y él mismo) y renueva el link, para que nadie entre con el link viejo.
+// Hay que poner la variable GRUPO_GLOBAL_JID en Railway (el id sale de /grupos) y el número del bot debe ser ADMIN del grupo.
+// WhatsApp NO permite borrar los mensajes del grupo desde un bot: lo que se vacía son los miembros.
+const grupoGlobalJid = (b) => String((b && b.jid) || process.env.GRUPO_GLOBAL_JID || '').trim();
+async function vaciarGrupoGlobal(jid) {
+  if (!connected) throw new Error('El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.');
+  if (!jid) throw new Error('Falta la variable GRUPO_GLOBAL_JID en Railway (el id del grupo, termina en @g.us).');
+  const meta = await sock.groupMetadata(jid);
+  const digitosBot = [sock.user && sock.user.id, sock.user && sock.user.lid].map((x) => soloDigitosJid(x));
+  const esBot = (p) => [p.id, p.lid, p.phoneNumber, p.jid].some((x) => x && digitosBot.includes(soloDigitosJid(x)));
+  const yo = (meta.participants || []).find(esBot);
+  if (!(yo && (yo.admin === 'admin' || yo.admin === 'superadmin'))) throw new Error('El número del bot NO es administrador de ese grupo.');
+  const sacar = (meta.participants || []).filter((p) => !p.admin && !esBot(p)).map((p) => p.id);
+  let quitados = 0, fallidos = 0;
+  for (let i = 0; i < sacar.length; i += 8) {
+    const lote = sacar.slice(i, i + 8);
+    try {
+      const r = await sock.groupParticipantsUpdate(jid, lote, 'remove');
+      (r || []).forEach((x) => { if (String(x.status) === '200') quitados++; else fallidos++; });
+    } catch (e) { fallidos += lote.length; console.error('Vaciar grupo:', e.message); }
+    await new Promise((ok) => setTimeout(ok, 2500)); // despacio, para no levantar sospechas en WhatsApp
+  }
+  let link = '';
+  try { const code = await sock.groupRevokeInvite(jid); link = code ? `https://chat.whatsapp.com/${code}` : ''; } catch (e) { console.error('Renovar link:', e.message); }
+  return { ok: true, quitados, fallidos, link, miembrosAntes: (meta.participants || []).length };
+}
+app.post('/grupo-global/vaciar', requireApiKey, async (req, res) => {
+  try { res.json(await vaciarGrupoGlobal(grupoGlobalJid(req.body))); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get('/grupo-global/link', requireApiKey, async (req, res) => {
+  try {
+    if (!connected) throw new Error('El bot no está conectado a WhatsApp ahora mismo.');
+    const jid = grupoGlobalJid(req.query);
+    if (!jid) throw new Error('Falta la variable GRUPO_GLOBAL_JID en Railway.');
+    const code = await sock.groupInviteCode(jid);
+    res.json({ ok: true, link: `https://chat.whatsapp.com/${code}` });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+let ultimoVaciado = '';
+setInterval(async () => {
+  try {
+    const d = new Date(Date.now() - 5 * 3600e3);
+    const clave = d.toISOString().slice(0, 10);
+    if (d.getUTCHours() !== 1 || ultimoVaciado === clave || !grupoGlobalJid()) return;
+    ultimoVaciado = clave;
+    const r = await vaciarGrupoGlobal(grupoGlobalJid());
+    await stakes.tg('sendMessage', { chat_id: stakes.TG_ADMIN(), text: `🧹 Grupo global vaciado (1 a.m.): salieron ${r.quitados} de ${r.miembrosAntes}${r.fallidos ? ', fallaron ' + r.fallidos : ''}.\nLink nuevo: ${r.link || '(no pude renovarlo)'}` }).catch(() => {});
+  } catch (e) {
+    console.error('Vaciado automático:', e.message);
+    try { await stakes.tg('sendMessage', { chat_id: stakes.TG_ADMIN(), text: '⚠️ No pude vaciar el grupo global: ' + e.message }); } catch (e2) { /* sin aviso */ }
+  }
+}, 5 * 60 * 1000);
+
 app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });

@@ -3400,6 +3400,8 @@ function renderWin(){
           <div class="win-qrow">
             <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
             <button class="win-quick-btn" id="winQuickRegalitoBtn" type="button">${winIcon('regalo')}<span>Regalito del día</span></button>
+            <button class="win-quick-btn" id="winQuickGrupoLinkBtn" type="button">${winIcon('difusion')}<span>Link del grupo global</span></button>
+            <button class="win-quick-btn" id="winQuickGrupoVaciarBtn" type="button">${winIcon('alerta')}<span>Vaciar grupo global</span></button>
           </div>
         </div>
         <div class="win-qg" style="--c:#b48cff;">
@@ -3443,6 +3445,15 @@ function renderWin(){
   document.getElementById('winQuickApuestaLiveBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva_apuesta', ['Gratis 1','Gratis 2','Gratis 3'], WIN_FIJO.live); };
   document.getElementById('winQuickGanadaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('ganada',''); };
   document.getElementById('winQuickPartidosBtn').onclick = ()=>{ playWinSfx('action'); openPartidosDiaModal(); };
+  document.getElementById('winQuickGrupoLinkBtn').onclick = async ()=>{
+    try{ const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'grupo_link' }) }); const d = await r.json(); if(!r.ok) throw new Error(d.error || 'No se pudo.'); try{ await navigator.clipboard.writeText(d.link); }catch(e){} alert('Link del grupo global copiado:\n' + d.link); }
+    catch(e){ alert('No pude traer el link: ' + e.message); }
+  };
+  document.getElementById('winQuickGrupoVaciarBtn').onclick = async ()=>{
+    if(!confirm('¿Vaciar el grupo global? Se saca a TODOS los miembros (menos los administradores) y se renueva el link. No se puede deshacer.')) return;
+    try{ const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'grupo_vaciar' }) }); const d = await r.json(); if(!r.ok) throw new Error(d.error || 'No se pudo.'); alert(`Listo: salieron ${d.quitados} de ${d.miembrosAntes}${d.fallidos ? ' (fallaron ' + d.fallidos + ')' : ''}.\nLink nuevo: ${d.link || '(no pude renovarlo)'}`); }
+    catch(e){ alert('No pude vaciar el grupo: ' + e.message); }
+  };
   document.getElementById('winQuickRegalitoBtn').onclick = ()=>{ playWinSfx('action'); openRegalitoDiaModal(); };
   winPowerRefresh = actualizarPower;
   actualizarPower();
