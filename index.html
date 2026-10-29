@@ -3407,6 +3407,7 @@ function renderWin(){
           <div class="win-qrow">
             <button class="win-quick-btn" id="winQuickPartidosBtn" type="button">${winIcon('difusion')}<span>Publicidad del día</span></button>
             <button class="win-quick-btn" id="winQuickTestiBtn" type="button">${winIcon('testimonio')}<span>Testimonio</span></button>
+            <button class="win-quick-btn" id="winQuickProtocoloBtn" type="button">${winIcon('sol')}<span>Mandar protocolo de la mañana</span></button>
             <button class="win-quick-btn" id="winQuickComunicadoBtn" type="button">${winIcon('difusion')}<span>Comunicado</span></button>
           </div>
         </div>
@@ -3436,6 +3437,21 @@ function renderWin(){
   };
   document.getElementById('winPowerOffBtn').onclick = ()=>{ stopWinListening(); actualizarPower(); };
   document.getElementById('winQuickTestiBtn').onclick = ()=>{ playWinSfx('action'); openTestimonioUploadModal(); };
+  document.getElementById('winQuickProtocoloBtn').onclick = async ()=>{
+    if(!confirm('¿Mandar ahora todo el protocolo de la mañana (buenos días, recargas y retiros, beneficios y apuesta gratis) a los grupos? Solo manda lo que todavía no se haya mandado hoy.')) return;
+    const btn = document.getElementById('winQuickProtocoloBtn'); const txt = btn.querySelector('span').textContent;
+    btn.disabled = true; btn.querySelector('span').textContent = 'Mandando...';
+    try{
+      const res = await fetch('/api/win-protocolo-manana', { method:'POST' });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || !data.ok) throw new Error(data.error || 'No se pudo mandar.');
+      if(data.skipped) alert('El protocolo de hoy ya se había mandado completo. No lo repito.');
+      else if(!data.enviadosAhora || !data.enviadosAhora.length) alert('Ya estaba todo mandado, no quedaba nada pendiente.');
+      else if(data.fallidos && data.fallidos.length) alert(`Mandé ${data.enviadosAhora.length} de ${data.totalSteps}, pero ${data.fallidos.length} fallaron. Vuelve a pulsar el botón para reintentar solo lo que falló.`);
+      else alert(`Listo. Mandé ${data.enviadosAhora.length} de ${data.totalSteps} piezas del protocolo.`);
+    }catch(e){ console.error(e); alert('No se pudo mandar el protocolo: ' + e.message); }
+    finally{ btn.disabled = false; btn.querySelector('span').textContent = txt; }
+  };
   document.getElementById('winQuickComunicadoBtn').onclick = ()=>{ playWinSfx('action'); openWinContentForm('', ['Gratis 1','Gratis 2','Gratis 3'], 'Mandar comunicado'); };
   document.getElementById('winQuickStakeBtn').onclick = ()=>{ playWinSfx('action'); openStakePagoUploadModal(); };
   document.getElementById('winQuickApuestaVipBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva_apuesta', ['VIP'], WIN_FIJO.vip); };
