@@ -55,14 +55,14 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    if (modo === 'grupo_vaciar' || modo === 'grupo_link') {
-      const botRes = await fetch(`${base}/grupo-global/${modo === 'grupo_vaciar' ? 'vaciar' : 'link'}`, {
-        method: modo === 'grupo_vaciar' ? 'POST' : 'GET',
+    if (modo === 'grupo_crear') {
+      const botRes = await fetch(`${base}/grupo/crear`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
-        ...(modo === 'grupo_vaciar' ? { body: '{}' } : {})
+        body: JSON.stringify({ nombre: String(body.nombre || ''), descripcion: String(body.descripcion || '') })
       });
       const data = await botRes.json().catch(() => ({}));
-      if (!botRes.ok) { res.status(502).json({ error: data.error || 'El bot no pudo con el grupo global.' }); return; }
+      if (!botRes.ok) { res.status(502).json({ error: data.error || 'El bot no pudo crear el grupo.' }); return; }
       res.status(200).json(data);
       return;
     }

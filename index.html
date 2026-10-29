@@ -2212,7 +2212,7 @@ function renderStakeSales(){
           <button class="btn danger small" id="delSectionBtn">Eliminar sección</button>
         </div>`}
       </div>
-      ${cur.telegramLink ? `<div class="card" style="margin-bottom:16px; font-size:13px; word-break:break-all;"><span style="color:var(--muted);">Canal de Telegram de esta sección:</span> <a href="${esc(cur.telegramLink)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(cur.telegramLink)}</a></div>` : ''}
+      ${cur.telegramLink ? `<div class="card" style="margin-bottom:16px; font-size:13px; word-break:break-all;"><span style="color:var(--muted);">Grupo de esta sección:</span> <a href="${esc(cur.telegramLink)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(cur.telegramLink)}</a></div>` : ''}
       <div class="card">
         ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Monto</th><th>Estado</th>${readOnly ? '' : '<th></th>'}</tr></thead><tbody>
           ${rows.map(s=>`<tr>
@@ -3400,8 +3400,6 @@ function renderWin(){
           <div class="win-qrow">
             <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
             <button class="win-quick-btn" id="winQuickRegalitoBtn" type="button">${winIcon('regalo')}<span>Regalito del día</span></button>
-            <button class="win-quick-btn" id="winQuickGrupoLinkBtn" type="button">${winIcon('difusion')}<span>Link del grupo global</span></button>
-            <button class="win-quick-btn" id="winQuickGrupoVaciarBtn" type="button">${winIcon('alerta')}<span>Vaciar grupo global</span></button>
           </div>
         </div>
         <div class="win-qg" style="--c:#b48cff;">
@@ -3445,15 +3443,6 @@ function renderWin(){
   document.getElementById('winQuickApuestaLiveBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('nueva_apuesta', ['Gratis 1','Gratis 2','Gratis 3'], WIN_FIJO.live); };
   document.getElementById('winQuickGanadaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('ganada',''); };
   document.getElementById('winQuickPartidosBtn').onclick = ()=>{ playWinSfx('action'); openPartidosDiaModal(); };
-  document.getElementById('winQuickGrupoLinkBtn').onclick = async ()=>{
-    try{ const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'grupo_link' }) }); const d = await r.json(); if(!r.ok) throw new Error(d.error || 'No se pudo.'); try{ await navigator.clipboard.writeText(d.link); }catch(e){} alert('Link del grupo global copiado:\n' + d.link); }
-    catch(e){ alert('No pude traer el link: ' + e.message); }
-  };
-  document.getElementById('winQuickGrupoVaciarBtn').onclick = async ()=>{
-    if(!confirm('¿Vaciar el grupo global? Se saca a TODOS los miembros (menos los administradores) y se renueva el link. No se puede deshacer.')) return;
-    try{ const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'grupo_vaciar' }) }); const d = await r.json(); if(!r.ok) throw new Error(d.error || 'No se pudo.'); alert(`Listo: salieron ${d.quitados} de ${d.miembrosAntes}${d.fallidos ? ' (fallaron ' + d.fallidos + ')' : ''}.\nLink nuevo: ${d.link || '(no pude renovarlo)'}`); }
-    catch(e){ alert('No pude vaciar el grupo: ' + e.message); }
-  };
   document.getElementById('winQuickRegalitoBtn').onclick = ()=>{ playWinSfx('action'); openRegalitoDiaModal(); };
   winPowerRefresh = actualizarPower;
   actualizarPower();
@@ -5573,7 +5562,7 @@ function openStakePagoUploadModal(){
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
-    <div class="field"><label>Link del canal de Telegram de hoy</label><input id="f-stakeTgLink" placeholder="https://t.me/+..." autocomplete="off"><div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Se guarda en la sección de hoy en Venta de Stakes. Es el que recibirá cada cliente que apruebes.</div></div>
+    <div class="field"><label>Link del grupo (opcional)</label><input id="f-stakeTgLink" placeholder="Déjalo vacío: el bot crea el grupo de WhatsApp de hoy" autocomplete="off"><div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Si lo dejas vacío, se crea la sección del día y un grupo de WhatsApp nuevo con el mismo nombre. Ese link se guarda en la sección y es el que recibe cada cliente que apruebes.</div></div>
     <div style="font-size:12.5px; border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px;">📍 La publicidad va siempre a Gratis 1, 2 y 3 (ya no se pregunta).</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -5588,14 +5577,14 @@ function openStakePagoUploadModal(){
 function openRegalitoDiaModal(){
   openModal(`
     <h3>Mandar regalito del día</h3>
-    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube la foto y pega el link del grupo de Telegram de hoy. Queda habilitado 8 horas. Los clientes que estaban en cola te llegan a Telegram para aprobarlos uno por uno.</div>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube la foto. El bot crea un grupo de WhatsApp nuevo para hoy (o pega tú un link). Queda habilitado 8 horas. Los clientes que estaban en cola te llegan a Telegram para aprobarlos uno por uno.</div>
     <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
       <div style="font-size:26px; margin-bottom:6px;">📎</div>
       <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la foto del regalito</div>
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
-    <div class="field"><label>Link del grupo de Telegram de hoy</label><input id="f-regTgLink" placeholder="https://t.me/+..." autocomplete="off"></div>
+    <div class="field"><label>Link del grupo (opcional)</label><input id="f-regTgLink" placeholder="Déjalo vacío: el bot crea el grupo de WhatsApp de hoy" autocomplete="off"></div>
     <div style="font-size:12.5px; border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px;">📍 La publicidad va siempre a Gratis 1, 2 y 3 (ya no se pregunta).</div>
     <div class="modal-actions">
       <button class="btn secondary" id="regCopyLinkBtn" type="button">Copiar link fijo para clientes</button>
@@ -5617,8 +5606,8 @@ function openRegalitoDiaModal(){
 
 async function submitRegalitoDia(){
   const grupos = ['Gratis 1','Gratis 2','Gratis 3'];
-  const link = ((document.getElementById('f-regTgLink')||{}).value || '').trim();
-  if(!/^https?:\/\/\S+$/i.test(link)){ alert('Pega el link del grupo (empieza con https://).'); return; }
+  let link = ((document.getElementById('f-regTgLink')||{}).value || '').trim();
+  if(link && !/^https?:\/\/\S+$/i.test(link)){ alert('El link del grupo debe empezar con https://'); return; }
   if(!winPendingFile){ alert('Sube la foto primero.'); return; }
   if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
   const file = winPendingFile;
@@ -5626,6 +5615,11 @@ async function submitRegalitoDia(){
   try{
     const { base64, mediaType, previewUrl } = await fileToCompressedImage(file);
     const thumb = await fileToThumbnail(file).catch(()=> '');
+    if(!link){
+      const hoyR = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10).split('-').map(Number);
+      link = await winCrearGrupoWA(`Regalito del día ${hoyR[2]} de ${MESES_ES[hoyR[1]-1]}`, 'Grupo del regalito del día. Solo para clientes que recargaron.');
+      if(!link) throw new Error('Sin link del grupo. Pega uno a mano en el cuadro e inténtalo otra vez.');
+    }
     const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'regalito_publicar', link }) });
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || 'El bot no pudo publicar el regalito.');
@@ -5641,6 +5635,15 @@ async function submitRegalitoDia(){
 
 const STAKE_PAGO_PRECIO = 20;
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+// Pide al bot que cree un grupo nuevo de WhatsApp con ese nombre y devuelve su link ('' si no se pudo).
+async function winCrearGrupoWA(nombre, descripcion){
+  try{
+    const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'grupo_crear', nombre, descripcion: descripcion || '' }) });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.link) throw new Error(d.error || 'No se pudo crear el grupo.');
+    return d.link;
+  }catch(e){ console.error(e); alert('No pude crear el grupo de WhatsApp: ' + e.message + '\n\nPega el link a mano en la sección.'); return ''; }
+}
 async function winCrearSeccionStakePagoHoy(tgLink){
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
   const [y,m,d] = hoy.split('-').map(Number);
@@ -5654,7 +5657,11 @@ async function winCrearSeccionStakePagoHoy(tgLink){
   }
   state.stakeSectionId = sec.id;
   await persist('stakeSections');
-  winNovedad && winNovedad('stake', `Sección creada: ${titulo}`, `Precio $${STAKE_PAGO_PRECIO}. ${sec.telegramLink ? 'Con link de Telegram.' : 'Sin link de Telegram todavía.'}`);
+  if(!sec.telegramLink){ // sin link pegado a mano: el bot crea el grupo de WhatsApp del día y se guarda en la sección
+    const link = await winCrearGrupoWA(titulo, 'Grupo de ' + titulo + '. Solo para clientes que compraron el stake.');
+    if(link){ sec.telegramLink = link; await persist('stakeSections'); }
+  }
+  winNovedad && winNovedad('stake', `Sección creada: ${titulo}`, `Precio $${STAKE_PAGO_PRECIO}. ${sec.telegramLink ? 'Con link del grupo de WhatsApp.' : 'Sin link del grupo todavía.'}`);
 }
 
 async function submitStakePago(){
