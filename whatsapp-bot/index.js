@@ -58,18 +58,41 @@ function pausaHumana() {
 }
 
 // Borra la sesión guardada (el número viejo) y arranca de cero: genera un QR nuevo para vincular otro número.
+// Se borra el CONTENIDO de la carpeta (si es un volumen de Railway, la carpeta en sí no se puede borrar).
 let reiniciando = false;
-async function borrarSesionYReiniciar() {
+let ultimoBorrado = 0;
+let ultimoReinicioInfo = '';
+function vaciarCarpetaSesion() {
+  const fs = require('fs'), path = require('path');
+  let n = 0;
+  try { fs.mkdirSync(AUTH_DIR, { recursive: true }); } catch (e) { /* ya existe */ }
+  for (const f of fs.readdirSync(AUTH_DIR)) {
+    try { fs.rmSync(path.join(AUTH_DIR, f), { recursive: true, force: true }); n++; }
+    catch (e) { console.error('No pude borrar', f, e.message); }
+  }
+  return n;
+}
+async function borrarSesionYReiniciar(forzar) {
   if (reiniciando) return;
+  // Si se acaba de borrar hace menos de 60 s y volvió a fallar, no se entra en bucle (WhatsApp lo castiga): se espera.
+  if (!forzar && Date.now() - ultimoBorrado < 60000) {
+    ultimoReinicioInfo = 'Falló otra vez justo después de borrar la sesión; espero 60 s antes de reintentar.';
+    console.log(ultimoReinicioInfo);
+    setTimeout(() => { iniciarConexion().catch((e) => console.error('Reintento:', e.message)); }, 60000);
+    return;
+  }
   reiniciando = true;
   try {
     try { if (sock) { sock.ev.removeAllListeners('connection.update'); sock.end(undefined); } } catch (e) { /* ya estaba cerrado */ }
-    require('fs').rmSync(AUTH_DIR, { recursive: true, force: true });
+    let n = 0;
+    try { n = vaciarCarpetaSesion(); } catch (e) { console.error('Vaciar sesión:', e.message); }
+    ultimoBorrado = Date.now();
     connected = false; lastQR = null;
-    console.log('Sesión borrada. Generando un QR nuevo...');
+    ultimoReinicioInfo = `Sesión borrada (${n} archivos). Generando un QR nuevo... (${new Date().toISOString()})`;
+    console.log(ultimoReinicioInfo);
     await new Promise((ok) => setTimeout(ok, 2000));
-    await iniciarConexion();
   } finally { reiniciando = false; }
+  await iniciarConexion().catch((e) => { ultimoReinicioInfo += ' | Error al arrancar: ' + e.message; console.error('Error arrancando tras borrar:', e); });
 }
 
 async function iniciarConexion() {
@@ -164,7 +187,7 @@ app.get('/qr', async (req, res) => {
     return res.send('<h2 style="font-family:sans-serif;">Ya está conectado. No hace falta escanear nada.</h2>');
   }
   if (!lastQR) {
-    return res.send(`<html><head><meta http-equiv="refresh" content="3"></head><body style="font-family:sans-serif; text-align:center; margin-top:60px;"><h2>Generando el código...</h2><p>Esta página se actualiza sola cada 3 segundos.</p><p style="color:#888; font-size:13px;">Último cierre: ${ultimoCierre || '(ninguno todavía)'}</p></body></html>`);
+    return res.send(`<html><head><meta http-equiv="refresh" content="3"></head><body style="font-family:sans-serif; text-align:center; margin-top:60px;"><h2>Generando el código...</h2><p>Esta página se actualiza sola cada 3 segundos.</p><p style="color:#888; font-size:13px;">Último cierre: ${ultimoCierre || '(ninguno todavía)'}<br>Estado: ${ultimoReinicioInfo || '(sin reinicios)'}</p></body></html>`);
   }
   const png = await qrcode.toDataURL(lastQR);
   res.send(`
@@ -182,7 +205,7 @@ app.get('/qr', async (req, res) => {
 
 // Borra la sesión del número viejo y genera un QR nuevo. Abrir: /sesion/borrar?key=TU_API_KEY y luego /qr
 app.get('/sesion/borrar', requireApiKey, async (req, res) => {
-  borrarSesionYReiniciar().catch((e) => console.error('Reiniciar sesión:', e.message));
+  borrarSesionYReiniciar(true).catch((e) => console.error('Reiniciar sesión:', e.message));
   res.send('<html><body style="font-family:sans-serif; text-align:center; margin-top:60px;"><h2>Sesión borrada</h2><p>Abre <a href="/qr">/qr</a> en unos segundos y escanea el código con el número nuevo.</p></body></html>');
 });
 
