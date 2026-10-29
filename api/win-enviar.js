@@ -59,7 +59,7 @@ module.exports = async function handler(req, res) {
       const botRes = await fetch(`${base}/grupo/crear`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
-        body: JSON.stringify({ nombre: String(body.nombre || ''), descripcion: String(body.descripcion || '') })
+        body: JSON.stringify({ nombre: String(body.nombre || ''), descripcion: String(body.descripcion || ''), tipo: body.tipo === 'grupo' ? 'grupo' : 'canal' })
       });
       const data = await botRes.json().catch(() => ({}));
       if (!botRes.ok) { res.status(502).json({ error: data.error || 'El bot no pudo crear el grupo.' }); return; }

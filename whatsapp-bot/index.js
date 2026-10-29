@@ -439,38 +439,49 @@ async function sacarDeGrupos(digitos, grupoIds) {
   return resultados;
 }
 
-// ---- Grupos nuevos de WhatsApp por día (stake de pago y regalito) ----
-// Cada vez que se publica un stake de pago o un regalito, el bot crea un grupo NUEVO con el nombre de la sección
-// ("Stake de pago 29 de octubre") y devuelve su link de invitación. Así nadie entra a un grupo viejo.
-// Opcional en Railway: GRUPOS_ADMIN_TEL = tu número(s) con código de país, separados por coma (ej. 593987264212):
-// el bot los agrega al grupo y los hace administradores.
-// Si ya se creó un grupo con el mismo nombre hoy, se devuelve el mismo (no se duplica al darle dos veces).
+// ---- Canales / grupos nuevos de WhatsApp por día (stake de pago y regalito) ----
+// Por defecto se crea un CANAL de WhatsApp (de una sola vía): la gente solo lee y NADIE ve los números de los demás.
+// Con tipo:'grupo' se crea un grupo normal (ahí todos ven los números; solo escriben los administradores).
+// Cada vez que se publica un stake de pago o un regalito se crea uno NUEVO con el nombre de la sección
+// ("Stake de pago 29 de octubre") y se devuelve su link. Si ya se creó uno con el mismo nombre hoy, se devuelve el mismo.
+// Para grupos: GRUPOS_ADMIN_TEL = números con código de país separados por coma (ej. 593987264212): se agregan como administradores.
 const gruposCreadosHoy = new Map();
 app.post('/grupo/crear', requireApiKey, async (req, res) => {
   try {
     if (!connected) throw new Error('El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.');
     const nombre = String((req.body && req.body.nombre) || '').trim().slice(0, 90);
-    if (!nombre) throw new Error('Falta el nombre del grupo.');
+    if (!nombre) throw new Error('Falta el nombre.');
+    const tipo = (req.body && req.body.tipo) === 'grupo' ? 'grupo' : 'canal';
+    const desc = String((req.body && req.body.descripcion) || '').trim().slice(0, 500);
     const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
-    const clave = hoy + '|' + nombre.toLowerCase();
+    const clave = hoy + '|' + tipo + '|' + nombre.toLowerCase();
     const previo = gruposCreadosHoy.get(clave);
     if (previo) return res.json({ ok: true, repetido: true, ...previo });
-    const admins = String(process.env.GRUPOS_ADMIN_TEL || '').split(',').map((x) => x.replace(/\D/g, '')).filter(Boolean).map((x) => x + '@s.whatsapp.net');
-    let g;
-    try { g = await sock.groupCreate(nombre, admins); }
-    catch (e) { throw new Error('WhatsApp no dejó crear el grupo: ' + (e.message || e) + (admins.length ? '' : ' (prueba poniendo tu número en la variable GRUPOS_ADMIN_TEL de Railway)')); }
-    const jid = g.id;
-    const desc = String((req.body && req.body.descripcion) || '').trim();
-    if (desc) { try { await sock.groupUpdateDescription(jid, desc.slice(0, 500)); } catch (e) { console.error('Descripción del grupo:', e.message); } }
-    for (const a of admins) { try { await sock.groupParticipantsUpdate(jid, [a], 'promote'); } catch (e) { console.error('Promover admin:', e.message); } }
-    // Solo los administradores escriben y cambian los datos del grupo: la gente solo lee.
-    try { await sock.groupSettingUpdate(jid, 'announcement'); } catch (e) { console.error('Solo admins escriben:', e.message); }
-    try { await sock.groupSettingUpdate(jid, 'locked'); } catch (e) { console.error('Bloquear datos del grupo:', e.message); }
-    const code = await sock.groupInviteCode(jid);
-    const out = { jid, link: `https://chat.whatsapp.com/${code}`, nombre };
+    let out;
+    if (tipo === 'canal') {
+      if (typeof sock.newsletterCreate !== 'function') throw new Error('Esta versión del bot no sabe crear canales.');
+      let meta;
+      try { meta = await sock.newsletterCreate(nombre, desc || undefined); }
+      catch (e) { throw new Error('WhatsApp no dejó crear el canal: ' + (e.message || e)); }
+      const codigo = meta && (meta.invite || (meta.thread_metadata && meta.thread_metadata.invite));
+      if (!meta || !meta.id || !codigo) throw new Error('WhatsApp creó el canal pero no devolvió el link. Revisa el canal en el WhatsApp del bot.');
+      out = { jid: meta.id, link: `https://whatsapp.com/channel/${codigo}`, nombre, tipo };
+    } else {
+      const admins = String(process.env.GRUPOS_ADMIN_TEL || '').split(',').map((x) => x.replace(/\D/g, '')).filter(Boolean).map((x) => x + '@s.whatsapp.net');
+      let g;
+      try { g = await sock.groupCreate(nombre, admins); }
+      catch (e) { throw new Error('WhatsApp no dejó crear el grupo: ' + (e.message || e) + (admins.length ? '' : ' (prueba poniendo tu número en la variable GRUPOS_ADMIN_TEL de Railway)')); }
+      const jid = g.id;
+      if (desc) { try { await sock.groupUpdateDescription(jid, desc); } catch (e) { console.error('Descripción del grupo:', e.message); } }
+      for (const a of admins) { try { await sock.groupParticipantsUpdate(jid, [a], 'promote'); } catch (e) { console.error('Promover admin:', e.message); } }
+      try { await sock.groupSettingUpdate(jid, 'announcement'); } catch (e) { console.error('Solo admins escriben:', e.message); }
+      try { await sock.groupSettingUpdate(jid, 'locked'); } catch (e) { console.error('Bloquear datos del grupo:', e.message); }
+      const code = await sock.groupInviteCode(jid);
+      out = { jid, link: `https://chat.whatsapp.com/${code}`, nombre, tipo };
+    }
     gruposCreadosHoy.set(clave, out);
     res.json({ ok: true, ...out });
-  } catch (e) { console.error('Crear grupo:', e.message); res.status(400).json({ error: e.message }); }
+  } catch (e) { console.error('Crear canal/grupo:', e.message); res.status(400).json({ error: e.message }); }
 });
 
 app.post('/sacar-del-grupo', requireApiKey, async (req, res) => {

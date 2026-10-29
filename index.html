@@ -2212,7 +2212,7 @@ function renderStakeSales(){
           <button class="btn danger small" id="delSectionBtn">Eliminar sección</button>
         </div>`}
       </div>
-      ${cur.telegramLink ? `<div class="card" style="margin-bottom:16px; font-size:13px; word-break:break-all;"><span style="color:var(--muted);">Grupo de esta sección:</span> <a href="${esc(cur.telegramLink)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(cur.telegramLink)}</a></div>` : ''}
+      ${cur.telegramLink ? `<div class="card" style="margin-bottom:16px; font-size:13px; word-break:break-all;"><span style="color:var(--muted);">Canal de esta sección:</span> <a href="${esc(cur.telegramLink)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(cur.telegramLink)}</a></div>` : ''}
       <div class="card">
         ${rows.length ? `<table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Monto</th><th>Estado</th>${readOnly ? '' : '<th></th>'}</tr></thead><tbody>
           ${rows.map(s=>`<tr>
@@ -5562,7 +5562,7 @@ function openStakePagoUploadModal(){
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
-    <div class="field"><label>Link del grupo (opcional)</label><input id="f-stakeTgLink" placeholder="Déjalo vacío: el bot crea el grupo de WhatsApp de hoy" autocomplete="off"><div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Si lo dejas vacío, se crea la sección del día y un grupo de WhatsApp nuevo con el mismo nombre. Ese link se guarda en la sección y es el que recibe cada cliente que apruebes.</div></div>
+    <div class="field"><label>Link del grupo (opcional)</label><input id="f-stakeTgLink" placeholder="Déjalo vacío: el bot crea el canal de WhatsApp de hoy" autocomplete="off"><div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Si lo dejas vacío, se crea la sección del día y un canal de WhatsApp nuevo con el mismo nombre (de una sola vía: nadie ve los números de los demás). Ese link se guarda en la sección y es el que recibe cada cliente que apruebes.</div></div>
     <div style="font-size:12.5px; border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px;">📍 La publicidad va siempre a Gratis 1, 2 y 3 (ya no se pregunta).</div>
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -5577,14 +5577,14 @@ function openStakePagoUploadModal(){
 function openRegalitoDiaModal(){
   openModal(`
     <h3>Mandar regalito del día</h3>
-    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube la foto. El bot crea un grupo de WhatsApp nuevo para hoy (o pega tú un link). Queda habilitado 8 horas. Los clientes que estaban en cola te llegan a Telegram para aprobarlos uno por uno.</div>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube la foto. El bot crea un canal de WhatsApp nuevo para hoy (o pega tú un link). Queda habilitado 8 horas. Los clientes que estaban en cola te llegan a Telegram para aprobarlos uno por uno.</div>
     <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
       <div style="font-size:26px; margin-bottom:6px;">📎</div>
       <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la foto del regalito</div>
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
-    <div class="field"><label>Link del grupo (opcional)</label><input id="f-regTgLink" placeholder="Déjalo vacío: el bot crea el grupo de WhatsApp de hoy" autocomplete="off"></div>
+    <div class="field"><label>Link del grupo (opcional)</label><input id="f-regTgLink" placeholder="Déjalo vacío: el bot crea el canal de WhatsApp de hoy" autocomplete="off"></div>
     <div style="font-size:12.5px; border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px;">📍 La publicidad va siempre a Gratis 1, 2 y 3 (ya no se pregunta).</div>
     <div class="modal-actions">
       <button class="btn secondary" id="regCopyLinkBtn" type="button">Copiar link fijo para clientes</button>
@@ -5617,8 +5617,8 @@ async function submitRegalitoDia(){
     const thumb = await fileToThumbnail(file).catch(()=> '');
     if(!link){
       const hoyR = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10).split('-').map(Number);
-      link = await winCrearGrupoWA(`Regalito del día ${hoyR[2]} de ${MESES_ES[hoyR[1]-1]}`, 'Grupo del regalito del día. Solo para clientes que recargaron.');
-      if(!link) throw new Error('Sin link del grupo. Pega uno a mano en el cuadro e inténtalo otra vez.');
+      link = await winCrearGrupoWA(`Regalito del día ${hoyR[2]} de ${MESES_ES[hoyR[1]-1]}`, 'Regalito del día. Solo para clientes que recargaron.', 'regalito');
+      if(!link) throw new Error('Sin link del canal. Pega uno a mano en el cuadro e inténtalo otra vez.');
     }
     const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'regalito_publicar', link }) });
     const d = await r.json().catch(()=>({}));
@@ -5635,14 +5635,17 @@ async function submitRegalitoDia(){
 
 const STAKE_PAGO_PRECIO = 20;
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-// Pide al bot que cree un grupo nuevo de WhatsApp con ese nombre y devuelve su link ('' si no se pudo).
-async function winCrearGrupoWA(nombre, descripcion){
+// Pide al bot que cree un canal nuevo de WhatsApp (de una sola vía: nadie ve los números de los demás) con ese nombre.
+// Devuelve el link ('' si no se pudo) y guarda en este navegador el id del canal de hoy, para poder mandarle el contenido.
+function winCanalHoyGet(kind){ try{ return JSON.parse(localStorage.getItem('winCanalHoy_' + kind) || 'null'); }catch(e){ return null; } }
+async function winCrearGrupoWA(nombre, descripcion, kind){
   try{
-    const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'grupo_crear', nombre, descripcion: descripcion || '' }) });
+    const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'grupo_crear', nombre, descripcion: descripcion || '', tipo:'canal' }) });
     const d = await r.json().catch(()=>({}));
-    if(!r.ok || !d.link) throw new Error(d.error || 'No se pudo crear el grupo.');
+    if(!r.ok || !d.link) throw new Error(d.error || 'No se pudo crear el canal.');
+    if(kind && d.jid){ try{ localStorage.setItem('winCanalHoy_' + kind, JSON.stringify({ jid:d.jid, link:d.link, nombre, day:new Date(Date.now() - 5*3600e3).toISOString().slice(0,10) })); }catch(e){} }
     return d.link;
-  }catch(e){ console.error(e); alert('No pude crear el grupo de WhatsApp: ' + e.message + '\n\nPega el link a mano en la sección.'); return ''; }
+  }catch(e){ console.error(e); alert('No pude crear el canal de WhatsApp: ' + e.message + '\n\nPega el link a mano.'); return ''; }
 }
 async function winCrearSeccionStakePagoHoy(tgLink){
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
@@ -5658,10 +5661,10 @@ async function winCrearSeccionStakePagoHoy(tgLink){
   state.stakeSectionId = sec.id;
   await persist('stakeSections');
   if(!sec.telegramLink){ // sin link pegado a mano: el bot crea el grupo de WhatsApp del día y se guarda en la sección
-    const link = await winCrearGrupoWA(titulo, 'Grupo de ' + titulo + '. Solo para clientes que compraron el stake.');
+    const link = await winCrearGrupoWA(titulo, titulo + '. Solo para clientes que compraron el stake.', 'stake_pago');
     if(link){ sec.telegramLink = link; await persist('stakeSections'); }
   }
-  winNovedad && winNovedad('stake', `Sección creada: ${titulo}`, `Precio $${STAKE_PAGO_PRECIO}. ${sec.telegramLink ? 'Con link del grupo de WhatsApp.' : 'Sin link del grupo todavía.'}`);
+  winNovedad && winNovedad('stake', `Sección creada: ${titulo}`, `Precio $${STAKE_PAGO_PRECIO}. ${sec.telegramLink ? 'Con link del canal de WhatsApp.' : 'Sin link del canal todavía.'}`);
 }
 
 async function submitStakePago(){
@@ -6425,6 +6428,9 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     }
     return `<button class="btn ${i===0 ? '' : 'secondary'}" data-win-send-group="${encodeURIComponent(g)}" style="width:100%; margin-bottom:8px;">${link ? `Copiar y abrir "${g}"` : `Copiar texto (falta link de "${g}")`}</button>`;
   }).join('');
+  const canalHoy = (kind === 'stake_pago' || kind === 'regalito') ? winCanalHoyGet(kind) : null;
+  const canalHoyOk = canalHoy && canalHoy.day === new Date(Date.now() - 5*3600e3).toISOString().slice(0,10);
+  const canalBtnHTML = canalHoyOk ? `<button class="btn secondary" id="winMandarCanalBtn" style="width:100%; margin-bottom:8px;">Mandar al canal de hoy ("${esc(canalHoy.nombre)}")</button>` : '';
   openModal(`
     <h3>Así quedó el texto</h3>
     ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
@@ -6442,6 +6448,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     </div>` : (kind === 'nueva_apuesta' ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel según el grupo al que la mandes (VIP → Apuesta VIP, Gratis → Apuesta gratis), con la foto y el texto.</div>` : (WIN_AUTO_REG[kind] ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel (${WIN_AUTO_REG[kind].etiqueta}) al mandarla, con la foto y el texto.</div>` : ''))}
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Los grupos con bot conectado se mandan solos en un toque. Los demás copian el texto y abren el chat para pegar y enviar.</div>
     ${groupButtonsHTML}
+    ${canalBtnHTML}
     <div class="modal-actions">
       <button class="btn secondary" id="winCaptionDoneBtn">Listo, cerrar</button>
     </div>
@@ -6556,6 +6563,24 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       btn.classList.add('secondary');
     };
   });
+
+  const canalBtn = document.getElementById('winMandarCanalBtn');
+  if(canalBtn){
+    canalBtn.onclick = async ()=>{
+      const box = document.getElementById('f-winCaptionConfirm');
+      const finalCaption = (box && box.value.trim()) || caption;
+      const c = winCanalHoyGet(kind);
+      canalBtn.disabled = true; canalBtn.textContent = 'Mandando...';
+      try{
+        const res = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+          modo:'directo', grupoId:c.jid, texto:finalCaption,
+          imagenBase64: sendImage && !sendImage.url ? sendImage.base64 : '', imagenUrl: sendImage && sendImage.url ? sendImage.url : '', mediaType: sendImage ? sendImage.mediaType : '' }) });
+        const result = await res.json().catch(()=>({}));
+        if(!res.ok || !result.ok) throw new Error(result.error || 'No se pudo mandar.');
+        canalBtn.textContent = 'Mandado al canal ✓'; canalBtn.classList.add('secondary');
+      }catch(e){ console.error(e); alert('No se pudo mandar al canal: ' + e.message); canalBtn.disabled = false; canalBtn.textContent = 'Mandar al canal de hoy'; }
+    };
+  }
 
   document.querySelectorAll('[data-win-auto-group]').forEach(btn=>{
     const grupo = decodeURIComponent(btn.dataset.winAutoGroup);
