@@ -1,7 +1,7 @@
 // Pay vigilando: revisa los partidos solo, guarda los picks en la hoja "PaySugerencias" (se ven en
 // Fábrica de apuestas del panel) y te avisa por Telegram. NO publica nada en ningún grupo.
 //
-// Horas de revisión (hora de Ecuador): variable de Railway PAY_HORAS, por defecto cada hora de 8am a 10pm.
+// Horas de revisión (hora de Ecuador): variable de Railway PAY_HORAS, (YA NO corre solo: se quitó el Pay automático por hora; solo se usa a mano con POST /pay/revisar).
 // Apagar: PAY_AUTO_OFF=1.  Usa el análisis de Pay del panel (Vercel), no necesita claves nuevas.
 
 let H = null;
@@ -174,17 +174,7 @@ async function marcarResultado(id, result) {
 function montar(app, stakes, extra) {
   H = stakes;
   const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
-  let ultima = ''; // "AAAA-MM-DD-HH" de la última revisión hecha, para no repetir en la misma hora
-
-  const ciclo = async () => {
-    if (process.env.PAY_AUTO_OFF === '1') return;
-    const d = ahoraEC();
-    const hora = d.getUTCHours();
-    const clave = `${d.toISOString().slice(0, 10)}-${hora}`;
-    if (!horasEC().includes(hora) || ultima === clave) return;
-    ultima = clave;
-    try { await revisar('auto'); } catch (e) { console.error('Pay (auto):', e.message); }
-  };
+  // El Pay automático de cada hora ya NO existe (gastaba muchos créditos de la IA). Solo queda la revisión de resultados.
   let ultimaRes = '';
   const cicloRes = async () => {
     const d = ahoraEC(), hora = d.getUTCHours(), clave = `${d.toISOString().slice(0, 10)}-${hora}`;
@@ -192,7 +182,7 @@ function montar(app, stakes, extra) {
     ultimaRes = clave;
     try { await revisarResultados(); } catch (e) { console.error('Pay (resultados):', e.message); }
   };
-  setInterval(() => { ciclo(); cicloRes(); }, 5 * 60 * 1000);
+  setInterval(() => { cicloRes(); }, 5 * 60 * 1000);
 
   const marcar = async (cq, txt) => {
     await H.tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt }).catch(() => {});
