@@ -163,7 +163,7 @@ function montar(app, stakes, extra) {
   const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
 
   // Los pagos de stake que se aprueben con el stake cerrado quedan en cola
-  H.gancho.stakeCerrado = stakeCerrado;
+  // Sin cola: la aprobación vale a cualquier hora (el jefe decide cuándo vaciar el canal).
 
   const marcar = async (cq, txt) => {
     await H.tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt }).catch(() => {});
@@ -172,15 +172,15 @@ function montar(app, stakes, extra) {
 
   // ga = aprobar   gq = a la cola   gx = rechazar
   async function resolver(id, quiere) {
-    const vig = quiere === 'aprobado' ? await regalitoVigente() : null;
-    const destino = quiere === 'aprobado' ? (vig ? 'aprobado' : 'cola') : (quiere === 'cola' ? 'cola' : 'rechazado');
+    const vig = null;
+    const destino = quiere === 'aprobado' ? 'aprobado' : (quiere === 'cola' ? 'cola' : 'rechazado');
     let reg = null, ya = false;
     await H.cambiarHoja(HOJA_REG, (filas) => filas.map((f) => {
       if (String(f.id) !== String(id)) return f;
       reg = f; if (f.estado !== 'pendiente') { ya = true; return f; }
       return destino === 'cola' ? { ...f, estado: 'cola' }
         : destino === 'rechazado' ? { ...f, estado: 'rechazado', resueltoAt: new Date().toISOString() }
-        : { ...f, estado: 'aprobado', link: vig.link, regalitoId: vig.id, resueltoAt: new Date().toISOString() };
+        : { ...f, estado: 'aprobado', link: '', regalitoId: '', resueltoAt: new Date().toISOString() };
     }));
     if (!reg) return '⚠️ No encontré ese pedido';
     if (ya) return `⚠️ Ya estaba ${reg.estado}`;
@@ -208,8 +208,7 @@ function montar(app, stakes, extra) {
       if (!H.TG_TOKEN() || !H.TG_ADMIN()) return res.status(500).json({ error: 'El registro no está configurado todavía.' });
       const nombre = H.limpio((req.body || {}).nombre, 80);
       if (nombre.length < 3) return res.status(400).json({ error: 'Escribe el nombre completo.' });
-      const vig = await regalitoVigente();
-      const reg = { id: H.nuevoId(), createdAt: new Date().toISOString(), day: H.hoyEC(), nombre, estado: vig ? 'pendiente' : 'cola', link: '', regalitoId: '', resueltoAt: '' };
+      const reg = { id: H.nuevoId(), createdAt: new Date().toISOString(), day: H.hoyEC(), nombre, estado: 'pendiente', link: '', regalitoId: '', resueltoAt: '' };
       let repetido = null;
       await H.cambiarHoja(HOJA_REG, (filas) => {
         repetido = filas.find((f) => (f.estado === 'pendiente' || f.estado === 'cola') && f.nombre.toLowerCase() === nombre.toLowerCase());

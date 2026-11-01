@@ -160,7 +160,7 @@ async function resolverRegistro(id, aprobar, respaldo) {
   if (aprobar) {
     try {
       const r0 = (await leerHoja(HOJA_REGISTROS)).find((f) => String(f.id) === String(id));
-      cerrado = !!(r0 && await gancho.stakeCerrado(r0.sectionId));
+      cerrado = false; // sin cola: se aprueba a cualquier hora
     } catch (e) { cerrado = false; }
   }
   await cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => {
@@ -230,6 +230,7 @@ async function procesarUpdate(u) {
   }
   if (u.chat_join_request) {
     const jr = u.chat_join_request;
+    try { if (await require('./canales').manejarIngreso(jr)) return; } catch (e) { console.error('Ingreso a canal:', e.message); }
     const usuario = normUser(jr.from && jr.from.username);
     let ok = false, regMatch = null;
     try {

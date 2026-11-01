@@ -43,7 +43,8 @@ async function anotarMsg(chatId, msgId) {
 async function linkUnico(clave, nombre) {
   const c = await canalDe(clave);
   if (!c) return '';
-  const r = await H.tg('createChatInviteLink', { chat_id: c.chatId, member_limit: 1, name: String(nombre || c.titulo || clave).slice(0, 32) });
+  // creates_join_request: cada vez que alguien usa el link, NO entra solo: pide entrar y el bot/jefe lo aprueba
+  const r = await H.tg('createChatInviteLink', { chat_id: c.chatId, creates_join_request: true, name: String(nombre || c.titulo || clave).slice(0, 32) });
   return r.invite_link || '';
 }
 
@@ -191,4 +192,28 @@ function montar(app, stakes, extra) {
   });
 }
 
-module.exports = { montar, linkUnico, canalDe, publicar, vaciar };
+// Solicitud de ingreso a uno de los canales (stake/regalito). Devuelve true si el canal es de los nuestros (ya se atendió).
+// Entra solo si el link usado es el de un registro aprobado y nadie más lo ha usado; en cualquier otro caso pregunta al jefe.
+async function manejarIngreso(jr) {
+  const canales = await H.leerHoja(HOJA_CANALES);
+  const canal = canales.find((f) => String(f.chatId) === String(jr.chat.id));
+  if (!canal) return false;
+  const url = (jr.invite_link && jr.invite_link.invite_link) || '';
+  const hoja = canal.clave === 'regalito' ? 'RegistrosRegalito' : 'RegistrosStake';
+  const reg = url ? (await H.leerHoja(hoja)).find((f) => f.estado === 'aprobado' && f.linkUnico === url) : null;
+  const quien = `${jr.from.first_name || ''} ${jr.from.last_name || ''}`.trim() + (jr.from.username ? ` (@${jr.from.username})` : ' (sin usuario)');
+  if (reg && (!reg.entroId || String(reg.entroId) === String(jr.from.id))) {
+    await H.tg('approveChatJoinRequest', { chat_id: jr.chat.id, user_id: jr.from.id });
+    if (!reg.entroId) await H.cambiarHoja(hoja, (filas) => filas.map((f) => String(f.id) === String(reg.id) ? { ...f, entroId: String(jr.from.id) } : f));
+    return true;
+  }
+  const motivo = reg ? `Ese link ya lo usó otra persona (de ${reg.nombre || 'un cliente'}).` : 'Entró con un link que no corresponde a un registro aprobado.';
+  await H.tg('sendMessage', {
+    chat_id: H.TG_ADMIN(), parse_mode: 'HTML',
+    text: `⚠️ <b>${H.esc(quien)}</b> pidió entrar a "${H.esc(jr.chat.title)}".\n${motivo}`,
+    reply_markup: { inline_keyboard: [[{ text: '✅ Dejar entrar', callback_data: `jo:${jr.chat.id}:${jr.from.id}` }, { text: '❌ Rechazar', callback_data: `jn:${jr.chat.id}:${jr.from.id}` }]] }
+  });
+  return true;
+}
+
+module.exports = { montar, linkUnico, canalDe, publicar, vaciar, manejarIngreso };
