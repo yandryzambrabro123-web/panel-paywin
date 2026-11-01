@@ -13,7 +13,7 @@ const CUENTAS = [ // mismos ids que FINANCE_ACCOUNTS del panel
 ];
 
 function precioVip(plan) {
-  const base = { mensual: 50, trimestral: 150, anual: 600 };
+  const base = { mensual: 50, trimestral: 50, anual: 50 };
   String(process.env.VIP_PRECIOS || '').split(',').forEach((p) => { const [k, v] = p.split(':'); if (k && Number(v) > 0) base[k.trim().toLowerCase()] = Number(v); });
   return base[String(plan || '').toLowerCase()] || 0;
 }
