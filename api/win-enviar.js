@@ -28,6 +28,24 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  // Escudo de un equipo (para los flyers): se busca y se descarga aquí en el servidor para que el navegador no tenga problemas de permisos (CORS).
+  if (req.body && req.body.modo === 'escudo') {
+    try {
+      const nombre = String(req.body.nombre || '').slice(0, 80);
+      if (!nombre) { res.status(400).json({ error: 'Falta el nombre.' }); return; }
+      const r = await fetch('https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=' + encodeURIComponent(nombre));
+      const j = await r.json().catch(() => ({}));
+      const eq = j && j.teams && j.teams[0];
+      const url = eq && (eq.strBadge || eq.strTeamBadge);
+      if (!url) { res.status(200).json({ dataUrl: '' }); return; }
+      const img = await fetch(url + '/small');
+      if (!img.ok) { res.status(200).json({ dataUrl: '' }); return; }
+      const buf = Buffer.from(await img.arrayBuffer());
+      res.status(200).json({ dataUrl: 'data:' + (img.headers.get('content-type') || 'image/png') + ';base64,' + buf.toString('base64') });
+    } catch (e) { res.status(200).json({ dataUrl: '' }); }
+    return;
+  }
+
   const botUrl = process.env.WA_BOT_URL;
   const botKey = process.env.WA_BOT_API_KEY;
   if (!botUrl || !botKey) {
