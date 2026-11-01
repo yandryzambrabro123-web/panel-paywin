@@ -5601,7 +5601,7 @@ function openStakePagoUploadModal(){
 // ---- Canales privados de Telegram (stake de pago y regalito): enviar el pick y vaciar ----
 function canalTgTitulo(clave){
   const h = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10).split('-').map(Number);
-  return (clave === 'stake' ? 'Stake de pago ' : 'Regalito del día ') + (clave === 'stake' ? '' : '') + `${h[2]} de ${MESES_ES[h[1]-1]} de ${h[0]}`;
+  return ((clave === 'stake' ? 'Stake de pago ' : 'Regalito del día ') + `${h[2]} de ${MESES_ES[h[1]-1]} de ${h[0]}`).toLocaleUpperCase('es');
 }
 async function canalTgLlamar(body){
   const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -5623,7 +5623,7 @@ function openCanalTgModal(clave){
   const nom = clave === 'stake' ? 'stake de pago' : 'regalito';
   openModal(`
     <h3>Enviar al canal de ${nom}</h3>
-    <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Se publica en el canal privado de Telegram. El nombre del canal no cambia. La foto es opcional.</div>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Se publica en el canal privado de Telegram y el canal se renombra a "${canalTgTitulo(clave)}" (con la fecha de hoy). La foto es opcional.</div>
     <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:20px 16px; text-align:center; cursor:pointer; margin:10px 0;">
       <div style="font-size:13px; color:var(--muted);">📎 Arrastra, haz clic o pega la foto del pick</div>
       <div id="winDropPreview"></div>
@@ -5651,7 +5651,7 @@ function openCanalTgModal(clave){
     const b = document.getElementById('canalPublicarBtn'); b.disabled = true; b.textContent = 'Publicando...';
     try{
       const imagenes = winPendingFile ? [await fileToCompressedImage(winPendingFile).then(x=>({ base64:x.base64, mediaType:x.mediaType }))] : (pickListo ? [{ base64:pickListo.base64, mediaType:pickListo.mediaType }] : []);
-      await canalTgLlamar({ modo:'canal_publicar', clave, texto, imagenes });
+      await canalTgLlamar({ modo:'canal_publicar', clave, texto, imagenes, titulo: canalTgTitulo(clave) });
       winPickCanalClear(clave); closeModal(); alert('✅ Publicado en el canal.');
     }catch(e){ alert('No se pudo publicar: ' + e.message); b.disabled = false; b.textContent = 'Publicar en el canal'; }
   };
