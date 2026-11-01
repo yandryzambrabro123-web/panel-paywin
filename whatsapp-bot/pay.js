@@ -182,7 +182,7 @@ function montar(app, stakes, extra) {
     ultimaRes = clave;
     try { await revisarResultados(); } catch (e) { console.error('Pay (resultados):', e.message); }
   };
-  setInterval(() => { cicloRes(); }, 5 * 60 * 1000);
+  // Pay ya no analiza nada solo (ni picks por hora ni revisión de resultados): no hay temporizadores.
 
   const marcar = async (cq, txt) => {
     await H.tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt }).catch(() => {});

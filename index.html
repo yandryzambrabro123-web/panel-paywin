@@ -6967,7 +6967,6 @@ function renderFactory(){
       <button type="button" class="ftab" data-ftab-btn="armar" style="--c:#E6C068;"><span class="fi">⚡</span><span class="ft">Armar</span></button>
       <button type="button" class="ftab" data-ftab-btn="reservadas" style="--c:#5aa9ff;"><span class="fi">📌</span><span class="ft">Reservadas</span><span class="fb" id="fbReservadas"></span></button>
       <button type="button" class="ftab" data-ftab-btn="enviadas" style="--c:#4fd18b;"><span class="fi">✅</span><span class="ft">Enviadas</span><span class="fb" id="fbEnviadas"></span></button>
-      <button type="button" class="ftab" data-ftab-btn="auto" style="--c:#b48cff;"><span class="fi">🤖</span><span class="ft">Pay solo</span><span class="fb" id="fbAuto"></span></button>
       <button type="button" class="ftab" data-ftab-btn="ganadas" style="--c:#ff9a4d;"><span class="fi">🏆</span><span class="ft">Ganadas</span><span class="fb" id="fbGanadas">${ganadas || ''}</span></button>
     </div>
     <div class="grid-2">
@@ -7025,11 +7024,6 @@ function renderFactory(){
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Todo lo que mandaste desde el panel (hasta las 12 de la noche de cada día), con su imagen y el texto tal cual salió. Filtra por fecha aquí abajo. Si algo se mandó y no quedó registrado, sale marcado en rojo.</div>
         <div id="enviadasFiltro">${payFiltroBarraHTML(payEnvFiltro, 'data-env-f')}</div>
         <div id="enviadasHoy">${enviadasHoyHTML()}</div>
-      </div>
-      <div class="card ftab-panel" data-ftab="auto" style="grid-column:1/-1; --c:#b48cff;">
-        <div class="card-title">🤖 Lo que Pay encontró solo</div>
-        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Pay revisa los partidos varias veces al día y te avisa por Telegram. Aquí quedan sus picks de las últimas 36 horas.</div>
-        <div id="payAuto"><div style="color:var(--muted); font-size:13px;">Cargando…</div></div>
       </div>
       <div class="card ftab-panel" data-ftab="ganadas" style="grid-column:1/-1; --c:#ff9a4d;">
         <div class="card-title">🏆 Ganadas de ayer</div>
@@ -7742,7 +7736,7 @@ function initPayPanel(){
   pintarBandejaPay();
   payCargarGanadasDB();
   payCargarTomadas();
-  cargarPayAuto();
+  // (Pay solo / Pay automático se eliminó: ya no se cargan sus picks)
   payReservadasCargar(); payFiltrosWire();
   payFiltrosWire();
 }
