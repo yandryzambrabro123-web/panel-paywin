@@ -622,4 +622,5 @@ async function revisarPendientesDiarios() {
     avisosHechos.delete(`${fecha}|${toca}`); // si falló, se reintenta en el próximo minuto
   }
 }
-setInterval(revisarPendientesDiarios, 60 * 1000);
+// Recordatorios diarios de Telegram ("quedan X min para las 7pm") DESACTIVADOS a pedido del jefe: no se programa ninguna revisión.
+// setInterval(revisarPendientesDiarios, 60 * 1000);

@@ -201,11 +201,11 @@ function montar(app, stakes, extra) {
 
   // Para probar a mano:  POST /pay/resultados  (con la clave del bot)
   app.post('/pay/resultados', requireApiKey, async (req, res) => {
-    try { res.json(await revisarResultados()); } catch (e) { res.status(502).json({ error: e.message }); }
+    res.status(410).json({ error: 'Desactivado: el bot ya no manda apuestas ni resultados a Telegram.' });
   });
   // Para probar a mano:  POST /pay/revisar  (con la clave del bot)
   app.post('/pay/revisar', requireApiKey, async (req, res) => {
-    try { res.json(await revisar('manual')); } catch (e) { res.status(502).json({ error: e.message }); }
+    res.status(410).json({ error: 'Desactivado: el bot ya no manda apuestas ni resultados a Telegram.' });
   });
 }
 
