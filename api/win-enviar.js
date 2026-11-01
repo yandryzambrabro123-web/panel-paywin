@@ -87,6 +87,19 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    if (modo === 'canal_publicar' || modo === 'canal_vaciar' || modo === 'canal_estado') {
+      const ruta = modo === 'canal_publicar' ? '/canal/publicar' : modo === 'canal_vaciar' ? '/canal/vaciar' : '/canal/estado';
+      const botRes = await fetch(`${base}${ruta}`, {
+        method: modo === 'canal_estado' ? 'GET' : 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': botKey },
+        ...(modo === 'canal_estado' ? {} : { body: JSON.stringify({ clave: body.clave === 'regalito' ? 'regalito' : 'stake', texto: body.texto, imagenes: body.imagenes, titulo: body.titulo, conservar: body.conservar }) })
+      });
+      const data = await botRes.json().catch(() => ({}));
+      if (!botRes.ok) { res.status(502).json({ error: data.error || 'El bot no pudo completar la acción del canal.' }); return; }
+      res.status(200).json(data);
+      return;
+    }
+
     if (modo === 'vip_url') {
       res.status(200).json({ url: `${base}/vip` });
       return;

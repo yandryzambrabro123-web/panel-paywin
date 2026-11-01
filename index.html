@@ -3400,6 +3400,8 @@ function renderWin(){
           <div class="win-qrow">
             <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
             <button class="win-quick-btn" id="winQuickRegalitoBtn" type="button">${winIcon('regalo')}<span>Regalito del día</span></button>
+            <button class="win-quick-btn" id="winQuickCanalStakeBtn" type="button">${winIcon('testimonio')}<span>Enviar stake al canal</span></button>
+            <button class="win-quick-btn" id="winQuickCanalRegBtn" type="button">${winIcon('regalo')}<span>Enviar pick del regalito al canal</span></button>
           </div>
         </div>
         <div class="win-qg" style="--c:#b48cff;">
@@ -3460,6 +3462,8 @@ function renderWin(){
   document.getElementById('winQuickGanadaBtn').onclick = ()=>{ playWinSfx('action'); openWinBetForm('ganada',''); };
   document.getElementById('winQuickPartidosBtn').onclick = ()=>{ playWinSfx('action'); openPartidosDiaModal(); };
   document.getElementById('winQuickRegalitoBtn').onclick = ()=>{ playWinSfx('action'); openRegalitoDiaModal(); };
+  document.getElementById('winQuickCanalStakeBtn').onclick = ()=>{ playWinSfx('action'); openCanalTgModal('stake'); };
+  document.getElementById('winQuickCanalRegBtn').onclick = ()=>{ playWinSfx('action'); openCanalTgModal('regalito'); };
   winPowerRefresh = actualizarPower;
   actualizarPower();
   winFxInit();
@@ -5587,6 +5591,59 @@ function openStakePagoUploadModal(){
   `);
   wireWinDropzone();
   document.getElementById('submitStakePagoBtn').onclick = submitStakePago;
+}
+
+// ---- Canales privados de Telegram (stake de pago y regalito): enviar el pick y vaciar ----
+function canalTgTitulo(clave){
+  const h = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10).split('-').map(Number);
+  return (clave === 'stake' ? 'Stake de pago ' : 'Regalito del día ') + (clave === 'stake' ? '' : '') + `${h[2]} de ${MESES_ES[h[1]-1]} de ${h[0]}`;
+}
+async function canalTgLlamar(body){
+  const r = await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error || 'Error del bot');
+  return d;
+}
+function openCanalTgModal(clave){
+  const nom = clave === 'stake' ? 'stake de pago' : 'regalito';
+  openModal(`
+    <h3>Enviar al canal de ${nom}</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Se publica en el canal privado de Telegram y el canal se renombra a "${canalTgTitulo(clave)}". La foto es opcional.</div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:20px 16px; text-align:center; cursor:pointer; margin:10px 0;">
+      <div style="font-size:13px; color:var(--muted);">📎 Arrastra, haz clic o pega la foto del pick</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="field"><label>Texto</label><textarea id="f-canalTexto" rows="5" placeholder="Pick, cuota, hora..."></textarea></div>
+    <div id="canalTgMsg" style="font-size:12.5px; color:var(--muted); min-height:18px; margin-bottom:8px;"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="canalVaciarBtn" type="button" style="color:#ff7a7a;">Vaciar canal</button>
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn" id="canalPublicarBtn">Publicar en el canal</button>
+    </div>
+  `);
+  wireWinDropzone();
+  const msg = (t)=>{ const e = document.getElementById('canalTgMsg'); if(e) e.textContent = t; };
+  canalTgLlamar({ modo:'canal_estado' }).then(d=>{ const c = d[clave]; msg(c && c.configurado ? `Canal listo: "${c.titulo}" · ${c.miembros} miembro(s) anotados.` : '⚠️ El canal todavía no está configurado (agrega al bot como administrador).'); }).catch(()=>{});
+  document.getElementById('canalPublicarBtn').onclick = async ()=>{
+    const texto = (document.getElementById('f-canalTexto').value || '').trim();
+    if(!texto && !winPendingFile){ alert('Escribe el texto o sube la foto.'); return; }
+    const b = document.getElementById('canalPublicarBtn'); b.disabled = true; b.textContent = 'Publicando...';
+    try{
+      const imagenes = winPendingFile ? [await fileToCompressedImage(winPendingFile).then(x=>({ base64:x.base64, mediaType:x.mediaType }))] : [];
+      await canalTgLlamar({ modo:'canal_publicar', clave, texto, imagenes, titulo: canalTgTitulo(clave) });
+      closeModal(); alert('✅ Publicado en el canal.');
+    }catch(e){ alert('No se pudo publicar: ' + e.message); b.disabled = false; b.textContent = 'Publicar en el canal'; }
+  };
+  document.getElementById('canalVaciarBtn').onclick = async ()=>{
+    if(!confirm(`¿Vaciar el canal de ${nom}?\n\nSaca a TODOS los miembros y borra el contenido que el bot tiene anotado. Pueden volver con un link nuevo.`)) return;
+    const b = document.getElementById('canalVaciarBtn'); b.disabled = true; b.textContent = 'Vaciando...';
+    try{
+      const d = await canalTgLlamar({ modo:'canal_vaciar', clave });
+      alert(`Listo. Sacados: ${d.sacados}. Mensajes borrados: ${d.borrados}.` + (d.fallos ? ` No pude sacar a ${d.fallos}.` : '') + (d.noBorrados ? ` ${d.noBorrados} mensaje(s) no se pudieron borrar (bórralos a mano).` : ''));
+      b.disabled = false; b.textContent = 'Vaciar canal';
+    }catch(e){ alert('No se pudo vaciar: ' + e.message); b.disabled = false; b.textContent = 'Vaciar canal'; }
+  };
 }
 
 // ---- Regalito del día: foto + link del grupo; el bot lo habilita 8 horas ----

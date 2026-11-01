@@ -263,7 +263,7 @@ async function escuchar() {
   await tg('deleteWebhook', { drop_pending_updates: false }).catch(() => {});
   for (;;) {
     try {
-      const ups = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['callback_query', 'chat_join_request', 'message', 'channel_post', 'chat_member'] });
+      const ups = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['callback_query', 'chat_join_request', 'message', 'channel_post', 'chat_member', 'my_chat_member'] });
       for (const u of ups) { offset = u.update_id + 1; await procesarUpdate(u); }
     } catch (e) {
       console.error('Telegram (escucha):', e.message);
@@ -421,7 +421,16 @@ function montar(app) {
       if (!reg) return res.json({ estado: 'desconocido' });
       if (reg.estado !== 'aprobado') return res.json({ estado: reg.estado });
       const sec = (await leerHoja(HOJA_SECCIONES)).find((s) => String(s.id) === String(reg.sectionId));
-      res.json({ estado: 'aprobado', link: (sec && sec.telegramLink) || '' });
+      // Si el canal privado de Telegram está configurado: link de UN SOLO USO a nombre del cliente
+      let unico = reg.linkUnico || '';
+      if (!unico) {
+        try {
+          const nombreLink = `Stake ${reg.day || hoyEC()} ${reg.nombre || ''}`.trim();
+          unico = await require('./canales').linkUnico('stake', nombreLink);
+          if (unico) await cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => String(f.id) === String(reg.id) ? { ...f, linkUnico: unico } : f));
+        } catch (e) { console.error('Link único del stake:', e.message); }
+      }
+      res.json({ estado: 'aprobado', link: unico || (sec && sec.telegramLink) || '' });
     } catch (e) { res.json({ estado: 'pendiente' }); }
   });
 
