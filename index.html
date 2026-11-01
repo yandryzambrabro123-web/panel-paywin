@@ -5973,6 +5973,38 @@ function openWinPartidosConfirm(grupos, caption, thumbs, images, redactCtx, onBa
   });
 }
 
+// ---- Marca de agua: el logo de PayWin, borroso y casi transparente, al centro de cada apuesta que se manda ----
+let winLogoImg = null;
+function winCargarLogo(){
+  return new Promise((ok)=>{
+    if(winLogoImg) return ok(winLogoImg);
+    const i = new Image();
+    i.onload = ()=>{ winLogoImg = i; ok(i); };
+    i.onerror = ()=>ok(null);
+    i.src = '/logo-paywin.png';
+  });
+}
+async function winMarcaAgua(base64, mediaType){
+  try{
+    const logo = await winCargarLogo();
+    if(!logo) return { base64, mediaType };
+    const img = await new Promise((ok, no)=>{ const i = new Image(); i.onload = ()=>ok(i); i.onerror = no; i.src = 'data:' + (mediaType || 'image/jpeg') + ';base64,' + base64; });
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const lado = Math.round(Math.min(c.width, c.height) * 0.5);
+    const x = Math.round((c.width - lado) / 2), y = Math.round((c.height - lado) / 2);
+    ctx.save();
+    ctx.globalAlpha = 0.11;
+    ctx.filter = 'blur(1.5px)';
+    ctx.beginPath(); ctx.arc(x + lado/2, y + lado/2, lado * 0.49, 0, Math.PI * 2); ctx.clip(); // solo la insignia redonda, sin el fondo cuadrado
+    ctx.drawImage(logo, x, y, lado, lado);
+    ctx.restore();
+    const url = c.toDataURL('image/jpeg', 0.85);
+    return { base64: url.split(',')[1], mediaType: 'image/jpeg' };
+  }catch(e){ console.error('Marca de agua:', e); return { base64, mediaType }; }
+}
+
 async function submitWinBet(kind, opts){
   opts = opts || {};
   const tipoSel = opts.tipo !== undefined ? opts.tipo : ((document.getElementById('f-winTipo') || {}).value || '');
@@ -6007,7 +6039,8 @@ async function submitWinBet(kind, opts){
     const result = await res.json().catch(()=>({}));
     if(!res.ok){ alert('La IA no pudo redactar el texto, por eso saldría uno básico.' + (result && result.detalle ? '\n\nMotivo: ' + result.detalle : '') + '\n\nRevisa los créditos de Anthropic o la ANTHROPIC_API_KEY en Vercel.'); }
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
-    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType }, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType }, ()=> quiereCensurar ? submitWinBet(kind, { grupos, code, file: archivoOriginal, censurar: true, tipo: tipoSel, ganada: ganadaSel }) : winVolverFormularioApuesta(kind, grupos, code, archivoOriginal, tipoSel, ganadaSel));
+    const conMarca = await winMarcaAgua(base64, mediaType);
+    openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, conMarca, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType }, ()=> quiereCensurar ? submitWinBet(kind, { grupos, code, file: archivoOriginal, censurar: true, tipo: tipoSel, ganada: ganadaSel }) : winVolverFormularioApuesta(kind, grupos, code, archivoOriginal, tipoSel, ganadaSel));
   }catch(e){
     console.error(e);
     alert('No se pudo generar el texto. Intenta de nuevo.');
