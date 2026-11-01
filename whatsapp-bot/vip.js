@@ -314,6 +314,7 @@ function montar(app, stakes, extra) {
     const r = await aprobar(id, PLANES[p] || 'mensual', rec);
     if (r.ok && r.link) await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `✅ Aprobado: ${r.nombre || ''}\nTeléfono: ${r.telefono || ''}\nLink de un solo uso al grupo VIP (si la persona no ve su link en pantalla, mándaselo tú):\n${r.link}` }).catch(() => {});
     await marcar(cq, r.error ? `⚠️ ${r.error}` : `✅ Aprobado (${PLANES[p] || 'mensual'})`);
+    if (r.ok) { const C = require('./cuadre'); await C.ofrecer({ tipo: 'vp', regId: id, monto: C.precioVip(PLANES[p] || 'mensual'), etiqueta: `Membresía VIP ${PLANES[p] || 'mensual'} — ${r.nombre || ''}`.trim() }); }
   };
   H.manejadores.vc = async (cq, [id]) => {
     await H.recuperarRegistro(HOJA_REGISTROS, id, cq, 'vip');

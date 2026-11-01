@@ -134,19 +134,6 @@ async function revisarStakes() {
     });
     if (!primeraVez && nuevas.some((s) => String(s.id) === String(masNueva.id))) await liberarColaStake(masNueva);
   }
-  // pregunta a las 5 horas
-  const filas = await H.leerHoja(HOJA_DISP);
-  for (const f of filas) {
-    if (f.estado !== 'habilitado' || f.preguntado === 'si') continue;
-    if (Date.now() < Date.parse(f.publishedAt) + HORAS_PREGUNTA * 3600e3) continue;
-    const sec = secs.find((s) => String(s.id) === String(f.sectionId));
-    await H.tg('sendMessage', {
-      chat_id: H.TG_ADMIN(), parse_mode: 'HTML',
-      text: `⏰ Pasaron ${HORAS_PREGUNTA} horas del <b>${H.esc(sec ? sec.title : 'stake de pago')}</b>.\n\n¿Sigue disponible? Si ya se jugó, los pagos que apruebes desde ahora quedan en cola hasta que publiques el siguiente stake.`,
-      reply_markup: { inline_keyboard: [[{ text: '✅ Sigue disponible', callback_data: 'sd:' + f.sectionId + ':s' }, { text: '🔚 Ya se jugó', callback_data: 'sd:' + f.sectionId + ':c' }]] }
-    });
-    await H.cambiarHoja(HOJA_DISP, (fs) => fs.map((x) => String(x.sectionId) === String(f.sectionId) ? { ...x, preguntado: 'si' } : x));
-  }
 }
 
 async function liberarColaStake(sec) {
@@ -167,14 +154,6 @@ async function revisarRegalito() {
     if (Date.now() >= pub + HORAS_HABILITADO * 3600e3) {
       await H.cambiarHoja(HOJA_DIA, (fs) => fs.map((x) => x.id === f.id ? { ...x, estado: 'cerrado' } : x));
       continue;
-    }
-    if (f.preguntado !== 'si' && Date.now() >= pub + HORAS_PREGUNTA * 3600e3) {
-      await H.tg('sendMessage', {
-        chat_id: H.TG_ADMIN(),
-        text: `⏰ Pasaron ${HORAS_PREGUNTA} horas del regalito de hoy.\n\n¿Sigue disponible? Si ya se jugó, los que lo pidan desde ahora quedan en cola para el siguiente.`,
-        reply_markup: { inline_keyboard: [[{ text: '✅ Sigue disponible', callback_data: 'gd:' + f.id + ':s' }, { text: '🔚 Ya se jugó', callback_data: 'gd:' + f.id + ':c' }]] }
-      });
-      await H.cambiarHoja(HOJA_DIA, (fs) => fs.map((x) => x.id === f.id ? { ...x, preguntado: 'si' } : x));
     }
   }
 }
