@@ -2208,6 +2208,7 @@ function renderStakeSales(){
         <div class="score-cell" style="flex:0;"><div class="score-label">Total en ventas</div><div class="score-value win">${fmtMoney(sectionTotal(cur.id))}</div></div>
         ${readOnly ? '' : `<div style="margin-left:auto; display:flex; gap:8px;">
           ${/stake de pago/i.test(cur.title||'') ? '<button class="btn secondary small" id="copyRegLinkBtn">Copiar link de registro</button>' : ''}
+          ${/stake de pago/i.test(cur.title||'') ? '<button class="btn secondary small" id="vaciarGrupoStakeBtn" style="color:#ff7a7a;">Vaciar grupo</button>' : ''}
           <button class="btn secondary small" id="editSectionBtn">Editar sección</button>
           <button class="btn danger small" id="delSectionBtn">Eliminar sección</button>
         </div>`}
@@ -2260,6 +2261,8 @@ function renderStakeSales(){
 
   document.getElementById('difusionStakesBtn').onclick = openWinDifusionModal;
   document.getElementById('refreshStakeSalesBtn').onclick = refreshStakeSales;
+  const vacBtn = document.getElementById('vaciarGrupoStakeBtn');
+  if(vacBtn) vacBtn.onclick = ()=>vaciarGrupoTg('stake', vacBtn);
   const regBtn = document.getElementById('copyRegLinkBtn');
   if(regBtn) regBtn.onclick = async ()=>{
     try{
@@ -3089,6 +3092,7 @@ function renderGifts(){
       </div>
       ${dateFilterHTML('gifts')}
       <div style="display:flex; gap:10px;">
+        <button class="btn secondary" id="vaciarGrupoRegBtn" style="color:#ff7a7a;">Vaciar grupo</button>
         <button class="btn secondary" id="exportGiftBtn">Exportar CSV</button>
         <button class="btn" id="addGiftBtn">+ Nuevo regalito</button>
       </div>
@@ -3117,6 +3121,7 @@ function renderGifts(){
   wireDateFilter('gifts', renderGifts);
   document.getElementById('addGiftBtn').onclick = openGiftForm;
   document.getElementById('exportGiftBtn').onclick = () => exportCSV('gifts');
+  document.getElementById('vaciarGrupoRegBtn').onclick = function(){ vaciarGrupoTg('regalito', this); };
   document.querySelectorAll('[data-del-gift]').forEach(b=>b.onclick=()=>delItem('gifts', b.dataset.delGift, renderGifts));
   document.querySelectorAll('[data-result]').forEach(sel=>{
     sel.onchange = async ()=>{
@@ -5604,6 +5609,16 @@ async function canalTgLlamar(body){
   if(!r.ok) throw new Error(d.error || 'Error del bot');
   return d;
 }
+async function vaciarGrupoTg(clave, btn){
+  const nom = clave === 'stake' ? 'stake de pago' : 'regalito';
+  if(!confirm(`¿Vaciar el grupo de ${nom} AHORA?\n\nSe sacan TODOS los miembros y se borra TODO el contenido del canal. Solo quedan tú y el bot. No se puede deshacer.`)) return;
+  const t = btn.textContent; btn.disabled = true; btn.textContent = 'Vaciando...';
+  try{
+    const d = await canalTgLlamar({ modo:'canal_vaciar', clave });
+    alert(`Listo, canal vacío. Miembros sacados: ${d.sacados}. Contenido borrado.` + (d.fallos ? ` No pude sacar a ${d.fallos}.` : ''));
+  }catch(e){ alert('No se pudo vaciar: ' + e.message); }
+  btn.disabled = false; btn.textContent = t;
+}
 function openCanalTgModal(clave){
   const nom = clave === 'stake' ? 'stake de pago' : 'regalito';
   openModal(`
@@ -5635,15 +5650,7 @@ function openCanalTgModal(clave){
       closeModal(); alert('✅ Publicado en el canal.');
     }catch(e){ alert('No se pudo publicar: ' + e.message); b.disabled = false; b.textContent = 'Publicar en el canal'; }
   };
-  document.getElementById('canalVaciarBtn').onclick = async ()=>{
-    if(!confirm(`¿Vaciar el canal de ${nom}?\n\nSaca a TODOS los miembros y borra el contenido que el bot tiene anotado. Pueden volver con un link nuevo.`)) return;
-    const b = document.getElementById('canalVaciarBtn'); b.disabled = true; b.textContent = 'Vaciando...';
-    try{
-      const d = await canalTgLlamar({ modo:'canal_vaciar', clave });
-      alert(`Listo. Sacados: ${d.sacados}. Mensajes borrados: ${d.borrados}.` + (d.fallos ? ` No pude sacar a ${d.fallos}.` : '') + (d.noBorrados ? ` ${d.noBorrados} mensaje(s) no se pudieron borrar (bórralos a mano).` : ''));
-      b.disabled = false; b.textContent = 'Vaciar canal';
-    }catch(e){ alert('No se pudo vaciar: ' + e.message); b.disabled = false; b.textContent = 'Vaciar canal'; }
-  };
+  document.getElementById('canalVaciarBtn').onclick = function(){ vaciarGrupoTg(clave, this); };
 }
 
 // ---- Regalito del día: foto + link del grupo; el bot lo habilita 8 horas ----

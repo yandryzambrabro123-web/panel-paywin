@@ -92,16 +92,24 @@ async function vaciar({ clave, conservar }) {
     } catch (e) { fallos++; quedan.push(m); }
     await pausa(120);
   }
-  const msgs = (await H.leerHoja(HOJA_MSGS)).filter((f) => String(f.chatId) === String(c.chatId));
+  // Borra TODO el contenido: manda un mensaje de prueba para saber cuál es el último código y borra de 1 hasta ese
+  // código en tandas de 100 (lo que no existe se ignora).
   let borrados = 0, noBorrados = 0;
   const pendientes = [];
-  for (const f of msgs) {
-    try { await H.tg('deleteMessage', { chat_id: c.chatId, message_id: Number(f.msgId) }); borrados++; }
-    catch (e) { if (/not found|can't be deleted|message to delete/i.test(e.message)) noBorrados++; else { noBorrados++; pendientes.push(f); } }
-    await pausa(60);
-  }
+  try {
+    const sonda = await H.tg('sendMessage', { chat_id: c.chatId, text: '🧹', disable_notification: true });
+    const ultimo = sonda.message_id;
+    for (let ini = 1; ini <= ultimo; ini += 100) {
+      const ids = []; for (let i = ini; i < ini + 100 && i <= ultimo; i++) ids.push(i);
+      try { await H.tg('deleteMessages', { chat_id: c.chatId, message_ids: ids }); borrados += ids.length; }
+      catch (e) {
+        for (const id of ids) { try { await H.tg('deleteMessage', { chat_id: c.chatId, message_id: id }); borrados++; } catch (e2) { noBorrados++; } }
+      }
+      await pausa(150);
+    }
+  } catch (e) { throw new Error('No pude borrar el contenido: ' + e.message); }
   await H.cambiarHoja(HOJA_MIEMBROS, (filas) => [...filas.filter((m) => String(m.chatId) !== String(c.chatId)), ...quedan]);
-  await H.cambiarHoja(HOJA_MSGS, (filas) => [...filas.filter((f) => String(f.chatId) !== String(c.chatId)), ...pendientes]);
+  await H.cambiarHoja(HOJA_MSGS, (filas) => filas.filter((f) => String(f.chatId) !== String(c.chatId)));
   return { ok: true, sacados, conservados, fallos, borrados, noBorrados };
 }
 
