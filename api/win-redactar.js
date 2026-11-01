@@ -62,26 +62,32 @@ function parseVariantes(text, cantidad) {
   return text && text.trim() ? [text.trim()] : [];
 }
 
+// Modelos a probar en orden: el configurado en Vercel (ANTHROPIC_MODEL) y los nombres vigentes. Si uno ya no existe, se pasa al siguiente.
+const MODELOS_IA = [process.env.ANTHROPIC_MODEL, 'claude-sonnet-5', 'claude-sonnet-5-5'].filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
+let ultimoErrorIA = '';
 async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
-  const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens, system, messages })
-  });
-  if (!apiRes.ok) {
-    const errText = await apiRes.text();
-    console.error('Error de Anthropic:', apiRes.status, errText);
-    return null;
+  for (const modelo of MODELOS_IA) {
+    let apiRes;
+    try {
+      apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: modelo, max_tokens, system, messages })
+      });
+    } catch (e) { ultimoErrorIA = 'sin conexión con la IA: ' + e.message; console.error(ultimoErrorIA); return null; }
+    if (!apiRes.ok) {
+      const errText = await apiRes.text();
+      ultimoErrorIA = `${modelo} -> ${apiRes.status}: ${errText}`.slice(0, 300);
+      console.error('Error de Anthropic:', ultimoErrorIA);
+      if (apiRes.status === 404 || (apiRes.status === 400 && /model/i.test(errText))) continue; // ese modelo ya no existe: se prueba el siguiente
+      return null;
+    }
+    const data = await apiRes.json();
+    const textBlock = (data.content || []).find(b => b.type === 'text');
+    return textBlock ? textBlock.text : '';
   }
-  const data = await apiRes.json();
-  const textBlock = (data.content || []).find(b => b.type === 'text');
-  return textBlock ? textBlock.text : '';
+  return null;
 }
-
 
 // ---------- Pay: analista deportivo de la Fábrica de apuestas ----------
 // modo "pay": { modo:'pay', cupo, cuotaMin, cuotaMax, cantidad, instruccion? } -> { sugerencias:[...], fuente }
@@ -835,7 +841,7 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
       if (text === null) await new Promise((ok) => setTimeout(ok, 800));
     }
     if (text === null) {
-      res.status(502).json({ error: 'No se pudo redactar el texto (servicio de IA).', caption: code || '' });
+      res.status(502).json({ error: 'No se pudo redactar el texto (servicio de IA).', detalle: ultimoErrorIA, caption: code || '' });
       return;
     }
     const caption = corregirTelefono(extractText(text) || code || '');

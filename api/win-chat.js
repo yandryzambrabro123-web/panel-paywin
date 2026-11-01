@@ -259,7 +259,8 @@ module.exports = async function handler(req, res) {
     // velocidad, o un 500/502/503 suyo) que se resuelve solo si se reintenta una vez -- antes
     // esto tumbaba la conversación con "No se pudo conectar con Win" aunque fuera cosa de un
     // segundo. Se reintenta UNA vez después de una pausa corta antes de darlo por fallido.
-    async function llamarClaude() {
+    const MODELOS = [process.env.ANTHROPIC_MODEL, 'claude-sonnet-5', 'claude-sonnet-5-5'].filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
+    async function llamarClaude(modelo) {
       return fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -268,7 +269,7 @@ module.exports = async function handler(req, res) {
           'content-type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-5',
+          model: modelo || MODELOS[0],
           max_tokens: 500,
           system: buildSystemPrompt(memoryLines, templateNames),
           tools: TOOLS,
@@ -278,6 +279,7 @@ module.exports = async function handler(req, res) {
     }
 
     let apiRes = await llamarClaude();
+    for (let i = 1; i < MODELOS.length && apiRes.status === 404; i++) apiRes = await llamarClaude(MODELOS[i]); // ese modelo ya no existe: se prueba el siguiente
     if (!apiRes.ok && [429, 500, 502, 503, 529].includes(apiRes.status)) {
       await new Promise(r => setTimeout(r, 1200));
       apiRes = await llamarClaude();

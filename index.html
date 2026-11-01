@@ -4964,7 +4964,7 @@ async function processWinVoiceCommand(texto){
     const result = await res.json();
     if(!res.ok){
       console.error('Error de win-chat:', result);
-      applyWinOrbState('listening', result.error || 'No se pudo entender. Intenta de nuevo.');
+      applyWinOrbState('listening', (result.error || 'No se pudo entender. Intenta de nuevo.') + (result.detalle ? ' [' + result.detalle + ']' : ''));
       return;
     }
     const tools = result.tools || [];
@@ -5908,7 +5908,8 @@ async function submitWinBet(kind, opts){
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ telefono: winTelPara(grupos), kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType })
     });
-    const result = await res.json();
+    const result = await res.json().catch(()=>({}));
+    if(!res.ok){ alert('La IA no pudo redactar el texto, por eso saldría uno básico.' + (result && result.detalle ? '\n\nMotivo: ' + result.detalle : '') + '\n\nRevisa los créditos de Anthropic o la ANTHROPIC_API_KEY en Vercel.'); }
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
     openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, { base64, mediaType }, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType }, ()=> quiereCensurar ? submitWinBet(kind, { grupos, code, file: archivoOriginal, censurar: true, tipo: tipoSel, ganada: ganadaSel }) : winVolverFormularioApuesta(kind, grupos, code, archivoOriginal, tipoSel, ganadaSel));
   }catch(e){
