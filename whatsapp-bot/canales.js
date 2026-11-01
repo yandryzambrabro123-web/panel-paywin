@@ -62,7 +62,6 @@ async function enviarFoto(chat_id, img, caption) {
 async function publicar({ clave, texto, imagenes, titulo }) {
   const c = await canalDe(clave);
   if (!c) throw new Error(`Falta el canal de ${clave}: crea el canal privado, agrega al bot como administrador y avísame.`);
-  if (titulo) await H.tg('setChatTitle', { chat_id: c.chatId, title: String(titulo).slice(0, 128) }).catch(() => {});
   const fotos = (imagenes || []).filter((i) => i && (i.base64 || i.url));
   const t = String(texto || '');
   const enviados = [];
