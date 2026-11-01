@@ -2208,7 +2208,6 @@ function renderStakeSales(){
         <div class="score-cell" style="flex:0;"><div class="score-label">Total en ventas</div><div class="score-value win">${fmtMoney(sectionTotal(cur.id))}</div></div>
         ${readOnly ? '' : `<div style="margin-left:auto; display:flex; gap:8px;">
           ${/stake de pago/i.test(cur.title||'') ? '<button class="btn secondary small" id="copyRegLinkBtn">Copiar link de registro</button>' : ''}
-          ${/stake de pago/i.test(cur.title||'') ? '<button class="btn secondary small" id="vaciarGrupoStakeBtn" style="color:#ff7a7a;">Vaciar grupo</button>' : ''}
           <button class="btn secondary small" id="editSectionBtn">Editar sección</button>
           <button class="btn danger small" id="delSectionBtn">Eliminar sección</button>
         </div>`}
@@ -2240,7 +2239,8 @@ function renderStakeSales(){
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
         <button class="btn secondary" id="refreshStakeSalesBtn" title="Actualizar ventas y registros" aria-label="Actualizar" style="width:42px; padding:0; height:42px; display:inline-flex; align-items:center; justify-content:center;"><svg id="refreshStakeIco" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
-        ${readOnly ? '' : `<button class="btn secondary" id="difusionStakesBtn">Difusión de stakes</button>
+        ${readOnly ? '' : `<button class="btn secondary" id="vaciarGrupoBtn" style="color:#ff7a7a;">Vaciar grupo</button>
+        <button class="btn secondary" id="difusionStakesBtn">Difusión de stakes</button>
         <button class="btn secondary" id="exportStakeSalesBtn">Exportar CSV</button>
         <button class="btn secondary" id="addSectionBtn">+ Nueva sección</button>
         ${cur ? '<button class="btn" id="addStakeSaleBtn">+ Registrar comprador</button>' : ''}`}
@@ -2259,10 +2259,10 @@ function renderStakeSales(){
     return;
   }
 
+  const vgb = document.getElementById('vaciarGrupoBtn');
+  if(vgb) vgb.onclick = openVaciarGrupoModal;
   document.getElementById('difusionStakesBtn').onclick = openWinDifusionModal;
   document.getElementById('refreshStakeSalesBtn').onclick = refreshStakeSales;
-  const vacBtn = document.getElementById('vaciarGrupoStakeBtn');
-  if(vacBtn) vacBtn.onclick = ()=>vaciarGrupoTg('stake', vacBtn);
   const regBtn = document.getElementById('copyRegLinkBtn');
   if(regBtn) regBtn.onclick = async ()=>{
     try{
@@ -3092,7 +3092,6 @@ function renderGifts(){
       </div>
       ${dateFilterHTML('gifts')}
       <div style="display:flex; gap:10px;">
-        <button class="btn secondary" id="vaciarGrupoRegBtn" style="color:#ff7a7a;">Vaciar grupo</button>
         <button class="btn secondary" id="exportGiftBtn">Exportar CSV</button>
         <button class="btn" id="addGiftBtn">+ Nuevo regalito</button>
       </div>
@@ -3121,7 +3120,6 @@ function renderGifts(){
   wireDateFilter('gifts', renderGifts);
   document.getElementById('addGiftBtn').onclick = openGiftForm;
   document.getElementById('exportGiftBtn').onclick = () => exportCSV('gifts');
-  document.getElementById('vaciarGrupoRegBtn').onclick = function(){ vaciarGrupoTg('regalito', this); };
   document.querySelectorAll('[data-del-gift]').forEach(b=>b.onclick=()=>delItem('gifts', b.dataset.delGift, renderGifts));
   document.querySelectorAll('[data-result]').forEach(sel=>{
     sel.onchange = async ()=>{
@@ -5608,6 +5606,17 @@ async function canalTgLlamar(body){
   const d = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(d.error || 'Error del bot');
   return d;
+}
+function openVaciarGrupoModal(){
+  openModal(`<h3>Vaciar grupo</h3>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:14px;">Elige cuál canal de Telegram vaciar. Se sacan todos los miembros y se borra todo el contenido. Solo quedan tú y el bot.</div>
+    <div class="modal-actions" style="flex-wrap:wrap;">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="vgRegBtn" style="background:#ff7a7a;">Vaciar Regalito</button>
+      <button class="btn" id="vgStakeBtn" style="background:#ff7a7a;">Vaciar Stake de pago</button>
+    </div>`);
+  document.getElementById('vgStakeBtn').onclick = function(){ vaciarGrupoTg('stake', this).then(closeModal); };
+  document.getElementById('vgRegBtn').onclick = function(){ vaciarGrupoTg('regalito', this).then(closeModal); };
 }
 async function vaciarGrupoTg(clave, btn){
   const nom = clave === 'stake' ? 'stake de pago' : 'regalito';
