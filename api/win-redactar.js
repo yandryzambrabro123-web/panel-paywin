@@ -1,3 +1,4 @@
+const { anotarGasto } = require('./_gasto');
 // Función serverless de Vercel: redacta el texto final que va a acompañar un mensaje para la
 // comunidad (apuesta nueva, ganada, contenido/testimonio, regalito del día o partidos del día),
 // y también las variantes de un mensaje de difusión masiva -- todo usando la API de Anthropic.
@@ -65,7 +66,7 @@ function parseVariantes(text, cantidad) {
 // Modelos a probar en orden: el configurado en Vercel (ANTHROPIC_MODEL) y los nombres vigentes. Si uno ya no existe, se pasa al siguiente.
 const MODELOS_IA = [process.env.ANTHROPIC_MODEL, 'claude-sonnet-5', 'claude-sonnet-5-5'].filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
 let ultimoErrorIA = '';
-async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
+async function llamarAnthropic(apiKey, { system, messages, max_tokens, funcion }) {
   for (const modelo of MODELOS_IA) {
     let apiRes;
     try {
@@ -83,6 +84,7 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens }) {
       return null;
     }
     const data = await apiRes.json();
+    await anotarGasto(funcion || 'texto_publicacion', data);
     const textBlock = (data.content || []).find(b => b.type === 'text');
     return textBlock ? textBlock.text : '';
   }
@@ -234,6 +236,7 @@ async function llamarPay(apiKey, payload, maxMs) {
     }
     if (!r.ok) { const t = await r.text(); console.error('Pay IA:', r.status, t.slice(0, 400)); return { ok: false, status: r.status, detalle: t.slice(0, 200) }; }
     const data = await r.json();
+    await anotarGasto('pay_fabrica', data);
     stop = data.stop_reason || '';
     texto += '\n' + (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
     if (stop !== 'pause_turn') break;
@@ -778,7 +781,8 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
       const text = await llamarAnthropic(apiKey, {
         system: systemPrompt,
         messages: [{ role: 'user', content: `Instrucción del dueño: ${instruccion}` }],
-        max_tokens: 700
+        max_tokens: 700,
+        funcion: 'difusion'
       });
       if (text === null) {
         res.status(502).json({ error: 'No se pudo redactar las variantes (servicio de IA).', variantes: [instruccion] });

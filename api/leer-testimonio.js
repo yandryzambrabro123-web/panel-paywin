@@ -1,3 +1,4 @@
+const { anotarGasto } = require('./_gasto');
 // Función serverless de Vercel: procesa una captura de recarga/transferencia para publicarla
 // como testimonio, usando la API de Anthropic (visión). En vez de pedirle al modelo que
 // "tape los datos sensibles" (arriesgado si se le pasa algo), le pedimos lo CONTRARIO: que
@@ -83,6 +84,7 @@ module.exports = async function handler(req, res) {
     }
 
     const data = await apiRes.json();
+    await anotarGasto('leer_testimonio', data);
     const textBlock = (data.content || []).find(b => b.type === 'text');
     const parsed = extractJson(textBlock ? textBlock.text : '');
 

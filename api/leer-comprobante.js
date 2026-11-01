@@ -1,3 +1,4 @@
+const { anotarGasto } = require('./_gasto');
 // Función serverless de Vercel: lee una imagen de comprobante (transferencia bancaria o
 // captura de caja de una casa de apuestas) usando la API de Anthropic, y devuelve los datos
 // que detecta en JSON para que el panel los muestre y la persona los confirme.
@@ -97,6 +98,7 @@ module.exports = async function handler(req, res) {
     }
 
     const data = await apiRes.json();
+    await anotarGasto('leer_comprobante', data);
     const textBlock = (data.content || []).find(b => b.type === 'text');
     const parsed = extractJson(textBlock ? textBlock.text : '');
 

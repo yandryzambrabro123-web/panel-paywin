@@ -1,3 +1,4 @@
+const { anotarGasto } = require('./_gasto');
 // Función serverless de Vercel: lee una captura de un stake (pick/cuota) para la publicidad
 // del "stake de pago", usando la API de Anthropic (visión), y devuelve cuota/hora/valor para
 // que el panel arme el texto automáticamente -- el dueño confirma antes de publicar.
@@ -80,6 +81,7 @@ module.exports = async function handler(req, res) {
     }
 
     const data = await apiRes.json();
+    await anotarGasto('leer_stake', data);
     const textBlock = (data.content || []).find(b => b.type === 'text');
     const parsed = extractJson(textBlock ? textBlock.text : '');
 

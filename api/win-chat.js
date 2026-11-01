@@ -1,3 +1,4 @@
+const { anotarGasto } = require('./_gasto');
 // Función serverless de Vercel: el "cerebro" conversacional de Win. Recibe el historial de la
 // conversación (lo que el dueño ha dicho y lo que Win ha respondido) y usa la API de Anthropic
 // para responder de forma natural -- como un asistente de verdad, no un clasificador rígido.
@@ -293,6 +294,7 @@ module.exports = async function handler(req, res) {
     }
 
     const data = await apiRes.json();
+    await anotarGasto('hablar_con_win', data);
     const blocks = data.content || [];
     const textBlock = blocks.find(b => b.type === 'text');
     const toolBlocks = blocks.filter(b => b.type === 'tool_use');

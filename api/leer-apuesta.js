@@ -1,3 +1,4 @@
+const { anotarGasto } = require('./_gasto');
 // Función serverless de Vercel: lee una captura de una apuesta GANADA (de una casa de
 // apuestas) usando la API de Anthropic, y devuelve lo invertido/devuelto que detecta para
 // que el panel calcule la comisión del pronosticador — la persona confirma antes de guardar.
@@ -81,6 +82,7 @@ module.exports = async function handler(req, res) {
     }
 
     const data = await apiRes.json();
+    await anotarGasto('leer_apuesta', data);
     const textBlock = (data.content || []).find(b => b.type === 'text');
     const parsed = extractJson(textBlock ? textBlock.text : '');
 
