@@ -985,6 +985,34 @@
   #payFlotante .slip{ margin:0; box-shadow:0 14px 40px rgba(0,0,0,.6); border-color:#FFD54A55; }
   #payFlotante .slip-cuerpo{ max-height:60vh; overflow-y:auto; }
   #payFlotante .slip-bar{ display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; color:inherit; padding:10px 14px; cursor:pointer; font:inherit; text-align:left; }
+
+  /* ===== Celular: orden y legibilidad (solo pantallas chicas) ===== */
+  @media (max-width:860px){
+    /* barras de acciones: dos columnas parejas, nada se corta ni se sale de la pantalla */
+    .toolbar{ flex-direction:column; align-items:stretch; gap:12px; }
+    .toolbar > div:last-child{ display:grid !important; grid-template-columns:1fr 1fr; gap:8px !important; width:100%; }
+    .toolbar > div:last-child .btn{ width:100% !important; min-width:0; height:auto !important; justify-content:center; text-align:center; padding:12px 8px !important; line-height:1.2; font-size:13px; }
+    .toolbar > div:last-child .btn:last-child:nth-child(odd){ grid-column:1 / -1; }
+    .toolbar > div:last-child .btn:only-child{ grid-column:1 / -1; }
+    .day-tabs{ flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+    .day-tabs::-webkit-scrollbar{ display:none; }
+    .day-tab{ flex:0 0 auto; }
+    .card{ padding:16px; }
+    .modal, .modal-box{ max-width:100%; }
+
+    /* Win: herramientas arriba en una fila, orbe más chico, botones a todo el ancho */
+    body.win-locked .win-fullscreen{ padding:150px 12px 130px !important; }
+    .win-corner-icons{ top:calc(env(safe-area-inset-top, 0px) + 68px) !important; left:12px !important; right:12px !important; width:auto !important; flex-direction:row !important; justify-content:space-between; gap:6px !important; padding:6px !important; border-radius:18px !important; }
+    .win-icon-btn{ flex:1 1 0; width:auto !important; height:52px !important; border-radius:14px; }
+    .win-aura-wrap{ transform:scale(.56) !important; margin:-92px 0 -34px; }
+    .win-power-row{ width:100%; gap:8px; }
+    .win-power-btn{ flex:1; min-width:0; padding:12px 10px; }
+    .win-qgrid{ width:100%; max-width:none; gap:10px; }
+    .win-qg{ width:100%; box-sizing:border-box; padding:12px; }
+    .win-qrow{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .win-qg .win-quick-btn{ width:100%; justify-content:flex-start; padding:11px 10px; font-size:12.5px; line-height:1.2; text-align:left; gap:7px; }
+    .win-qg .win-quick-btn span{ min-width:0; }
+  }
 </style>
 
 <div id="loginScreen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);">
