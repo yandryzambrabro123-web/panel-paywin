@@ -6268,10 +6268,10 @@ async function winMarcaAgua(base64, mediaType){
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
     // Insignia grande que cubre casi todo el ancho, bien visible pero sin tapar la apuesta
-    const lado = Math.round(Math.min(c.width * 0.98, c.height * 0.98));
+    const lado = Math.round(Math.min(c.width, c.height) * 1.12);
     const x = Math.round((c.width - lado) / 2), y = Math.round((c.height - lado) / 2);
     ctx.save();
-    ctx.globalAlpha = 0.3;
+    ctx.globalAlpha = 0.4;
     ctx.beginPath(); ctx.arc(x + lado/2, y + lado/2, lado * 0.49, 0, Math.PI * 2); ctx.clip(); // solo la insignia redonda, sin el fondo cuadrado
     ctx.drawImage(logo, x, y, lado, lado);
     ctx.restore();
@@ -6279,12 +6279,12 @@ async function winMarcaAgua(base64, mediaType){
     ctx.save();
     ctx.translate(c.width / 2, c.height / 2);
     ctx.rotate(-Math.PI / 7);
-    let fs = Math.round(c.width * 0.26);
+    let fs = Math.round(c.width * 0.3);
     ctx.font = `900 ${fs}px Arial, Helvetica, sans-serif`;
-    const anchoMax = Math.hypot(c.width, c.height) * 0.8;
+    const anchoMax = Math.hypot(c.width, c.height) * 0.92;
     while(ctx.measureText('PAYWIN').width > anchoMax && fs > 20){ fs -= 4; ctx.font = `900 ${fs}px Arial, Helvetica, sans-serif`; }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.globalAlpha = 0.26;
+    ctx.globalAlpha = 0.34;
     ctx.lineWidth = Math.max(2, fs * 0.04); ctx.strokeStyle = '#000'; ctx.strokeText('PAYWIN', 0, 0);
     ctx.fillStyle = '#ffffff'; ctx.fillText('PAYWIN', 0, 0);
     ctx.restore();
@@ -7415,6 +7415,7 @@ function renderFactory(){
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <button class="btn secondary" id="payDiaCargar" type="button">📸 Cargar eventos del día</button>
             <button class="btn" id="payDiaGenerar" type="button">Generar las 20</button>
+            <button class="btn secondary" id="payDiaPartido" type="button">🔍 Analizar un partido (stake)</button>
             <button class="btn secondary" id="payDiaOtros" type="button">Otros</button>
           </div>
           <div id="payDiaEstado" style="font-size:12.5px; color:var(--muted); margin-top:8px; min-height:16px;"></div>
@@ -8243,6 +8244,7 @@ function payDiaWire(){
   document.getElementById('payDiaCargar').onclick = ()=>f.click();
   f.onchange = ()=>{ const fs = [...f.files]; f.value = ''; if(fs.length) payDiaSubir(fs); };
   document.getElementById('payDiaGenerar').onclick = payDiaGenerar;
+  document.getElementById('payDiaPartido').onclick = ()=>{ const k = document.querySelector('[data-pay-cupo="Stake de pago"]'); if(k) k.click(); else payCupo = 'Stake de pago'; openPayPartido(); };
   document.getElementById('payDiaOtros').onclick = payDiaGenerar;
   document.getElementById('payDiaTxt').onchange = ()=>{ const d = payDiaGet(); if(d.listas.length) return; d.eventos = document.getElementById('payDiaTxt').value.trim(); payDiaSet(d); payDiaPintar(); };
   document.getElementById('payDiaReiniciar').onclick = ()=>{

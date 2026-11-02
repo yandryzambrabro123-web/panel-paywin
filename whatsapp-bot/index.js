@@ -292,10 +292,10 @@ async function mandarSeparador(grupoId) {
 app.post('/enviar', requireApiKey, async (req, res) => {
   // El grupo VIP ya NO está en WhatsApp: lo que iba ahí sale por el grupo VIP de Telegram.
   if (req.body && req.body.grupoId === vipMod.VIP_WHATSAPP_JID) {
-    const { texto, imagenBase64, imagenUrl, mediaType } = req.body;
+    const { texto, imagenBase64, imagenUrl, mediaType, sinSeparador } = req.body;
     if (!texto && !imagenBase64 && !imagenUrl) return res.status(400).json({ error: 'Falta el texto.' });
     try {
-      await vipMod.enviarAlGrupoVip({ texto, imagenes: (imagenUrl || imagenBase64) ? [{ url: imagenUrl || '', base64: imagenUrl ? '' : imagenBase64, mediaType }] : [] });
+      await vipMod.enviarAlGrupoVip({ texto, sinSeparador, imagenes: (imagenUrl || imagenBase64) ? [{ url: imagenUrl || '', base64: imagenUrl ? '' : imagenBase64, mediaType }] : [] });
       return res.json({ ok: true, via: 'telegram' });
     } catch (e) {
       console.error('Envío al VIP de Telegram:', e);
@@ -334,9 +334,9 @@ app.post('/enviar', requireApiKey, async (req, res) => {
 // juntas y el resumen justo después. Body: { grupoId, imagenes: [{base64, mediaType}], texto }.
 app.post('/enviar-multiple', requireApiKey, async (req, res) => {
   if (req.body && req.body.grupoId === vipMod.VIP_WHATSAPP_JID) {
-    const { imagenes, texto } = req.body;
+    const { imagenes, texto, sinSeparador } = req.body;
     try {
-      await vipMod.enviarAlGrupoVip({ texto, imagenes: (Array.isArray(imagenes) ? imagenes : []).map((m) => ({ base64: m && m.base64, mediaType: m && m.mediaType })) });
+      await vipMod.enviarAlGrupoVip({ texto, sinSeparador, imagenes: (Array.isArray(imagenes) ? imagenes : []).map((m) => ({ base64: m && m.base64, mediaType: m && m.mediaType })) });
       return res.json({ ok: true, via: 'telegram' });
     } catch (e) {
       console.error('Envío múltiple al VIP de Telegram:', e);
