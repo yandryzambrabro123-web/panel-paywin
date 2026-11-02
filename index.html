@@ -7455,7 +7455,7 @@ function renderFactory(){
       </div>
       <div class="card ftab-panel" data-ftab="reservadas" style="grid-column:1/-1; --c:#5aa9ff;">
         <div class="card-title">📌 Reservadas para enviar</div>
-        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Boletos que dejaste listos para mandar más tarde. Cuando llegue la hora, apuesta, y toca "Enviar ahora".</div>
+        <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Boletos que dejaste listos para más tarde. No se borran por nada: solo salen de aquí cuando tocas "Ya la utilicé".</div>
         <div id="payReservadas"></div>
       </div>
       <div class="card ftab-panel" data-ftab="enviadas" style="grid-column:1/-1; --c:#4fd18b;">
@@ -7941,7 +7941,7 @@ async function payGuardarEnvio(texto){
     const r = payResLista().find(q=>q.id === payResPendienteId);
     const tx = String(texto||'').toLowerCase();
     const coincide = r && ((r.x.cuota && tx.includes(payFmtCuota(r.x.cuota))) || (r.x.selecciones||[]).some(sl=>{ const eq = String(sl.partido||'').toLowerCase().split(/\s+(?:vs\.?|v|-)\s+/)[0].trim(); return eq.length > 3 && tx.includes(eq); }));
-    if(coincide){ const id = payResPendienteId; payResPendienteId = ''; payReservadaQuitar(id); }
+    if(coincide){ payResPendienteId = ''; } // las reservadas ya NO se borran solas: solo con "Ya la utilicé"
   }
   const t = String(texto||'').replace(/\s+/g,' ').trim().slice(0,300); if(!t) return;
   payTomadasHoy.push(t);
@@ -8403,13 +8403,11 @@ function payReservadasPintar(){
       <details style="font-size:12px; color:var(--muted);"><summary>Ver en texto</summary>
       ${sels.map(l=>`<div style="font-size:13px; padding:2px 0;">${esc(l.partido||'')} — <b>${esc(l.pick||'')}</b> <span style="color:var(--muted);">@${esc(String(l.cuota))}${l.hora ? ' · ' + esc(l.hora) : ''}</span></div>`).join('')}
       </details>
-      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resenviar="${esc(r.id)}">Enviar ahora</button><button class="btn secondary" type="button" data-pay-resmod="${esc(r.id)}">✏️ Modificar código</button><button class="btn secondary" type="button" data-pay-resquitar="${esc(r.id)}">Eliminar</button></div>
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resquitar="${esc(r.id)}">✅ Ya la utilicé</button></div>
     </div>`;
   }).join('');
   payResSyncWire(el);
-  el.querySelectorAll('[data-pay-resmod]').forEach(b=>b.onclick=()=>payReservadaModificar(b.dataset.payResmod));
-  el.querySelectorAll('[data-pay-resenviar]').forEach(b=>b.onclick=()=>{ const r = payResLista().find(q=>q.id === b.dataset.payResenviar); if(!r) return; payResPendienteId = r.id; tomarPay(r.x); });
-  el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ if(confirm('¿Eliminar este boleto reservado?')) payReservadaQuitar(b.dataset.payResquitar); });
+  el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ if(confirm('¿Ya la utilizaste? Se quita de Reservadas.')) payReservadaQuitar(b.dataset.payResquitar); });
 }
 let payAutoLista = [];
 let payAutoFiltro = { modo:'hoy', fecha:'' };
