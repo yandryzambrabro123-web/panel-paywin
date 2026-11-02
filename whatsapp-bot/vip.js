@@ -260,6 +260,45 @@ async function enviarAlGrupoVip({ texto, imagenes }) {
   if (t) await H.tg('sendMessage', { chat_id, text: aHtmlTelegram(t), parse_mode: 'HTML' });
 }
 
+
+// ---------- Auditoría del grupo VIP (comando /vipauditoria en el chat del bot) ----------
+// Compara a los miembros registrados en el sistema contra el grupo VIP de Telegram. Primero MUESTRA el resultado y solo
+// escribe a la gente cuando tú aprietas el botón. Límites de Telegram: el bot solo puede escribirle a quien ya activó el
+// bot, y NO puede listar quién está dentro de un grupo (solo consultar a una persona por su id).
+const URL_PUBLICA = () => String(process.env.PUBLIC_URL || 'https://panel-paywin-production.up.railway.app').replace(/\/$/, '');
+async function auditarVip() {
+  const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
+  if (!cfg || !cfg.chatId) throw new Error('Falta configurar el grupo VIP (/vipgrupo).');
+  const vips = (await H.leerHoja(HOJA_VIPS)).filter((v) => esVigente(v) && !removido(v) && String(v.status || 'active') !== 'inactive');
+  const r = { dentro: 0, faltan: [], sinTelegram: [], noVerificados: [], total: vips.length, chatId: cfg.chatId };
+  for (const v of vips) {
+    const tid = String(v.telegramId || '').replace(/\D/g, '');
+    if (!tid) { r.sinTelegram.push(v); continue; }
+    try {
+      const m = await H.tg('getChatMember', { chat_id: cfg.chatId, user_id: Number(tid) });
+      if (['member', 'administrator', 'creator'].includes(m.status) || (m.status === 'restricted' && m.is_member)) r.dentro++;
+      else r.faltan.push({ v, tid });
+    } catch (e) { r.noVerificados.push(v); }
+    await new Promise((ok) => setTimeout(ok, 80));
+  }
+  return r;
+}
+const nombreV = (v) => String(v.name || 'Sin nombre');
+async function enviarAvisosFaltantes() {
+  const r = await auditarVip();
+  let enviados = 0; const fallidos = [];
+  for (const { v, tid } of r.faltan) {
+    try {
+      const link = (await H.tg('createChatInviteLink', { chat_id: r.chatId, creates_join_request: true, name: 'vip:' + (v.registroId || v.id) })).invite_link;
+      const primero = nombreV(v).split(' ')[0];
+      await H.tg('sendMessage', { chat_id: Number(tid), disable_web_page_preview: true, text: `Hola ${primero} 👋\n\nTe escribo de parte de PayWin: el jefe me pidió avisarte que ya estás registrado en el sistema, pero todavía no te has unido al grupo VIP.\n\nEntra con este enlace directo y el jefe te aprueba enseguida:\n${link}\n\nCualquier duda, escríbenos al ${TELEFONO_AGENCIA}.` });
+      enviados++;
+    } catch (e) { fallidos.push(nombreV(v)); }
+    await new Promise((ok) => setTimeout(ok, 300));
+  }
+  return { enviados, fallidos, total: r.faltan.length };
+}
+
 function montar(app, stakes, extra) {
   H = stakes;
   const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
@@ -279,6 +318,35 @@ function montar(app, stakes, extra) {
 
   // Escucha de Telegram: /vipgrupo, /start vip_<id> y entradas al grupo con un link personal
   H.hooks.push(async (u) => {
+    // Solicitud de ingreso al grupo VIP con un link que mandó el bot: te pregunta para aprobar
+    const jr = u.chat_join_request;
+    if (jr && jr.invite_link && /^vip:/.test(jr.invite_link.name || '')) {
+      const cfgJ = (await H.leerHoja(HOJA_CONFIG))[0];
+      if (cfgJ && String(cfgJ.chatId) === String(jr.chat.id)) {
+        u.__atendido = true;
+        const quien = `${jr.from.first_name || ''} ${jr.from.last_name || ''}`.trim() + (jr.from.username ? ` (@${jr.from.username})` : '');
+        await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), parse_mode: 'HTML', text: `✅ <b>${H.esc(quien)}</b> está registrado en el sistema y pidió entrar al grupo VIP con el enlace que le mandaste.`, reply_markup: { inline_keyboard: [[{ text: '✅ Dejar entrar', callback_data: `jo:${jr.chat.id}:${jr.from.id}` }, { text: '❌ Rechazar', callback_data: `jn:${jr.chat.id}:${jr.from.id}` }]] } }).catch(() => {});
+        return;
+      }
+    }
+    const mAud = u.message;
+    if (mAud && typeof mAud.text === 'string' && /^\/vipauditoria(@\w+)?$/i.test(mAud.text.trim()) && mAud.chat.type === 'private' && String(mAud.from && mAud.from.id) === H.TG_ADMIN()) {
+      await H.tg('sendMessage', { chat_id: mAud.chat.id, text: '🔎 Revisando a los miembros VIP registrados contra el grupo... (puede tardar un poco)' }).catch(() => {});
+      try {
+        const r = await auditarVip();
+        const lista = (arr, f) => arr.slice(0, 25).map((x) => '• ' + f(x)).join('\n') + (arr.length > 25 ? `\n… y ${arr.length - 25} más` : '');
+        let t = `📋 <b>Auditoría del grupo VIP</b>\nRegistrados en el sistema: ${r.total}\n\n✅ Registrados y dentro del grupo: ${r.dentro}\n`;
+        t += `⚠️ Registrados que NO están en el grupo: ${r.faltan.length}\n${r.faltan.length ? H.esc(lista(r.faltan, (x) => nombreV(x.v))) + '\n' : ''}`;
+        t += `\n❓ Registrados sin Telegram vinculado (no puedo verificarlos ni escribirles): ${r.sinTelegram.length}\n${r.sinTelegram.length ? H.esc(lista(r.sinTelegram, (v) => nombreV(v) + (v.contact ? ' · ' + v.contact : ''))) + '\n' : ''}`;
+        if (r.noVerificados.length) t += `\n⚠️ No pude consultar a ${r.noVerificados.length} (revisa que el bot sea admin del grupo VIP).\n`;
+        t += `\nOjo: Telegram no deja al bot ver la lista de miembros del grupo, así que a los que están dentro y NO registrados solo puedo avisarles con un mensaje en el grupo.`;
+        const botones = [];
+        if (r.faltan.length) botones.push([{ text: `✉️ Escribirle a los ${r.faltan.length} que faltan (con link)`, callback_data: 'va:s' }]);
+        botones.push([{ text: '📣 Publicar en el grupo el link de registro', callback_data: 'vb:s' }]);
+        await H.tg('sendMessage', { chat_id: mAud.chat.id, parse_mode: 'HTML', text: t, reply_markup: { inline_keyboard: botones } });
+      } catch (e) { await H.tg('sendMessage', { chat_id: mAud.chat.id, text: '⚠️ ' + e.message }).catch(() => {}); }
+      return;
+    }
     const m = u.message || u.channel_post;
     if (m && typeof m.text === 'string') {
       const t = m.text.trim();
@@ -315,6 +383,19 @@ function montar(app, stakes, extra) {
     if (r.ok && r.link) await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `✅ Aprobado: ${r.nombre || ''}\nTeléfono: ${r.telefono || ''}\nLink de un solo uso al grupo VIP (si la persona no ve su link en pantalla, mándaselo tú):\n${r.link}` }).catch(() => {});
     await marcar(cq, r.error ? `⚠️ ${r.error}` : `✅ Aprobado (${PLANES[p] || 'mensual'})`);
     if (r.ok) { const C = require('./cuadre'); await C.ofrecer({ tipo: 'vp', regId: id, monto: C.precioVip(PLANES[p] || 'mensual'), etiqueta: `Membresía VIP ${PLANES[p] || 'mensual'} — ${r.nombre || ''}`.trim() }); }
+  };
+  H.manejadores.va = async (cq) => {
+    await H.tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Enviando...' }).catch(() => {});
+    const r = await enviarAvisosFaltantes();
+    if (cq.message) await H.tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: `✉️ Enviados: ${r.enviados} de ${r.total}`, callback_data: 'x' }]] } }).catch(() => {});
+    await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `Listo: les escribí a ${r.enviados} de ${r.total}.` + (r.fallidos.length ? `\n\nNo pude escribirles (no han activado el bot en Telegram), avísales tú:\n${r.fallidos.map((n) => '• ' + n).join('\n')}` : '') + '\n\nCuando pidan entrar al grupo te llegará un mensaje para aprobar.' }).catch(() => {});
+  };
+  H.manejadores.vb = async (cq) => {
+    const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
+    if (!cfg || !cfg.chatId) { await H.tg('answerCallbackQuery', { callback_query_id: cq.id, text: 'Falta configurar el grupo VIP.', show_alert: true }).catch(() => {}); return; }
+    await H.tg('sendMessage', { chat_id: cfg.chatId, disable_web_page_preview: true, parse_mode: 'HTML', text: `📝 <b>¿Todavía no te has registrado?</b>\n\nSi estás en este grupo y aún no apareces en el sistema, regístrate aquí para activar tu membresía:\n${URL_PUBLICA()}/vip\n\nCualquier duda, escríbenos al ${TELEFONO_AGENCIA}.` });
+    await H.tg('answerCallbackQuery', { callback_query_id: cq.id, text: '📣 Publicado en el grupo VIP' }).catch(() => {});
+    if (cq.message) await H.tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: '📣 Link de registro publicado', callback_data: 'x' }]] } }).catch(() => {});
   };
   H.manejadores.vc = async (cq, [id]) => {
     await H.recuperarRegistro(HOJA_REGISTROS, id, cq, 'vip');

@@ -228,7 +228,7 @@ async function procesarUpdate(u) {
     }
     return;
   }
-  if (u.chat_join_request) {
+  if (u.chat_join_request && !u.__atendido) {
     const jr = u.chat_join_request;
     try { if (await require('./canales').manejarIngreso(jr)) return; } catch (e) { console.error('Ingreso a canal:', e.message); }
     const usuario = normUser(jr.from && jr.from.username);
