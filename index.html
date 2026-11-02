@@ -7416,6 +7416,7 @@ function renderFactory(){
             <button class="btn secondary" id="payDiaCargar" type="button">📸 Cargar eventos del día</button>
             <button class="btn" id="payDiaGenerar" type="button">Generar las 20</button>
             <button class="btn secondary" id="payDiaPartido" type="button">🔍 Analizar un partido (stake)</button>
+            <button class="btn secondary" id="payDiaMia" type="button">📌 Reservar mi apuesta</button>
             <button class="btn secondary" id="payDiaOtros" type="button">Otros</button>
           </div>
           <div id="payDiaEstado" style="font-size:12.5px; color:var(--muted); margin-top:8px; min-height:16px;"></div>
@@ -8060,6 +8061,56 @@ function openPayPartido(){
     }catch(err){ estado.textContent = 'No se pudo: ' + err.message; go.disabled = false; go.textContent = 'Analizar'; }
   };
 }
+// Reservar una apuesta propia (la que el jefe armó en su casa, aunque sea parecida a una de Pay): captura o a mano
+function openPayReservarMia(){
+  let filas = [{ partido:'', pick:'', cuota:'', hora:'' }];
+  openModal(`
+    <h3>📌 Reservar mi apuesta</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Sube la captura de tu apuesta (Pay solo la lee, no la evalúa) o escríbela a mano. Queda guardada en 📌 Reservadas, lista para cuando la quieras mandar.</div>
+    <input id="payMiaFiles" type="file" accept="image/*" multiple style="display:none;">
+    <button class="btn secondary" id="payMiaPick" type="button" style="width:100%;">📸 Leer desde captura</button>
+    <div id="payMiaEst" style="font-size:12.5px; color:var(--muted); margin:8px 0; min-height:16px;"></div>
+    <div class="field"><label>¿Para qué cupo?</label><select id="payMiaCupo">${Object.keys(PAY_CUPOS).map(k=>`<option ${k===payCupo?'selected':''}>${k}</option>`).join('')}</select></div>
+    <div id="payMiaFilas"></div>
+    <button class="btn secondary" id="payMiaMas" type="button" style="padding:6px 12px; font-size:12.5px; margin-bottom:10px;">+ Agregar otra línea</button>
+    <div class="field"><label>Cuota total (si la dejas vacía se multiplica sola)</label><input id="payMiaTotal" inputmode="decimal" placeholder="Ej: 2.35"></div>
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button><button class="btn" id="payMiaGuardar" type="button">Reservar</button></div>
+  `);
+  const $ = id=>document.getElementById(id);
+  const pintar = ()=>{
+    $('payMiaFilas').innerHTML = filas.map((f,i)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:8px; margin-bottom:8px;">
+      <div class="field" style="margin:0 0 6px;"><label>Partido</label><input data-mia="${i}:partido" value="${esc(f.partido)}" placeholder="Local vs Visitante"></div>
+      <div style="display:flex; gap:6px;"><div class="field" style="margin:0; flex:1;"><label>Selección</label><input data-mia="${i}:pick" value="${esc(f.pick)}" placeholder="Ej: Más de 1.5 goles"></div>
+      <div class="field" style="margin:0; width:70px;"><label>Cuota</label><input data-mia="${i}:cuota" inputmode="decimal" value="${esc(String(f.cuota))}"></div>
+      <div class="field" style="margin:0; width:72px;"><label>Hora</label><input data-mia="${i}:hora" value="${esc(f.hora)}" placeholder="20:30"></div></div>
+      ${filas.length>1 ? `<button class="btn secondary" type="button" data-mia-del="${i}" style="padding:4px 10px; font-size:12px; margin-top:6px;">Quitar línea</button>` : ''}
+    </div>`).join('');
+    document.querySelectorAll('[data-mia]').forEach(inp=>inp.oninput = ()=>{ const [i,k] = inp.dataset.mia.split(':'); filas[+i][k] = inp.value; });
+    document.querySelectorAll('[data-mia-del]').forEach(b=>b.onclick = ()=>{ filas.splice(+b.dataset.miaDel,1); pintar(); });
+  };
+  pintar();
+  $('payMiaMas').onclick = ()=>{ filas.push({ partido:'', pick:'', cuota:'', hora:'' }); pintar(); };
+  $('payMiaPick').onclick = ()=>$('payMiaFiles').click();
+  $('payMiaFiles').onchange = async (e)=>{
+    const fotos = []; for(const f of [...e.target.files].slice(0,3)){ try{ const c = await fileToCompressedImage(f); fotos.push({ base64:c.base64, mediaType:c.mediaType }); }catch(err){ console.error(err); } }
+    if(!fotos.length){ $('payMiaEst').textContent = 'No pude leer esa imagen.'; return; }
+    $('payMiaEst').textContent = 'Leyendo tu apuesta…';
+    try{
+      const r = await payDiaLlamar({ paso:'apuesta', imagenes: fotos }, 58000);
+      filas = r.selecciones.map(s=>({ partido:s.partido, pick:s.pick, cuota:s.cuota || '', hora:s.hora || '' }));
+      if(r.cuota) $('payMiaTotal').value = String(r.cuota);
+      pintar(); $('payMiaEst').textContent = '✓ Listo. Revisa que todo esté bien antes de reservar.';
+    }catch(err){ $('payMiaEst').textContent = err.message; }
+  };
+  $('payMiaGuardar').onclick = ()=>{
+    const sels = filas.map(f=>({ partido:f.partido.trim(), pick:f.pick.trim(), cuota:Number(String(f.cuota).replace(',','.')) || 0, hora:f.hora.trim() })).filter(f=>f.pick);
+    if(!sels.length){ $('payMiaEst').textContent = 'Escribe al menos una selección.'; return; }
+    if(sels.some(f=>!f.cuota)){ $('payMiaEst').textContent = 'Falta la cuota de alguna línea.'; return; }
+    const total = Number(String($('payMiaTotal').value).replace(',','.')) || Number(sels.reduce((a,f)=>a*f.cuota,1).toFixed(2));
+    const x = { manual:true, cupo: $('payMiaCupo').value, partido: sels.length>1 ? `Combinada de ${sels.length}` : (sels[0].partido || 'Mi apuesta'), pick: sels.length>1 ? 'Mi apuesta' : sels[0].pick, cuota: String(total), confianza:'', selecciones: sels };
+    payReservar(x); closeModal();
+  };
+}
 function openPayEvaluar(){
   let fotos = [], res = null;
   openModal(`
@@ -8244,6 +8295,7 @@ function payDiaWire(){
   document.getElementById('payDiaCargar').onclick = ()=>f.click();
   f.onchange = ()=>{ const fs = [...f.files]; f.value = ''; if(fs.length) payDiaSubir(fs); };
   document.getElementById('payDiaGenerar').onclick = payDiaGenerar;
+  document.getElementById('payDiaMia').onclick = ()=>openPayReservarMia();
   document.getElementById('payDiaPartido').onclick = ()=>{ const k = document.querySelector('[data-pay-cupo="Stake de pago"]'); if(k) k.click(); else payCupo = 'Stake de pago'; openPayPartido(); };
   document.getElementById('payDiaOtros').onclick = payDiaGenerar;
   document.getElementById('payDiaTxt').onchange = ()=>{ const d = payDiaGet(); if(d.listas.length) return; d.eventos = document.getElementById('payDiaTxt').value.trim(); payDiaSet(d); payDiaPintar(); };
@@ -8341,6 +8393,7 @@ async function payReservadaQuitar(id){
   try{ await persist('payReservadas', { deletedIds: [id] }); }catch(e){ console.error(e); }
 }
 function payResSyncWire(el){
+  const mia = el.querySelector('#payResMiaBtn'); if(mia) mia.onclick = ()=>openPayReservarMia();
   const b = el.querySelector('#payResSyncBtn'); if(!b) return;
   b.onclick = async ()=>{
     const info = el.querySelector('#payResSyncInfo'); b.disabled = true; info.textContent = 'Sincronizando…';
@@ -8407,7 +8460,7 @@ async function payReservadaModificar(id){
 function payReservadasPintar(){
   setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payReservadas'); if(!el) return;
-  const barra = `<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; font-size:12px; color:var(--muted);"><span id="payResSyncInfo">En este dispositivo: ${(state.payReservadas||[]).length}</span><button class="btn secondary" type="button" id="payResSyncBtn" style="padding:6px 12px; font-size:12px;">🔄 Sincronizar con la hoja</button></div>`;
+  const barra = `<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; font-size:12px; color:var(--muted);"><span id="payResSyncInfo">En este dispositivo: ${(state.payReservadas||[]).length}</span><button class="btn secondary" type="button" id="payResSyncBtn" style="padding:6px 12px; font-size:12px;">🔄 Sincronizar con la hoja</button><button class="btn" type="button" id="payResMiaBtn" style="padding:6px 12px; font-size:12px;">📌 Reservar mi apuesta</button></div>`;
   const lista = payResLista().sort((a,b)=>String(a.creada).localeCompare(String(b.creada)));
   if(!lista.length){ el.innerHTML = barra + '<div style="color:var(--muted); font-size:13px;">No tienes boletos reservados. En "Mi boleto" toca "Reservar para después".</div>'; payResSyncWire(el); return; }
   el.innerHTML = barra + lista.map((r,i)=>{

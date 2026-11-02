@@ -391,6 +391,22 @@ Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: parti
 const PAY_DIA_MAX_EVENTOS = 30000; // caracteres de texto de eventos que se guardan/reenvían
 async function modoPayDia(apiKey, body, res) {
   const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  if (body.paso === 'apuesta') { // lee la captura de UNA apuesta que el jefe ya armó en su casa (sin evaluarla)
+    const imgs = (Array.isArray(body.imagenes) ? body.imagenes : []).filter((i) => i && i.base64).slice(0, 3);
+    if (!imgs.length) { res.status(400).json({ error: 'Sube la captura de la apuesta.' }); return; }
+    const system = `Lees la captura de UNA apuesta ya armada en una casa de apuestas (simple o combinada). Copia SOLO lo que se ve, sin inventar. Responde SOLO con un JSON dentro de <json></json>: {"selecciones":[{"partido":"Local vs Visitante","pick":"selección tal cual","cuota":numero,"hora":"hora o vacío"}],"cuota":cuota_total_numero_o_null}. Si algo no se lee, déjalo vacío. Si no es una apuesta, responde {"selecciones":[]}.`;
+    const content = [];
+    imgs.forEach((i) => content.push({ type: 'image', source: { type: 'base64', media_type: i.mediaType || 'image/jpeg', data: i.base64 } }));
+    content.push({ type: 'text', text: 'Copia esta apuesta.' });
+    const ia = await llamarPay(apiKey, { model: 'claude-sonnet-5', max_tokens: 1500, system, messages: [{ role: 'user', content }] }, 40000);
+    if (!ia.ok) { res.status(502).json({ error: `No pude leer la captura (IA ${ia.status}).` }); return; }
+    const t = ia.texto; const tag = t.match(/<json>([\s\S]*?)<\/json>/i);
+    let o = null; try { o = JSON.parse((tag ? tag[1] : t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)).trim()); } catch (e) { o = null; }
+    const sel = o && Array.isArray(o.selecciones) ? o.selecciones.filter((x) => x && x.pick).map((x) => ({ partido: String(x.partido || ''), pick: String(x.pick), cuota: Number(String(x.cuota).replace(',', '.')) || 0, hora: String(x.hora || '') })) : [];
+    if (!sel.length) { res.status(502).json({ error: 'No pude leer la apuesta en esa captura. Prueba con una más clara o escríbela a mano.' }); return; }
+    res.status(200).json({ selecciones: sel, cuota: Number(o.cuota) || 0 });
+    return;
+  }
   if (body.paso === 'leer') {
     const imgs = (Array.isArray(body.imagenes) ? body.imagenes : []).filter((i) => i && i.base64).slice(0, 8);
     if (!imgs.length) { res.status(400).json({ error: 'Sube al menos una captura con los eventos del día.' }); return; }
