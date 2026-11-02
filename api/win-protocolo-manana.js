@@ -75,17 +75,35 @@ function ecuadorDateStr() {
 
 // Devuelve { date, sentSteps: Set<nombre normalizado> } -- si la fecha guardada no es hoy,
 // sentSteps viene vacío (es un día nuevo, no se arrastra nada del día anterior).
+// OJO: la hoja le pone formato de fecha (dd/mm/yyyy) a la columna "lastSentDate" y convierte
+// "2026-11-02" en una fecha de verdad; al leerla ya no era igual a "hoy" y el protocolo se
+// mandaba otra vez completo. Por eso la fecha se guarda como TEXTO con prefijo ("D:2026-11-02"),
+// que la hoja no convierte.
+const marcaDia = (d) => 'D:' + d;
+function esHoy(valor, today) {
+  const v = String(valor || '').trim();
+  if (v === marcaDia(today)) return true;
+  if (v.startsWith('D:')) return false;
+  return v.slice(0, 10) === today; // formato viejo (por si quedó guardado así)
+}
+
+// Devuelve { sentSteps: Set<nombre normalizado> } -- si la fecha guardada no es hoy,
+// sentSteps viene vacío (es un día nuevo). Si NO se puede leer la hoja, lanza error: es mejor
+// no mandar que volver a mandar todo repetido.
 async function getDedupeState(today) {
-  try {
-    const res = await fetch(`${SHEETS_API_URL}?sheet=${DEDUPE_SHEET}`);
-    const json = await res.json();
-    const row = (json.data || [])[0];
-    if (!row || row.lastSentDate !== today) return { sentSteps: new Set() };
-    const list = (row.sentSteps || '').split('|').map(norm).filter(Boolean);
-    return { sentSteps: new Set(list) };
-  } catch (e) {
-    return { sentSteps: new Set() }; // si falla la lectura, se prefiere mandar de más que no mandar nada
+  let ultimo;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(`${SHEETS_API_URL}?sheet=${DEDUPE_SHEET}`);
+      const json = await res.json();
+      if (!Array.isArray(json.data)) throw new Error('respuesta sin datos');
+      const row = json.data[0];
+      if (!row || !esHoy(row.lastSentDate, today)) return { sentSteps: new Set() };
+      const list = String(row.sentSteps || '').split('|').map(norm).filter(Boolean);
+      return { sentSteps: new Set(list) };
+    } catch (e) { ultimo = e; await new Promise((r) => setTimeout(r, 800)); }
   }
+  throw new Error('No pude verificar qué se mandó hoy (' + (ultimo && ultimo.message) + '). No mando nada para no repetir.');
 }
 
 async function setDedupeState(today, sentStepsSet) {
@@ -94,7 +112,7 @@ async function setDedupeState(today, sentStepsSet) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({
       sheet: DEDUPE_SHEET,
-      data: [{ id: 'estado', lastSentDate: today, sentSteps: Array.from(sentStepsSet).join('|') }]
+      data: [{ id: 'estado', lastSentDate: marcaDia(today), sentSteps: Array.from(sentStepsSet).join('|') }]
     })
   });
 }
@@ -208,6 +226,7 @@ module.exports = async function handler(req, res) {
         if (!enviado) { missing.push(step.nombre); continue; }
         sentSteps.add(norm(step.nombre));
         enviadosAhora.push(step.nombre);
+        try { await setDedupeState(today, sentSteps); } catch (e) { console.error('No pude guardar el avance:', e); }
       } catch (stepErr) {
         console.error(`Error mandando el paso "${step.nombre}":`, stepErr);
         fallidos.push({ paso: step.nombre, error: stepErr.message });
