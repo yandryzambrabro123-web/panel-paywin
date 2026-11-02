@@ -6265,13 +6265,26 @@ async function winMarcaAgua(base64, mediaType){
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    const lado = Math.round(Math.min(c.width, c.height) * 0.5);
+    // Insignia grande que cubre casi todo el ancho, bien visible pero sin tapar la apuesta
+    const lado = Math.round(Math.min(c.width * 0.98, c.height * 0.98));
     const x = Math.round((c.width - lado) / 2), y = Math.round((c.height - lado) / 2);
     ctx.save();
-    ctx.globalAlpha = 0.11;
-    ctx.filter = 'blur(1.5px)';
+    ctx.globalAlpha = 0.3;
     ctx.beginPath(); ctx.arc(x + lado/2, y + lado/2, lado * 0.49, 0, Math.PI * 2); ctx.clip(); // solo la insignia redonda, sin el fondo cuadrado
     ctx.drawImage(logo, x, y, lado, lado);
+    ctx.restore();
+    // Nombre en diagonal, grande, para que se lea claro que es PayWin
+    ctx.save();
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(-Math.PI / 7);
+    let fs = Math.round(c.width * 0.26);
+    ctx.font = `900 ${fs}px Arial, Helvetica, sans-serif`;
+    const anchoMax = Math.hypot(c.width, c.height) * 0.8;
+    while(ctx.measureText('PAYWIN').width > anchoMax && fs > 20){ fs -= 4; ctx.font = `900 ${fs}px Arial, Helvetica, sans-serif`; }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.globalAlpha = 0.26;
+    ctx.lineWidth = Math.max(2, fs * 0.04); ctx.strokeStyle = '#000'; ctx.strokeText('PAYWIN', 0, 0);
+    ctx.fillStyle = '#ffffff'; ctx.fillText('PAYWIN', 0, 0);
     ctx.restore();
     const url = c.toDataURL('image/jpeg', 0.85);
     return { base64: url.split(',')[1], mediaType: 'image/jpeg' };
