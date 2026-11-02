@@ -469,6 +469,35 @@ Responde SOLO con un arreglo JSON dentro de <json></json>. Cada objeto: {"t":"s"
   res.status(200).json({ sugerencias: out, fuente: 'los eventos que cargaste', tanda });
 }
 
+// Texto para el canal privado de Telegram (stake de pago / regalito): lee la foto del pick real, arma un texto bonito y una reseña corta del "por qué".
+async function modoCanalTexto(apiKey, body, res) {
+  const imgs = (Array.isArray(body.imagenes) ? body.imagenes : []).filter((i) => i && i.base64).slice(0, 2);
+  const clave = body.clave === 'regalito' ? 'regalito' : 'stake';
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  const nota = String(body.nota || '').slice(0, 300);
+  const tituloTipo = clave === 'stake' ? '💰 *¡STAKE DE PAGO LISTO!* 💰' : '🎁 *¡REGALITO DEL DÍA!* 🎁';
+  const system = `Eres Pay, el analista de PayWin (Ecuador). Hoy es ${hoy}. Escribes el mensaje que el jefe publica en el CANAL PRIVADO de Telegram de ${clave === 'stake' ? 'STAKE DE PAGO (clientes que YA pagaron $20)' : 'REGALITO DEL DÍA (clientes que recargaron)'}. Se te da la foto de la apuesta real ya armada.
+Haz esto:
+1) LEE la apuesta de la foto: partido(s), selección, cuota, hora, valor si se ve. No inventes nada que no se lea.
+2) Escribe el mensaje con este estilo APROBADO (tono "panas": cercano, de calle, corto, casi todo en negrita con UN asterisco *así*, muchos emojis, SIN líneas separadoras, sin hashtags). Estructura:
+   - Primera línea exacta: ${tituloTipo}
+   - Las líneas de la apuesta bien claras (🏟️ partido, ✅ selección, 👉 cuota 💥, ⏰ hora). Si es combinada, una línea por selección y la cuota total.
+   - Un bloque "📊 *¿Por qué esta?*" con 2 o 3 viñetas cortas (máx. 15 palabras cada una) con la razón real: forma reciente, historial, bajas, ritmo, lo que respalda la línea. Busca en la web lo necesario (máx. 3 búsquedas). Si no encuentras datos fiables de algo, NO lo inventes: da una razón basada en la lógica de la cuota/mercado y dilo honesto.
+   - Una frase que impulse, motivadora y honesta (no prometas ganancia segura; puedes decir "bien estudiada").
+   - Cierre de ayuda SIN número de venta: "🛠️ *¿La línea se bloqueó o el código no te sale? Escríbeme aquí y te ayudo ya.* 🙌"
+3) Máximo 900 caracteres en total. Devuelve SOLO el texto final, listo para pegar, sin comillas ni explicación.`;
+  const content = [];
+  imgs.forEach((i) => content.push({ type: 'image', source: { type: 'base64', media_type: i.mediaType || 'image/jpeg', data: i.base64 } }));
+  content.push({ type: 'text', text: (imgs.length ? 'Esta es la apuesta real. ' : 'No hay foto: ') + (nota ? 'Indicación del jefe: ' + nota : 'Arma el mensaje.') });
+  const payload = { model: 'claude-sonnet-5', max_tokens: 1400, system, messages: [{ role: 'user', content }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] };
+  let ia = await llamarPay(apiKey, payload, 40000);
+  if (ia.ok && !ia.texto) { delete payload.tools; ia = await llamarPay(apiKey, payload, 20000); }
+  if (!ia.ok) { res.status(502).json({ error: `No pude armar el texto (IA ${ia.status}).` }); return; }
+  let texto = String(ia.texto || '').replace(/^```[a-z]*\n?|```$/g, '').trim();
+  if (!texto) { res.status(502).json({ error: 'No salió texto. Intenta de nuevo.' }); return; }
+  res.status(200).json({ texto });
+}
+
 // Evalúa una apuesta que mandó otra persona (captura de su casa de apuestas): la lee, dice si es buena y la deja lista para reenviar.
 async function modoPayEvaluar(apiKey, body, res) {
   const imgs = (Array.isArray(body.imagenes) ? body.imagenes : []).filter((i) => i && i.base64).slice(0, 3);
@@ -833,6 +862,12 @@ module.exports = async function handler(req, res) {
   if (body.modo === 'pay_dia') {
     try { await modoPayDia(apiKey, body, res); }
     catch (e) { console.error('Pay día:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
+    return;
+  }
+
+  if (body.modo === 'canal_texto') {
+    try { await modoCanalTexto(apiKey, body, res); }
+    catch (e) { console.error('Canal texto:', e); res.status(500).json({ error: 'No pude armar el texto. Intenta de nuevo.' }); }
     return;
   }
 

@@ -5652,7 +5652,7 @@ async function vaciarGrupoTg(clave, btn){
   }catch(e){ alert('No se pudo vaciar: ' + e.message); }
   btn.disabled = false; btn.textContent = t;
 }
-function openCanalTgModal(clave){
+function openCanalTgModal(clave, pre){
   const nom = clave === 'stake' ? 'stake de pago' : 'regalito';
   openModal(`
     <h3>Enviar al canal de ${nom}</h3>
@@ -5662,7 +5662,8 @@ function openCanalTgModal(clave){
       <div id="winDropPreview"></div>
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
-    <div class="field"><label>Texto</label><textarea id="f-canalTexto" rows="5" placeholder="Pick, cuota, hora..."></textarea></div>
+    <div class="field"><label>Texto</label><textarea id="f-canalTexto" rows="9" placeholder="Pick, cuota, hora..."></textarea></div>
+    <button class="btn secondary" id="canalGenTexto" type="button" style="width:100%; margin-bottom:8px;">✨ Generar texto con reseña</button>
     <div id="canalTgMsg" style="font-size:12.5px; color:var(--muted); min-height:18px; margin-bottom:8px;"></div>
     <div class="modal-actions">
       <button class="btn secondary" id="canalVaciarBtn" type="button" style="color:#ff7a7a;">Vaciar canal</button>
@@ -5671,7 +5672,7 @@ function openCanalTgModal(clave){
     </div>
   `);
   wireWinDropzone();
-  const pickListo = winPickCanalGet(clave);
+  const pickListo = pre && pre.base64 ? { base64:pre.base64, mediaType:pre.mediaType || 'image/jpeg', texto:'' } : winPickCanalGet(clave);
   if(pickListo){
     document.getElementById('f-canalTexto').value = pickListo.texto || '';
     document.getElementById('winDropPreview').innerHTML = `<img src="data:${pickListo.mediaType};base64,${pickListo.base64}" style="max-width:100%; max-height:140px; border-radius:8px; margin-top:10px;"><div style="font-size:11px; color:var(--muted); margin-top:4px;">Pick real ya registrado: listo para enviar</div>`;
@@ -5689,6 +5690,26 @@ function openCanalTgModal(clave){
     }catch(e){ alert('No se pudo publicar: ' + e.message); b.disabled = false; b.textContent = 'Publicar en el canal'; }
   };
   document.getElementById('canalVaciarBtn').onclick = function(){ vaciarGrupoTg(clave, this); };
+  // Texto con reseña, armado por Pay a partir de la foto del pick
+  let generando = false;
+  const generarTexto = async ()=>{
+    if(generando) return; generando = true;
+    const gb = document.getElementById('canalGenTexto'), ta = document.getElementById('f-canalTexto');
+    gb.disabled = true; gb.textContent = '✨ Pay está escribiendo…';
+    try{
+      let img = null;
+      if(winPendingFile){ const x = await fileToCompressedImage(winPendingFile); img = { base64:x.base64, mediaType:x.mediaType }; }
+      else if(pickListo) img = { base64:pickListo.base64, mediaType:pickListo.mediaType };
+      const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'canal_texto', clave, imagenes: img ? [img] : [], nota: (pre && pre.nota) || '' }) }), 58000, 'Pay tardó demasiado. Toca de nuevo.');
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(d.error || 'No pude armar el texto.');
+      if(document.getElementById('f-canalTexto')) ta.value = d.texto;
+      msg('✓ Texto listo. Léelo y cámbialo si quieres antes de publicar.');
+    }catch(e){ msg('No se pudo generar el texto: ' + e.message); }
+    generando = false; gb.disabled = false; gb.textContent = '✨ Generar otro texto';
+  };
+  document.getElementById('canalGenTexto').onclick = generarTexto;
+  if(pickListo) setTimeout(generarTexto, 300); // con la foto ya cargada, el texto sale solo
 }
 
 // ---- Pick real (foto del stake/regalito real): se lee y se registra, NO se envía; queda listo para el botón "Enviar al canal" ----
@@ -8064,6 +8085,7 @@ function openPayPartido(){
 // Reservar una apuesta propia (la que el jefe armó en su casa, aunque sea parecida a una de Pay): captura o a mano
 function openPayReservarMia(){
   let filas = [{ partido:'', pick:'', cuota:'', hora:'' }];
+  let fotoOriginal = null; // tu captura tal cual: es la que se manda después
   openModal(`
     <h3>📌 Reservar mi apuesta</h3>
     <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Sube la captura de tu apuesta (Pay solo la lee, no la evalúa) o escríbela a mano. Queda guardada en 📌 Reservadas, lista para cuando la quieras mandar.</div>
@@ -8094,6 +8116,7 @@ function openPayReservarMia(){
   $('payMiaFiles').onchange = async (e)=>{
     const fotos = []; for(const f of [...e.target.files].slice(0,3)){ try{ const c = await fileToCompressedImage(f); fotos.push({ base64:c.base64, mediaType:c.mediaType }); }catch(err){ console.error(err); } }
     if(!fotos.length){ $('payMiaEst').textContent = 'No pude leer esa imagen.'; return; }
+    fotoOriginal = fotos[0];
     $('payMiaEst').textContent = 'Leyendo tu apuesta…';
     try{
       const r = await payDiaLlamar({ paso:'apuesta', imagenes: fotos }, 58000);
@@ -8102,12 +8125,23 @@ function openPayReservarMia(){
       pintar(); $('payMiaEst').textContent = '✓ Listo. Revisa que todo esté bien antes de reservar.';
     }catch(err){ $('payMiaEst').textContent = err.message; }
   };
-  $('payMiaGuardar').onclick = ()=>{
+  $('payMiaGuardar').onclick = async ()=>{
     const sels = filas.map(f=>({ partido:f.partido.trim(), pick:f.pick.trim(), cuota:Number(String(f.cuota).replace(',','.')) || 0, hora:f.hora.trim() })).filter(f=>f.pick);
     if(!sels.length){ $('payMiaEst').textContent = 'Escribe al menos una selección.'; return; }
     if(sels.some(f=>!f.cuota)){ $('payMiaEst').textContent = 'Falta la cuota de alguna línea.'; return; }
     const total = Number(String($('payMiaTotal').value).replace(',','.')) || Number(sels.reduce((a,f)=>a*f.cuota,1).toFixed(2));
     const x = { manual:true, cupo: $('payMiaCupo').value, partido: sels.length>1 ? `Combinada de ${sels.length}` : (sels[0].partido || 'Mi apuesta'), pick: sels.length>1 ? 'Mi apuesta' : sels[0].pick, cuota: String(total), confianza:'', selecciones: sels };
+    if(fotoOriginal){
+      const g = $('payMiaGuardar'); g.disabled = true; g.textContent = 'Guardando tu foto…';
+      try{
+        const up = await withTimeout(fetch('/api/win-imagen', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ base64: fotoOriginal.base64, mediaType: fotoOriginal.mediaType, nombre: 'reserva-' + Date.now() }) }), 25000);
+        const ud = await up.json().catch(()=>({}));
+        if(!up.ok || !ud.url) throw new Error(ud.error || 'no se pudo guardar la foto');
+        x.imagenUrl = ud.url;
+      }catch(err){
+        if(!confirm('No pude guardar tu foto (' + err.message + '). ¿Reservo igual, usando el boleto armado por el panel?')){ g.disabled = false; g.textContent = 'Reservar'; return; }
+      }
+    }
     payReservar(x); closeModal();
   };
 }
@@ -8457,6 +8491,37 @@ async function payReservadaModificar(id){
     try{ await persist('payReservadas'); }catch(e){ console.error(e); }
   });
 }
+// Acceso directo desde una reservada al lugar donde va (canal de stake, canal del regalito, VIP o Gratis), con la foto lista
+function payResDestinoTxt(x){
+  const c = x.cupo || '';
+  return c === 'Stake de pago' ? 'Ir al canal de stake' : c === 'Regalito' ? 'Ir al canal del regalito' : c ? `Enviar a ${c}` : 'Enviar';
+}
+function payResBlobABase64(blob){ return new Promise((ok,no)=>{ const fr = new FileReader(); fr.onload = ()=>ok(String(fr.result).split(',')[1]); fr.onerror = no; fr.readAsDataURL(blob); }); }
+// La foto que se manda: la que tú subiste (sin tocarla) o, si no hay, el boleto armado por el panel
+async function payResImagen(x){
+  if(x.imagenUrl){
+    try{
+      const r = await fetch(x.imagenUrl); if(!r.ok) throw new Error('HTTP ' + r.status);
+      const blob = await r.blob(); const mediaType = blob.type || 'image/jpeg';
+      return { base64: await payResBlobABase64(blob), mediaType, file: new File([blob], 'apuesta.jpg', { type: mediaType }) };
+    }catch(e){ console.error('No pude traer tu foto, uso el boleto del panel:', e); }
+  }
+  const file = await payBoletoFile(x); if(!file) return null;
+  return { base64: await payResBlobABase64(file), mediaType: 'image/jpeg', file };
+}
+async function payResIr(id, btn){
+  const r = payResLista().find(q=>q.id === id); if(!r) return;
+  const x = r.x; const t = btn.textContent; btn.disabled = true; btn.textContent = 'Preparando…';
+  try{
+    const img = await payResImagen(x);
+    if(x.cupo === 'Stake de pago' || x.cupo === 'Regalito'){
+      openCanalTgModal(x.cupo === 'Stake de pago' ? 'stake' : 'regalito', img ? { base64:img.base64, mediaType:img.mediaType } : null);
+    } else {
+      tomarPay(x, img && img.file);
+    }
+  }catch(e){ alert('No pude abrirlo: ' + e.message); }
+  btn.disabled = false; btn.textContent = t;
+}
 function payReservadasPintar(){
   setTimeout(()=>{ if(typeof factoryBadges === 'function') factoryBadges(); }, 0);
   const el = document.getElementById('payReservadas'); if(!el) return;
@@ -8469,14 +8534,15 @@ function payReservadasPintar(){
     const cuando = isNaN(d) ? '' : new Date(d.getTime() - 5*3600e3).toISOString().slice(5,16).replace('T',' ');
     return `<div style="border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:10px;">
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px;"><b>${esc(r.x.cupo||'')}</b><span style="color:var(--muted); font-size:12px;">reservado ${esc(cuando)}</span><span style="margin-left:auto; font-weight:800; color:var(--gold, #D4AF6A);">@ ${esc(payFmtCuota(payProducto(sels) || r.x.cuota))}</span></div>
-      <img src="${payBoletoDataUrl(r.x)}" alt="Boleto" style="width:100%; max-width:420px; border-radius:10px; display:block; margin:4px 0 8px;">
+      <img src="${r.x.imagenUrl || payBoletoDataUrl(r.x)}" alt="Boleto" style="width:100%; max-width:420px; border-radius:10px; display:block; margin:4px 0 8px;">
       <details style="font-size:12px; color:var(--muted);"><summary>Ver en texto</summary>
       ${sels.map(l=>`<div style="font-size:13px; padding:2px 0;">${esc(l.partido||'')} — <b>${esc(l.pick||'')}</b> <span style="color:var(--muted);">@${esc(String(l.cuota))}${l.hora ? ' · ' + esc(l.hora) : ''}</span></div>`).join('')}
       </details>
-      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resquitar="${esc(r.id)}">✅ Ya la utilicé</button></div>
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><button class="btn" type="button" data-pay-resir="${esc(r.id)}">➡️ ${esc(payResDestinoTxt(r.x))}</button><button class="btn secondary" type="button" data-pay-resquitar="${esc(r.id)}">✅ Ya la utilicé</button></div>
     </div>`;
   }).join('');
   payResSyncWire(el);
+  el.querySelectorAll('[data-pay-resir]').forEach(b=>b.onclick=()=>payResIr(b.dataset.payResir, b));
   el.querySelectorAll('[data-pay-resquitar]').forEach(b=>b.onclick=()=>{ if(confirm('¿Ya la utilizaste? Se quita de Reservadas.')) payReservadaQuitar(b.dataset.payResquitar); });
 }
 let payAutoLista = [];
@@ -8726,7 +8792,7 @@ function openStakeRegistroModal(texto){
     const st = document.getElementById('payEstado'); if(st) st.innerHTML = '<span style="color:#7be39a;">✅ Stake de pago registrado como enviado (míralo en la pestaña ✅ Enviadas hoy).</span>';
   };
 }
-function tomarPay(i){
+function tomarPay(i, fotoPropia){
   const x = typeof i === 'object' ? i : paySugerencias[i]; if(!x) return;
   payGuardarTomada(x);
   const texto = (x.selecciones||[]).length ? `${payTextoSel(x)}\nCuota total: @${x.cuota||''}` : `${x.partido||''} — ${x.pick||''} @ ${x.cuota||''}`;
@@ -8736,7 +8802,7 @@ function tomarPay(i){
   const fijoPay = x.manual ? null : x.cupo === 'VIP' ? WIN_FIJO.vip : (x.cupo === 'Gratis' ? { ...WIN_FIJO.gratis, grupos: (cfg.grupos && cfg.grupos.length ? cfg.grupos : WIN_FIJO.gratis.grupos) } : null);
   openWinBetForm('nueva_apuesta', cfg.grupos || [], fijoPay);
   const code = document.getElementById('f-winCode'); if(code) code.value = texto;
-  payBoletoFile(x).then(f=>{ if(!f || !document.getElementById('winDropzone')) return; winPendingFile = f; const pv = document.getElementById('winDropPreview'); if(pv) pv.innerHTML = `<img src="${payBoletoDataUrl(x)}" style="max-width:100%; max-height:220px; border-radius:8px; margin-top:10px;"><div style="font-size:11px; color:var(--muted); margin-top:4px;">Foto del boleto (puedes cambiarla subiendo otra)</div>`; });
+  (fotoPropia ? Promise.resolve(fotoPropia) : payBoletoFile(x)).then(f=>{ if(!f || !document.getElementById('winDropzone')) return; winPendingFile = f; const pv = document.getElementById('winDropPreview'); if(pv) pv.innerHTML = `<img src="${fotoPropia ? URL.createObjectURL(fotoPropia) : payBoletoDataUrl(x)}" style="max-width:100%; max-height:220px; border-radius:8px; margin-top:10px;"><div style="font-size:11px; color:var(--muted); margin-top:4px;">Foto del boleto (puedes cambiarla subiendo otra)</div>`; });
 }
 
 /* ---------- ROUTER ---------- */
