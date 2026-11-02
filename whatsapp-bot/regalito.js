@@ -89,6 +89,25 @@ async function avisarRegistro(reg, extra) {
   });
 }
 
+// Avisa al jefe por Telegram y deja anotado que ya se avisó (para no repetir). Nunca lanza error.
+async function avisarYMarcar(reg, extra) {
+  try {
+    await avisarRegistro(reg, extra);
+    await H.cambiarHoja(HOJA_REG, (filas) => filas.map((f) => String(f.id) === String(reg.id) ? { ...f, avisado: 'si' } : f));
+    return true;
+  } catch (e) { console.error('No pude avisar al jefe (regalito):', e.message); return false; }
+}
+
+// Rescate: pedidos pendientes que nunca le llegaron al jefe (por la falla del 1-2 nov). Se corre al arrancar.
+async function rescatarPendientes() {
+  try {
+    const corte = Date.parse('2026-11-01T23:30:00Z');
+    const pend = (await H.leerHoja(HOJA_REG)).filter((f) => f.estado === 'pendiente' && !f.avisado && Date.parse(f.createdAt) >= corte);
+    for (const r of pend) { await avisarYMarcar(r, false); await pausa(500); }
+    if (pend.length) console.log('Regalito: rescaté', pend.length, 'pedido(s) pendientes sin aviso.');
+  } catch (e) { console.error('Rescate de pedidos de regalito:', e.message); }
+}
+
 // Publica el regalito del día (lo llama el panel). Cierra el anterior y pasa la cola a aprobación.
 async function publicar(link) {
   const ahora = new Date().toISOString();
@@ -214,8 +233,12 @@ function montar(app, stakes, extra) {
         repetido = filas.find((f) => (f.estado === 'pendiente' || f.estado === 'cola') && f.nombre.toLowerCase() === nombre.toLowerCase());
         return repetido ? filas : [...filas, reg];
       });
-      if (repetido) return res.json({ id: repetido.id, repetido: true });
-      if (vig) await avisarRegistro(reg, false).catch((e) => console.error('No pude avisar al jefe (regalito):', e.message));
+      if (repetido) {
+        // si el pedido anterior nunca le llegó al jefe (falla de ayer), se le vuelve a avisar ahora
+        if (!repetido.avisado) await avisarYMarcar(repetido, false);
+        return res.json({ id: repetido.id, repetido: true });
+      }
+      await avisarYMarcar(reg, false);
       res.json({ id: reg.id });
     } catch (e) {
       console.error('Registro de regalito:', e);
@@ -255,6 +278,7 @@ function montar(app, stakes, extra) {
   const ciclo = () => { revisarRegalito().catch((e) => console.error('Regalito:', e.message)); revisarStakes().catch((e) => console.error('Disp. stakes:', e.message)); };
   setInterval(ciclo, 3 * 60 * 1000);
   setTimeout(ciclo, 60 * 1000);
+  setTimeout(rescatarPendientes, 20 * 1000);
 }
 
 module.exports = { montar, publicar, revisarStakes, revisarRegalito };
