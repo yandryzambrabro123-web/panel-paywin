@@ -387,6 +387,72 @@ Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: parti
   res.status(200).json({ sugerencias: lista, fuente: 'tu foto del partido' });
 }
 
+// ---------- Fábrica del día: el jefe sube capturas con los eventos y cuotas; Pay solo lee y arma (sin buscar en la web) ----------
+const PAY_DIA_MAX_EVENTOS = 9000; // caracteres de texto de eventos que se guardan/reenvían
+async function modoPayDia(apiKey, body, res) {
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  if (body.paso === 'leer') {
+    const imgs = (Array.isArray(body.imagenes) ? body.imagenes : []).filter((i) => i && i.base64).slice(0, 8);
+    if (!imgs.length) { res.status(400).json({ error: 'Sube al menos una captura con los eventos del día.' }); return; }
+    const system = `Lees capturas de la cartelera de una casa de apuestas (Mas1x2). Hoy es ${hoy} (hora de Ecuador). Copia SOLO lo que se ve, sin inventar ni completar nada.
+Responde en texto plano, una línea por evento, con este formato exacto:
+Local vs Visitante | competición | hora | mercado: selección @cuota ; mercado: selección @cuota ; ...
+Incluye todas las cuotas legibles de ese evento (1X2, doble oportunidad, totales, ambos marcan, etc.). Si algo no se lee, no lo pongas. Si una captura no es una cartelera de apuestas, ignórala. No escribas introducción ni comentarios.`;
+    const content = [];
+    imgs.forEach((i) => content.push({ type: 'image', source: { type: 'base64', media_type: i.mediaType || 'image/jpeg', data: i.base64 } }));
+    content.push({ type: 'text', text: 'Copia los eventos y cuotas de estas capturas.' });
+    const ia = await llamarPay(apiKey, { model: 'claude-sonnet-5', max_tokens: 4500, system, messages: [{ role: 'user', content }] }, 45000);
+    if (!ia.ok) { res.status(502).json({ error: `No pude leer las capturas (IA ${ia.status}).` }); return; }
+    const texto = ia.texto.replace(/\n{3,}/g, '\n\n').slice(0, PAY_DIA_MAX_EVENTOS).trim();
+    const n = texto.split('\n').filter((l) => /\|/.test(l)).length;
+    if (!n) { res.status(502).json({ error: 'No encontré eventos con cuotas en esas capturas. Prueba con capturas más claras.' }); return; }
+    res.status(200).json({ eventos: texto, cantidad: n });
+    return;
+  }
+  // paso 'generar': 20 apuestas a partir del texto de eventos
+  const eventos = String(body.eventos || '').slice(0, PAY_DIA_MAX_EVENTOS);
+  if (!eventos.trim()) { res.status(400).json({ error: 'Primero carga los eventos del día.' }); return; }
+  const tanda = Math.max(1, Math.min(4, Number(body.tanda) || 1));
+  const vistos = (Array.isArray(body.vistos) ? body.vistos : []).slice(-120).map((x) => String(x).slice(0, 110)).join(' ; ');
+  const nota = String(body.nota || '').slice(0, 300);
+  const system = `Eres Pay, el analista deportivo de PayWin (Ecuador). Hoy es ${hoy}. El jefe te dio la lista de eventos del día con las cuotas REALES de su casa. Arma 20 apuestas SOLO con esa lista.
+${PAY_CONOCIMIENTO}
+REGLAS DURAS:
+- Usa únicamente eventos y cuotas que aparecen en la lista. Copia la cuota tal cual. Prohibido inventar partidos, mercados o cuotas. No busques nada afuera.
+- Mezcla: unas 14 SIMPLES (una selección) y unas 6 COMBINADAS SEGURAS de 2 o 3 selecciones de partidos DISTINTOS, cada selección de cuota baja (1.10 a 1.45).
+- Cuota de cada simple entre 1.10 y 1.60. Prioriza favoritos claros, doble oportunidad, goles/puntos con margen. Evita mercados frágiles.
+- Si en la lista no hay material para 20 buenas, entrega menos (mínimo las que de verdad valgan) y no rellenes con basura.
+- Varía deportes, partidos y mercados; no repitas el mismo partido más de 2 veces.
+${tanda > 1 ? `- Esta es la TANDA ${tanda} de 4: debe ser DISTINTA a lo ya entregado. No repitas estas líneas: ${vistos || '(ninguna)'}.` : ''}
+${nota ? '- Indicación del jefe: ' + nota : ''}
+Responde SOLO con un arreglo JSON dentro de <json></json>. Cada objeto: {"t":"s" o "c","p":"Local vs Visitante" (en combinada: "Combinada"),"l":"liga","h":"hora o vacío","k":"selección clara","c":cuota_número,"f":"baja|media|alta","a":"máximo 14 palabras: por qué","s":[{"p":"partido","k":"selección","c":cuota,"h":"hora"}]} — "s" solo en combinadas (cada una con su cuota; la cuota total "c" es el producto).`;
+  const ia = await llamarPay(apiKey, { model: 'claude-sonnet-5', max_tokens: 6500, system, messages: [{ role: 'user', content: 'EVENTOS DEL DÍA:\n' + eventos }] }, 50000);
+  if (!ia.ok) { res.status(502).json({ error: `Pay no pudo armar las apuestas (IA ${ia.status}).` }); return; }
+  const t = ia.texto;
+  const cand = [];
+  const tag = t.match(/<json>([\s\S]*?)<\/json>/i); if (tag) cand.push(tag[1]);
+  if (t.indexOf('[') >= 0 && t.lastIndexOf(']') > t.indexOf('[')) cand.push(t.slice(t.indexOf('['), t.lastIndexOf(']') + 1));
+  let lista = [];
+  for (const c of cand) { try { const j = JSON.parse(c.trim()); if (Array.isArray(j)) { lista = j; break; } } catch (e) { /* siguiente */ } }
+  const num = (v) => { const n = Number(String(v).replace(',', '.')); return isFinite(n) && n > 1 ? n : 0; };
+  const out = [];
+  for (const x of lista) {
+    if (!x || out.length >= 20) continue;
+    let sels;
+    if (x.t === 'c' && Array.isArray(x.s) && x.s.length >= 2) {
+      sels = x.s.map((s) => ({ partido: String(s.p || ''), pick: String(s.k || ''), cuota: num(s.c), hora: String(s.h || '') })).filter((s) => s.pick && s.cuota);
+      if (sels.length < 2) continue;
+    } else {
+      const c = num(x.c); if (!x.k || !c) continue;
+      sels = [{ partido: String(x.p || ''), pick: String(x.k), cuota: c, hora: String(x.h || '') }];
+    }
+    const total = Number(sels.reduce((a, s) => a * s.cuota, 1).toFixed(2));
+    out.push({ partido: sels.length > 1 ? 'Combinada' : sels[0].partido, liga: String(x.l || ''), hora: String(x.h || sels[0].hora || ''), pick: sels.length > 1 ? sels.map((s) => s.pick).join(' + ') : sels[0].pick, cuota: total, confianza: ['baja', 'media', 'alta'].includes(x.f) ? x.f : 'media', analisis: String(x.a || '').slice(0, 160), selecciones: sels });
+  }
+  if (!out.length) { res.status(502).json({ error: 'Pay no sacó apuestas claras de esa lista. Lo que dijo: ' + (t.replace(/\s+/g, ' ').trim().slice(0, 200) || '(sin respuesta)') }); return; }
+  res.status(200).json({ sugerencias: out, fuente: 'los eventos que cargaste', tanda });
+}
+
 // Evalúa una apuesta que mandó otra persona (captura de su casa de apuestas): la lee, dice si es buena y la deja lista para reenviar.
 async function modoPayEvaluar(apiKey, body, res) {
   const imgs = (Array.isArray(body.imagenes) ? body.imagenes : []).filter((i) => i && i.base64).slice(0, 3);
@@ -745,6 +811,12 @@ module.exports = async function handler(req, res) {
   if (body.modo === 'pay_bajar') {
     try { await modoPayBajar(apiKey, body, res); }
     catch (e) { console.error('Pay bajar:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
+    return;
+  }
+
+  if (body.modo === 'pay_dia') {
+    try { await modoPayDia(apiKey, body, res); }
+    catch (e) { console.error('Pay día:', e); res.status(500).json({ error: 'Pay tuvo un problema. Intenta de nuevo.' }); }
     return;
   }
 

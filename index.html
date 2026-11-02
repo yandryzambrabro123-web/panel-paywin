@@ -963,6 +963,7 @@
   #winGanFechaNueva,#winGanTextoNuevo,#winGanDesde,#winGanHasta{ background:var(--surface-2, #171E29); color:var(--text, #e9ecf5); border:1px solid var(--border); border-radius:10px; font:inherit; }
   .fstep{ display:flex; align-items:center; gap:9px; font-weight:800; font-size:13.5px; color:#e9ecf5; margin:2px 0 9px; }
   .fstep span{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#E6C068; color:#14110a; font-size:12px; font-weight:900; }
+  .diabox{ border:1px solid var(--border); border-radius:14px; padding:14px; margin:0 0 14px; background:rgba(230,192,104,.06); }
   .fdet{ margin:0 0 14px; border:1px dashed var(--border); border-radius:12px; padding:8px 12px; }
   .fdet summary{ cursor:pointer; font-size:13px; color:var(--muted); font-weight:700; }
   .fdet[open] summary{ margin-bottom:10px; color:#e9ecf5; }
@@ -7392,6 +7393,23 @@ function renderFactory(){
     <div class="grid-2">
       <div class="card ftab-panel" data-ftab="armar" style="grid-column:1/-1; --c:#E6C068;">
         <div class="card-title">Pay · analista deportivo</div>
+        <div class="diabox" id="payDiaBox">
+          <div style="font-weight:800; font-size:15px; margin-bottom:4px;">📅 Eventos del día</div>
+          <div id="payDiaInfo" style="font-size:12.5px; color:var(--muted); margin-bottom:10px;"></div>
+          <input id="payDiaFiles" type="file" accept="image/*" multiple style="display:none;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn secondary" id="payDiaCargar" type="button">📸 Cargar eventos del día</button>
+            <button class="btn" id="payDiaGenerar" type="button">Generar las 20</button>
+            <button class="btn secondary" id="payDiaOtros" type="button">Otros</button>
+          </div>
+          <div id="payDiaEstado" style="font-size:12.5px; color:var(--muted); margin-top:8px; min-height:16px;"></div>
+          <details class="fdet" id="payDiaDet" style="margin:10px 0 0;"><summary id="payDiaSum">Eventos leídos</summary>
+            <textarea id="payDiaTxt" rows="8" style="width:100%; font-size:12px; background:rgba(255,255,255,.05); color:inherit; border:1px solid var(--border); border-radius:10px; padding:8px; box-sizing:border-box;" placeholder="Aquí aparecen los eventos que leyó de tus capturas. Puedes corregir una cuota a mano."></textarea>
+            <div style="margin-top:6px;"><button class="btn secondary" id="payDiaReiniciar" type="button" style="padding:6px 12px; font-size:12px;">Reiniciar el día</button></div>
+          </details>
+          <div id="payDiaChips" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;"></div>
+        </div>
+        <details class="fdet" id="payViejoDet"><summary>Búsqueda automática de antes (opcional)</summary>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Pay arma combinadas de líneas seguras (cada una de cuota baja) en todos los deportes. Pon la cuota total que quieres. Revisa siempre antes de apostar.</div>
         <div class="fstep"><span>1</span>¿Para qué cupo es?</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
@@ -7428,6 +7446,7 @@ function renderFactory(){
           <button class="btn secondary" id="payAprBtn" type="button">📸 Enseñarle a Pay</button>
           <button class="btn secondary" id="payEvalBtn" type="button">📥 Cargar apuesta realizada</button>
         </div>
+        </details>
         <div id="payAprendeInfo" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
         <div id="payStatsInfo" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
         <div id="payEstado" style="font-size:12px; color:var(--muted); margin-top:10px;"></div>
@@ -8124,6 +8143,95 @@ const PAY_CUPOS = {
 };
 let payCupo = 'VIP';
 let paySugerencias = [];
+// ---------- Fábrica del día: cargas capturas, Pay arma 20 (sin buscar en la web) ----------
+const PAY_DIA_OTROS_MAX = 3;
+function payDiaKey(){ return 'payDia_' + payHoyEC(); }
+function payDiaVacio(){ return { eventos:'', listas:[] }; }
+function payDiaGet(){ try{ const d = JSON.parse(localStorage.getItem(payDiaKey()) || 'null'); return d && Array.isArray(d.listas) ? d : payDiaVacio(); }catch(e){ return payDiaVacio(); } }
+function payDiaSet(d){ try{ localStorage.setItem(payDiaKey(), JSON.stringify(d)); }catch(e){} }
+function payDiaLimpiarViejos(){ try{ Object.keys(localStorage).forEach(k=>{ if(/^payDia_/.test(k) && k !== payDiaKey()) localStorage.removeItem(k); }); }catch(e){} }
+function payDiaVistos(d){ const v = []; d.listas.forEach(l=>l.forEach(x=>(x.selecciones||[]).forEach(s=>{ if(s.pick) v.push(`${s.partido}: ${s.pick}`); }))); return v; }
+function payDiaPintar(){
+  const d = payDiaGet(), $ = id=>document.getElementById(id); if(!$('payDiaBox')) return;
+  const nEv = d.eventos.split('\n').filter(l=>l.indexOf('|')>=0).length;
+  const gen = d.listas.length, otrosQuedan = Math.max(0, PAY_DIA_OTROS_MAX - Math.max(0, gen-1));
+  $('payDiaInfo').textContent = !nEv ? 'Sube las capturas con los partidos y cuotas de hoy. Pay solo lee lo que ves ahí, no busca nada en internet.'
+    : !gen ? `${nEv} evento${nEv>1?'s':''} leído${nEv>1?'s':''}. Revisa abajo si quieres y toca "Generar las 20" (solo se hace una vez al día).`
+    : `${nEv} eventos · lista ${gen} de ${1+PAY_DIA_OTROS_MAX} hecha. Ahora arma líneas, baja el riesgo o pide otra tanda.`;
+  $('payDiaCargar').textContent = nEv ? '📸 Agregar más capturas' : '📸 Cargar eventos del día';
+  $('payDiaCargar').disabled = gen > 0;
+  $('payDiaGenerar').style.display = gen ? 'none' : '';
+  $('payDiaGenerar').disabled = !nEv;
+  $('payDiaOtros').style.display = gen ? '' : 'none';
+  $('payDiaOtros').disabled = otrosQuedan <= 0;
+  $('payDiaOtros').textContent = otrosQuedan > 0 ? `Otros (quedan ${otrosQuedan})` : 'Otros (ya usaste los 3)';
+  $('payDiaDet').style.display = nEv ? '' : 'none';
+  $('payDiaSum').textContent = `Eventos leídos (${nEv})`;
+  if($('payDiaTxt') !== document.activeElement) $('payDiaTxt').value = d.eventos;
+  $('payDiaTxt').readOnly = gen > 0;
+  $('payDiaChips').innerHTML = gen > 1 ? d.listas.map((l,i)=>`<button type="button" class="btn ${paySugerencias.dia === i ? '' : 'secondary'}" data-dia-lista="${i}" style="padding:6px 12px; font-size:12.5px;">Lista ${i+1}</button>`).join('') : '';
+  document.querySelectorAll('[data-dia-lista]').forEach(b=>b.onclick=()=>payDiaMostrar(+b.dataset.diaLista));
+}
+function payDiaMostrar(i){
+  const d = payDiaGet(); if(!d.listas[i]) return;
+  paySugerencias = d.listas[i].map(x=>({ ...x, cupo: payCupo })); paySugerencias.fuente = 'los eventos que cargaste'; paySugerencias.dia = i;
+  payDiaPintar(); pintarPay();
+}
+async function payDiaLlamar(cuerpo, ms){
+  const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'pay_dia', ...cuerpo }) }), ms, 'Pay tardó demasiado. Intenta de nuevo.');
+  const raw = await r.text(); let d = {}; try{ d = JSON.parse(raw); }catch(e){}
+  if(!r.ok) throw new Error(d.error || `No se pudo (código ${r.status}).`);
+  return d;
+}
+async function payDiaSubir(files){
+  const est = document.getElementById('payDiaEstado'), btn = document.getElementById('payDiaCargar');
+  const fotos = [];
+  for(const f of [...files].slice(0,8)){ try{ const c = await fileToCompressedImage(f); fotos.push({ base64:c.base64, mediaType:c.mediaType }); }catch(e){ console.error(e); } }
+  if(!fotos.length){ est.textContent = 'No pude leer esas imágenes.'; return; }
+  btn.disabled = true; est.textContent = `Leyendo ${fotos.length} captura${fotos.length>1?'s':''}…`;
+  try{
+    const r = await payDiaLlamar({ paso:'leer', imagenes: fotos }, 58000);
+    const d = payDiaGet(); d.eventos = (d.eventos ? d.eventos.trim() + '\n' : '') + r.eventos; payDiaSet(d);
+    est.textContent = `✓ Leí ${r.cantidad} evento${r.cantidad>1?'s':''}. Revisa que las cuotas estén bien.`;
+    const det = document.getElementById('payDiaDet'); if(det) det.open = true;
+  }catch(e){ est.textContent = e.message; }
+  btn.disabled = false; payDiaPintar();
+}
+async function payDiaGenerar(){
+  const est = document.getElementById('payDiaEstado'), g = document.getElementById('payDiaGenerar'), o = document.getElementById('payDiaOtros');
+  let d = payDiaGet();
+  const txt = document.getElementById('payDiaTxt'); if(txt && !d.listas.length && txt.value.trim()){ d.eventos = txt.value.trim(); payDiaSet(d); }
+  if(!d.eventos.trim()){ est.textContent = 'Primero carga los eventos del día.'; return; }
+  if(d.listas.length > PAY_DIA_OTROS_MAX){ return; }
+  const tanda = d.listas.length + 1;
+  g.disabled = true; o.disabled = true; est.textContent = tanda === 1 ? 'Pay está armando las 20 apuestas…' : `Pay está armando otra lista de 20 (${tanda-1} de ${PAY_DIA_OTROS_MAX})…`;
+  try{
+    const r = await payDiaLlamar({ paso:'generar', eventos: d.eventos, tanda, vistos: payDiaVistos(d), nota:'' }, 58000);
+    d = payDiaGet(); d.listas.push(r.sugerencias); payDiaSet(d);
+    r.sugerencias.forEach(x=>(x.selecciones||[]).map(payNormSel).forEach(s=>{ if(s.pick) payVistosSesion.push(`${s.partido}: ${s.pick}`); }));
+    est.textContent = `✓ ${r.sugerencias.length} apuestas listas.`;
+    const det = document.getElementById('payDiaDet'); if(det) det.open = false;
+    payDiaMostrar(d.listas.length - 1);
+  }catch(e){ est.textContent = e.message; payDiaPintar(); }
+}
+function payDiaWire(){
+  if(!document.getElementById('payDiaBox')) return;
+  payDiaLimpiarViejos();
+  const f = document.getElementById('payDiaFiles');
+  document.getElementById('payDiaCargar').onclick = ()=>f.click();
+  f.onchange = ()=>{ const fs = [...f.files]; f.value = ''; if(fs.length) payDiaSubir(fs); };
+  document.getElementById('payDiaGenerar').onclick = payDiaGenerar;
+  document.getElementById('payDiaOtros').onclick = payDiaGenerar;
+  document.getElementById('payDiaTxt').onchange = ()=>{ const d = payDiaGet(); if(d.listas.length) return; d.eventos = document.getElementById('payDiaTxt').value.trim(); payDiaSet(d); payDiaPintar(); };
+  document.getElementById('payDiaReiniciar').onclick = ()=>{
+    if(!confirm('Esto borra los eventos y las listas de hoy, y vuelve a permitir las 20 y los 3 "Otros". Volver a generar gasta créditos otra vez. ¿Reiniciar?')) return;
+    try{ localStorage.removeItem(payDiaKey()); }catch(e){}
+    paySugerencias = []; const o = document.getElementById('payOut'); if(o) o.innerHTML = '';
+    document.getElementById('payDiaEstado').textContent = ''; payDiaPintar();
+  };
+  payDiaPintar();
+  const d = payDiaGet(); if(d.listas.length) payDiaMostrar(d.listas.length - 1);
+}
 function initPayPanel(){
   document.querySelectorAll('[data-pay-mkt]').forEach(b=>{ b.className = 'btn ' + (payMercadosSel.has(b.dataset.payMkt) ? '' : 'secondary'); b.onclick = ()=>{ const m = b.dataset.payMkt; if(payMercadosSel.has(m)) payMercadosSel.delete(m); else payMercadosSel.add(m); b.className = 'btn ' + (payMercadosSel.has(m) ? '' : 'secondary'); }; });
   const fIn = document.getElementById('payFecha');
@@ -8149,6 +8257,7 @@ function initPayPanel(){
     el.innerHTML = d.odds ? '🟢 Cuotas reales conectadas (The Odds API).' : '🔴 Sin cuotas reales: falta <b>ODDS_API_KEY</b> en Vercel (o falta hacer Redeploy). Sin eso Pay depende de la web y casi no arma picks.';
   }).catch(()=>{});
   pintarPay();
+  payDiaWire();
   document.getElementById('payAprBtn').onclick = openPayAprender;
   document.getElementById('payPartidoBtn').onclick = openPayPartido;
   document.getElementById('payEvalBtn').onclick = openPayEvaluar;
@@ -8357,7 +8466,7 @@ async function generarPay(otras){
 }
 function pintarPay(){
   const out = document.getElementById('payOut'); if(!out || !paySugerencias.length) return;
-  out.innerHTML = (paySugerencias.aviso ? `<div style="background:#3a2f12; border:1px solid #c9a227; color:#ffd966; border-radius:10px; padding:8px 10px; font-size:12.5px; margin-bottom:8px;">⚠️ ${esc(paySugerencias.aviso)}</div>` : '') + `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;"><div style="font-size:11.5px; color:var(--muted);">Fuente: ${esc(paySugerencias.fuente||'')} · Verifica la cuota en tu casa antes de apostar.</div><button class="btn secondary" id="payOtrasBtn" type="button" title="Generar otras" style="flex:none; padding:8px 12px;">↻ Otras</button></div>` +
+  out.innerHTML = (paySugerencias.aviso ? `<div style="background:#3a2f12; border:1px solid #c9a227; color:#ffd966; border-radius:10px; padding:8px 10px; font-size:12.5px; margin-bottom:8px;">⚠️ ${esc(paySugerencias.aviso)}</div>` : '') + `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;"><div style="font-size:11.5px; color:var(--muted);">Fuente: ${esc(paySugerencias.fuente||'')} · Verifica la cuota en tu casa antes de apostar.</div>${paySugerencias.dia !== undefined ? '' : '<button class="btn secondary" id="payOtrasBtn" type="button" title="Generar otras" style="flex:none; padding:8px 12px;">↻ Otras</button>'}</div>` +
     paySugerencias.map((x,i)=>paySlipHTML(x, 'gen', i, `data-pay-tomar="${i}"`, `data-pay-resena="${i}"`)).join('');
   out.querySelectorAll('[data-pay-tomar]').forEach(b=>b.onclick=()=>tomarPay(+b.dataset.payTomar));
   out.querySelectorAll('[data-pay-resena]').forEach(b=>b.onclick=()=>payResena(paySugerencias[+b.dataset.payResena]));
