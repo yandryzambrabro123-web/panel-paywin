@@ -388,7 +388,7 @@ Responde SOLO con un arreglo JSON dentro de <json></json>, de objetos con: parti
 }
 
 // ---------- Fábrica del día: el jefe sube capturas con los eventos y cuotas; Pay solo lee y arma (sin buscar en la web) ----------
-const PAY_DIA_MAX_EVENTOS = 9000; // caracteres de texto de eventos que se guardan/reenvían
+const PAY_DIA_MAX_EVENTOS = 30000; // caracteres de texto de eventos que se guardan/reenvían
 async function modoPayDia(apiKey, body, res) {
   const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
   if (body.paso === 'leer') {

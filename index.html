@@ -8185,16 +8185,23 @@ async function payDiaLlamar(cuerpo, ms){
 }
 async function payDiaSubir(files){
   const est = document.getElementById('payDiaEstado'), btn = document.getElementById('payDiaCargar');
+  btn.disabled = true; est.textContent = 'Preparando las capturas…';
   const fotos = [];
-  for(const f of [...files].slice(0,8)){ try{ const c = await fileToCompressedImage(f); fotos.push({ base64:c.base64, mediaType:c.mediaType }); }catch(e){ console.error(e); } }
-  if(!fotos.length){ est.textContent = 'No pude leer esas imágenes.'; return; }
-  btn.disabled = true; est.textContent = `Leyendo ${fotos.length} captura${fotos.length>1?'s':''}…`;
-  try{
-    const r = await payDiaLlamar({ paso:'leer', imagenes: fotos }, 58000);
-    const d = payDiaGet(); d.eventos = (d.eventos ? d.eventos.trim() + '\n' : '') + r.eventos; payDiaSet(d);
-    est.textContent = `✓ Leí ${r.cantidad} evento${r.cantidad>1?'s':''}. Revisa que las cuotas estén bien.`;
-    const det = document.getElementById('payDiaDet'); if(det) det.open = true;
-  }catch(e){ est.textContent = e.message; }
+  for(const f of [...files].slice(0,20)){ try{ const c = await fileToCompressedImage(f); fotos.push({ base64:c.base64, mediaType:c.mediaType }); }catch(e){ console.error(e); } }
+  if(!fotos.length){ est.textContent = 'No pude leer esas imágenes.'; btn.disabled = false; return; }
+  // Se mandan de a 4 para que cada envío sea liviano y no se corte
+  const lotes = []; for(let i=0;i<fotos.length;i+=4) lotes.push(fotos.slice(i,i+4));
+  let leidos = 0, fallidos = 0, ultimoError = '';
+  for(let i=0;i<lotes.length;i++){
+    est.textContent = `Leyendo capturas… lote ${i+1} de ${lotes.length}`;
+    try{
+      const r = await payDiaLlamar({ paso:'leer', imagenes: lotes[i] }, 58000);
+      const d = payDiaGet(); d.eventos = (d.eventos ? d.eventos.trim() + '\n' : '') + r.eventos; payDiaSet(d);
+      leidos += r.cantidad; payDiaPintar();
+    }catch(e){ fallidos += lotes[i].length; ultimoError = e.message; }
+  }
+  est.textContent = `✓ Leí ${leidos} evento${leidos===1?'':'s'} de ${fotos.length} captura${fotos.length>1?'s':''}.` + (fallidos ? ` No pude leer ${fallidos} (${ultimoError}) — súbelas de nuevo.` : ' Revisa que las cuotas estén bien.');
+  const det = document.getElementById('payDiaDet'); if(det) det.open = true;
   btn.disabled = false; payDiaPintar();
 }
 async function payDiaGenerar(){
