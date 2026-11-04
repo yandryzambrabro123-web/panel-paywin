@@ -6972,6 +6972,13 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     box.value = winTituloGanadaTexto(box.value, sel.value.split('|')[0]);
   };
   { const selG = document.getElementById('f-winGanadaBet'); if(selG) selG.addEventListener('change', winPonerTituloGanada); }
+  // El título de la ganada sigue al grupo al que se manda (VIP, gratis, stake de pago, regalito); si el grupo no lo define, usa el de la apuesta marcada.
+  const winCaptionDestino = (texto, grupo)=>{
+    if(kind !== 'ganada') return texto;
+    const sel = document.getElementById('f-winGanadaBet');
+    const key = winKeyGanadaDeGrupos([grupo]) || (sel && sel.value ? sel.value.split('|')[0] : '');
+    return key ? winTituloGanadaTexto(texto, key) : texto;
+  };
   wireWinCaptionTools(redactCtx);
   if(kind === 'ganada' && sendImage && sendImage.base64){
     (async ()=>{
@@ -7072,7 +7079,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     const grupo = decodeURIComponent(btn.dataset.winSendGroup);
     btn.onclick = ()=>{
       const box = document.getElementById('f-winCaptionConfirm');
-      const finalCaption = (box && box.value.trim()) || caption;
+      const finalCaption = winCaptionDestino((box && box.value.trim()) || caption, grupo);
       const link = winGroupLink(grupo);
       try{ navigator.clipboard.writeText(finalCaption); }catch(e){}
       if(link) window.open(link, '_blank');
@@ -7108,7 +7115,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     const grupo = decodeURIComponent(btn.dataset.winCanalGanada);
     btn.onclick = async ()=>{
       const box = document.getElementById('f-winCaptionConfirm');
-      const finalCaption = (box && box.value.trim()) || caption;
+      const finalCaption = winCaptionDestino((box && box.value.trim()) || caption, grupo);
       btn.disabled = true; btn.textContent = 'Mandando...';
       try{
         const imagenes = sendImage ? [sendImage.url ? { url: sendImage.url } : { base64: sendImage.base64, mediaType: sendImage.mediaType }] : [];
@@ -7129,7 +7136,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     const grupo = decodeURIComponent(btn.dataset.winAutoGroup);
     btn.onclick = async ()=>{
       const box = document.getElementById('f-winCaptionConfirm');
-      const finalCaption = (box && box.value.trim()) || caption;
+      const finalCaption = winCaptionDestino((box && box.value.trim()) || caption, grupo);
       const jid = winGroupJid(grupo);
       btn.disabled = true;
       btn.textContent = 'Mandando...';
