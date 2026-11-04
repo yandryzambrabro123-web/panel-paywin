@@ -6422,6 +6422,20 @@ async function winGuardarGanadaParaManana(texto, grupos, sendImage){
   }
   await persist('winGanadas');
 }
+const WIN_TITULO_GANADA = { vipBets:'APUESTA GANADA EN EL VIP', freeBets:'APUESTA GANADA EN EL GRATIS', liveBets:'APUESTA GANADA EN EL LIVE', stakes:'APUESTA STAKE DE PAGO GANADA', gifts:'APUESTA REGALITO GANADA' };
+// Pone en el texto de la ganada el título según de dónde viene: VIP, gratis, live, stake de pago o regalito.
+function winTituloGanadaTexto(texto, key){
+  const t = WIN_TITULO_GANADA[key]; if(!t) return texto;
+  const nuevo = `✅ *¡${t}!* 🔥`;
+  const lineas = String(texto||'').split('\n');
+  const i = lineas.slice(0,4).findIndex(l=>/ganad/i.test(l) && l.trim().length < 80);
+  if(i >= 0){ lineas[i] = nuevo; return lineas.join('\n'); }
+  return nuevo + '\n\n' + String(texto||'');
+}
+function winKeyGanadaDeGrupos(grupos){
+  const k = new Set((grupos||[]).map(g=>/vip/i.test(g) ? 'vipBets' : /gratis/i.test(g) ? 'freeBets' : /live/i.test(g) ? 'liveBets' : /stake/i.test(g) ? 'stakes' : /regalito/i.test(g) ? 'gifts' : ''));
+  k.delete(''); return k.size === 1 ? [...k][0] : '';
+}
 const winClaveGanada = (g)=>String(g.caption||'').replace(/\s+/g,' ').trim().toLowerCase();
 // Junta las ganadas guardadas repetidas (mismo día y texto) en una sola con todos sus grupos.
 async function winLimpiarGanadasDuplicadas(){
@@ -6925,6 +6939,10 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   const canalHoy = (kind === 'stake_pago' || kind === 'regalito') ? winCanalHoyGet(kind) : null;
   const canalHoyOk = canalHoy && canalHoy.day === new Date(Date.now() - 5*3600e3).toISOString().slice(0,10);
   const canalBtnHTML = canalHoyOk ? `<button class="btn secondary" id="winMandarCanalBtn" style="width:100%; margin-bottom:8px;">Mandar al canal de hoy ("${esc(canalHoy.nombre)}")</button>` : '';
+  if(kind === 'ganada'){
+    const kp = (winPreset && winPreset.ganada) ? String(winPreset.ganada).split('|')[0] : winKeyGanadaDeGrupos(grupos);
+    caption = winTituloGanadaTexto(caption, kp);
+  }
   openModal(`
     <h3>Así quedó el texto</h3>
     ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
@@ -6948,6 +6966,12 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     </div>
   `);
   document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
+  const winPonerTituloGanada = ()=>{
+    const sel = document.getElementById('f-winGanadaBet'), box = document.getElementById('f-winCaptionConfirm');
+    if(!sel || !box || !sel.value) return;
+    box.value = winTituloGanadaTexto(box.value, sel.value.split('|')[0]);
+  };
+  { const selG = document.getElementById('f-winGanadaBet'); if(selG) selG.addEventListener('change', winPonerTituloGanada); }
   wireWinCaptionTools(redactCtx);
   if(kind === 'ganada' && sendImage && sendImage.base64){
     (async ()=>{
@@ -6969,6 +6993,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
           if(sc > puntos){ puntos = sc; mejor = b; }
         });
         if(mejor && !(winPreset && winPreset.ganada)) sel.value = `${mejor._key}|${mejor.id}`;
+        winPonerTituloGanada();
         if(nota) nota.textContent = mejor ? 'Win sugirió la apuesta y los montos: revísalos antes de mandar.' : 'Leí los montos, pero no encontré cuál apuesta es: elígela tú.';
       }catch(e){ if(nota) nota.textContent = 'No pude leer la captura: elige la apuesta y escribe los montos.'; }
     })();
