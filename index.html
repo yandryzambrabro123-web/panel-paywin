@@ -6426,12 +6426,16 @@ const winClaveGanada = (g)=>String(g.caption||'').replace(/\s+/g,' ').trim().toL
 // Junta las ganadas guardadas repetidas (mismo día y texto) en una sola con todos sus grupos.
 async function winLimpiarGanadasDuplicadas(){
   const vistos = new Map(), borrar = [];
-  (state.winGanadas || []).filter(g=>g.status === 'pendiente').forEach(g=>{
-    const k = g.date + '|' + winClaveGanada(g);
+  const rango = { publicada:3, guardada:2, pendiente:1 };
+  (state.winGanadas || []).forEach(g=>{
+    const clave = winClaveGanada(g);
+    if(!clave && !g.imageUrl) return;
+    const k = String(g.date||'').slice(0,10) + '|' + (clave || g.imageUrl);
     const base = vistos.get(k);
     if(!base){ vistos.set(k, g); return; }
     base.grupos = [...new Set([...(base.grupos||'').split(',').filter(Boolean), ...(g.grupos||'').split(',').filter(Boolean)])].join(',');
     if(!base.imageUrl && g.imageUrl) base.imageUrl = g.imageUrl;
+    if((rango[g.status]||0) > (rango[base.status]||0)){ base.status = g.status; base.publishedAt = g.publishedAt || base.publishedAt; }
     borrar.push(g.id);
   });
   if(!borrar.length) return 0;
@@ -6465,7 +6469,9 @@ function winGanadasFiltradas(){
     return true;
   });
 }
+let winGanLimpiando = false;
 function renderWinGanadas(){
+  if(!winGanLimpiando){ winGanLimpiando = true; winLimpiarGanadasDuplicadas().then(n=>{ winGanLimpiando = false; if(n) renderWinGanadas(); }).catch(()=>{ winGanLimpiando = false; }); }
   const lista = winGanadasFiltradas();
   const hoy = winGanFechaMas(0);
   const chip = (k, t)=>`<button type="button" class="btn ${winGanFiltro === k ? '' : 'secondary'}" data-gan-f="${k}" style="padding:7px 14px;">${t}</button>`;
@@ -6986,7 +6992,9 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   };
   // Toda ganada que mandas queda guardada con su foto en la pestaña "Ganadas" (lista para subirla a la comunidad gratuita)
   let ganadaAutoUrl = null;
-  const winAutoGuardarGanada = async (texto, grupo)=>{
+  let ganadaCola = Promise.resolve();
+  const winAutoGuardarGanada = (texto, grupo)=>{ ganadaCola = ganadaCola.then(()=>winAutoGuardarGanadaUna(texto, grupo)).catch(()=>{}); return ganadaCola; };
+  const winAutoGuardarGanadaUna = async (texto, grupo)=>{
     if(kind !== 'ganada') return;
     const chk = document.getElementById('f-winGuardarGanada');
     if(chk && chk.checked) return; // ya la guarda la opción "guardarla para mañana"
@@ -6994,7 +7002,8 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       if(ganadaAutoUrl === null) ganadaAutoUrl = (await winSubirFotoReintento(sendImage, 'ganada')) || '';
       const hoy = new Date(Date.now() - 5*3600e3).toISOString().slice(0,10);
       const clave = winClaveGanada({ caption: texto });
-      let g = (state.winGanadas || []).find(x=>x.date === hoy && winClaveGanada(x) === clave && (!ganadaAutoUrl || x.imageUrl === ganadaAutoUrl));
+      let g = (state.winGanadas || []).find(x=>x.date === hoy && x.status !== 'pendiente' && winClaveGanada(x) === clave);
+      if(g && !g.imageUrl && ganadaAutoUrl) g.imageUrl = ganadaAutoUrl;
       if(!g){ g = { id: uid(), date: hoy, caption: texto, imageUrl: ganadaAutoUrl, grupos: '', status: 'guardada', publishedAt: '' }; state.winGanadas.push(g); }
       const gs = new Set(String(g.grupos||'').split(',').filter(Boolean)); gs.add(grupo); g.grupos = [...gs].join(',');
       await persist('winGanadas');
