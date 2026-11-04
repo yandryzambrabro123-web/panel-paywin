@@ -6309,11 +6309,11 @@ async function winMarcaAgua(base64, mediaType){
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    // Insignia grande que cubre casi todo el ancho, bien visible pero sin tapar la apuesta
-    const lado = Math.round(Math.min(c.width, c.height) * 0.95);
+    // Solo el logo, pequeño y muy suave, para que no tape la apuesta
+    const lado = Math.round(Math.min(c.width, c.height) * 0.6);
     const x = Math.round((c.width - lado) / 2), y = Math.round((c.height - lado) / 2);
     ctx.save();
-    ctx.globalAlpha = 0.3;
+    ctx.globalAlpha = 0.18;
     ctx.beginPath(); ctx.arc(x + lado/2, y + lado/2, lado * 0.49, 0, Math.PI * 2); ctx.clip(); // solo la insignia redonda, sin el fondo cuadrado
     ctx.drawImage(logo, x, y, lado, lado);
     ctx.restore();
