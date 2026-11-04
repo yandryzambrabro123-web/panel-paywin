@@ -210,6 +210,7 @@ async function procesarUpdate(u) {
         const txt = r.error ? `⚠️ ${r.error}` : (r.enCola ? '🕒 Cobrado: queda en cola hasta el próximo stake' : accion === 'ap' ? '✅ Aprobado' : '❌ Rechazado');
         await tg('answerCallbackQuery', { callback_query_id: cq.id, text: txt });
         if (cq.message) await tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: txt, callback_data: 'x' }]] } }).catch(() => {});
+        if (accion === 'ap' && r.ok && r.reg && !r.enCola) await require('./canales').avisarLinkAprobado('stake', HOJA_REGISTROS, r.reg);
         if (accion === 'ap' && r.ok && r.reg) await require('./cuadre').ofrecer({ tipo: 'st', regId: a, monto: 20, etiqueta: `Stake de pago — ${r.reg.nombre || ''} ${r.reg.apellido || ''}`.trim() });
       } else if (manejadores[accion]) {
         await manejadores[accion](cq, [a, b]);

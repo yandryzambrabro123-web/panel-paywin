@@ -313,9 +313,9 @@ async function enviarAvisosFaltantes() {
   let enviados = 0; const fallidos = [];
   for (const { v, tid } of r.faltan) {
     try {
-      const link = (await H.tg('createChatInviteLink', { chat_id: r.chatId, creates_join_request: true, name: 'vip:' + (v.registroId || v.id) })).invite_link;
+      const link = (await H.tg('createChatInviteLink', { chat_id: r.chatId, member_limit: 1, expire_date: Math.floor(Date.now() / 1000) + 72 * 3600, name: 'vip:' + (v.registroId || v.id) })).invite_link;
       const primero = nombreV(v).split(' ')[0];
-      await H.tg('sendMessage', { chat_id: Number(tid), disable_web_page_preview: true, text: `Hola ${primero} 👋\n\nTe escribo de parte de PayWin: el jefe me pidió avisarte que ya estás registrado en el sistema, pero todavía no te has unido al grupo VIP.\n\nEntra con este enlace directo y el jefe te aprueba enseguida:\n${link}\n\nCualquier duda, escríbenos al ${TELEFONO_AGENCIA}.` });
+      await H.tg('sendMessage', { chat_id: Number(tid), disable_web_page_preview: true, text: `Hola ${primero} 👋\n\nTe escribo de parte de PayWin: el jefe me pidió avisarte que ya estás registrado en el sistema, pero todavía no te has unido al grupo VIP.\n\nEntra con este enlace directo (es personal, sirve una sola vez):\n${link}\n\nCualquier duda, escríbenos al ${TELEFONO_AGENCIA}.` });
       enviados++;
     } catch (e) { fallidos.push(nombreV(v)); }
     await new Promise((ok) => setTimeout(ok, 300));

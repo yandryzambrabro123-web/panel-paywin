@@ -36,7 +36,7 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:0 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito. Lo revisamos y te mostramos el link del grupo.</p><div class="c" id="box"></div></div>
+</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito y tu número de teléfono. Lo revisamos y te mostramos el link del grupo.</p><div class="c" id="box"></div></div>
 <script>
 const $=s=>document.querySelector(s);let timer=null;const box=$('#box');
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -44,15 +44,17 @@ function guardar(id){try{localStorage.setItem('rgId',id)}catch(e){}}
 function leer(){try{return localStorage.getItem('rgId')||''}catch(e){return ''}}
 function limpiar(){try{localStorage.removeItem('rgId')}catch(e){}}
 function form(){
-  box.innerHTML='<label>Asignar el regalito a nombre de</label><input id="nom" autocomplete="name" placeholder="Nombre y apellido"><div class="e" id="err"></div><button id="env">Pedir mi regalito</button>';
+  box.innerHTML='<label>Asignar el regalito a nombre de</label><input id="nom" autocomplete="name" placeholder="Nombre y apellido"><label style="margin-top:14px">Tu número de teléfono (WhatsApp)</label><input id="tel" inputmode="tel" autocomplete="tel" maxlength="10" placeholder="0999999999"><div class="e" id="err"></div><button id="env">Pedir mi regalito</button>';
   $('#env').onclick=enviar;
 }
 async function enviar(){
   const b=$('#env'),er=$('#err');er.textContent='';
   const nombre=$('#nom').value.trim();
+  const telefono=$('#tel').value.replace(/\\D/g,'');
   if(nombre.length<3){er.textContent='Escribe el nombre completo.';return}
+  if(telefono.length<9||telefono.length>10){er.textContent='Revisa tu número de teléfono.';return}
   b.disabled=true;b.textContent='Enviando…';
-  try{const r=await fetch('/regalito/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre})});const d=await r.json();
+  try{const r=await fetch('/regalito/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,telefono})});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');guardar(d.id);espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Pedir mi regalito'}
 }
 function pinta(d,id){
@@ -82,11 +84,11 @@ async function regalitoVigente() {
 }
 
 async function avisarRegistro(reg, extra) {
-  const texto = `🎁 <b>Regalito del día${extra ? ' (de la cola)' : ''}</b>\n\nA nombre de: <b>${H.esc(reg.nombre)}</b>\nPedido: ${H.esc(reg.day)}\n\n¿Lo apruebo?`;
-  await H.tg('sendMessage', {
-    chat_id: H.TG_ADMIN(), text: texto, parse_mode: 'HTML',
-    reply_markup: { inline_keyboard: [[{ text: '✅ Aprobar', callback_data: 'ga:' + reg.id }, { text: '🕒 A la cola', callback_data: 'gq:' + reg.id }, { text: '❌ Rechazar', callback_data: 'gx:' + reg.id }]] }
-  });
+  const wa = require('./canales').waLink(reg.telefono);
+  const texto = `🎁 <b>Regalito del día${extra ? ' (de la cola)' : ''}</b>\n\nA nombre de: <b>${H.esc(reg.nombre)}</b>\nTeléfono: <b>${H.esc(reg.telefono || 'sin teléfono')}</b>\nPedido: ${H.esc(reg.day)}\n\n¿Lo apruebo?`;
+  const filas = [[{ text: '✅ Aprobar', callback_data: 'ga:' + reg.id }, { text: '🕒 A la cola', callback_data: 'gq:' + reg.id }, { text: '❌ Rechazar', callback_data: 'gx:' + reg.id }]];
+  if (wa) filas.push([{ text: '💬 Abrir su chat de WhatsApp', url: wa }]);
+  await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: texto, parse_mode: 'HTML', reply_markup: { inline_keyboard: filas } });
 }
 
 // Avisa al jefe por Telegram y deja anotado que ya se avisó (para no repetir). Nunca lanza error.
@@ -203,7 +205,7 @@ function montar(app, stakes, extra) {
     }));
     if (!reg) return '⚠️ No encontré ese pedido';
     if (ya) return `⚠️ Ya estaba ${reg.estado}`;
-    if (destino === 'aprobado') return '✅ Aprobado';
+    if (destino === 'aprobado'){ require('./canales').avisarLinkAprobado('regalito', HOJA_REG, reg).catch(() => {}); return '✅ Aprobado'; }
     if (destino === 'rechazado') return '❌ Rechazado';
     return quiere === 'aprobado' ? '🕒 No hay regalito habilitado: lo dejé en cola' : '🕒 En cola';
   }
@@ -226,11 +228,13 @@ function montar(app, stakes, extra) {
     try {
       if (!H.TG_TOKEN() || !H.TG_ADMIN()) return res.status(500).json({ error: 'El registro no está configurado todavía.' });
       const nombre = H.limpio((req.body || {}).nombre, 80);
+      const telefono = H.soloDigitos((req.body || {}).telefono);
       if (nombre.length < 3) return res.status(400).json({ error: 'Escribe el nombre completo.' });
-      const reg = { id: H.nuevoId(), createdAt: new Date().toISOString(), day: H.hoyEC(), nombre, estado: 'pendiente', link: '', regalitoId: '', resueltoAt: '' };
+      if (telefono.length < 9 || telefono.length > 10) return res.status(400).json({ error: 'Revisa tu número de teléfono.' });
+      const reg = { id: H.nuevoId(), createdAt: new Date().toISOString(), day: H.hoyEC(), nombre, telefono, estado: 'pendiente', link: '', regalitoId: '', resueltoAt: '' };
       let repetido = null;
       await H.cambiarHoja(HOJA_REG, (filas) => {
-        repetido = filas.find((f) => (f.estado === 'pendiente' || f.estado === 'cola') && f.nombre.toLowerCase() === nombre.toLowerCase());
+        repetido = filas.find((f) => (f.estado === 'pendiente' || f.estado === 'cola') && (f.nombre.toLowerCase() === nombre.toLowerCase() || (f.telefono && f.telefono === telefono)));
         return repetido ? filas : [...filas, reg];
       });
       if (repetido) {

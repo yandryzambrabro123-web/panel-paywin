@@ -40,12 +40,45 @@ async function anotarMsg(chatId, msgId) {
 }
 
 // Link de un solo uso para un cliente. Devuelve '' si el canal no está configurado.
+// Sin "pedir ingreso": el jefe ya aprobó al registrarlo, así que la persona entra de una (el link sirve a 1 sola persona).
 async function linkUnico(clave, nombre) {
   const c = await canalDe(clave);
   if (!c) return '';
-  // creates_join_request: cada vez que alguien usa el link, NO entra solo: pide entrar y el bot/jefe lo aprueba
-  const r = await H.tg('createChatInviteLink', { chat_id: c.chatId, creates_join_request: true, name: String(nombre || c.titulo || clave).slice(0, 32) });
+  const r = await H.tg('createChatInviteLink', { chat_id: c.chatId, member_limit: 1, expire_date: Math.floor(Date.now() / 1000) + 72 * 3600, name: String(nombre || c.titulo || clave).slice(0, 32) });
   return r.invite_link || '';
+}
+
+// Link de WhatsApp para abrir el chat de ese número (Ecuador).
+function waLink(tel) {
+  let d = String(tel || '').replace(/\D/g, '');
+  if (d.length < 9) return '';
+  if (d.startsWith('593')) return 'https://wa.me/' + d;
+  if (d.startsWith('0')) d = d.slice(1);
+  return 'https://wa.me/593' + d;
+}
+
+// Al aprobar un registro: crea (o reutiliza) su link de un solo uso y se lo manda al jefe con el teléfono,
+// para que pueda pasárselo por WhatsApp aunque la persona ya haya cerrado la página. No manda nada al cliente.
+async function avisarLinkAprobado(clave, hoja, reg) {
+  try {
+    const c = await canalDe(clave);
+    if (!c || !reg) return;
+    const fila = (await H.leerHoja(hoja)).find((f) => String(f.id) === String(reg.id)) || reg;
+    let unico = fila.linkUnico || '';
+    if (!unico) {
+      const nombre = `${clave === 'stake' ? 'Stake' : 'Regalito'} ${fila.day || H.hoyEC()} ${fila.nombre || ''}`.trim();
+      unico = await linkUnico(clave, nombre);
+      if (unico) await H.cambiarHoja(hoja, (filas) => filas.map((f) => String(f.id) === String(fila.id) ? { ...f, linkUnico: unico } : f));
+    }
+    if (!unico) return;
+    const quien = `${fila.nombre || ''} ${fila.apellido || ''}`.trim() || 'cliente';
+    const wa = waLink(fila.telefono);
+    await H.tg('sendMessage', {
+      chat_id: H.TG_ADMIN(), parse_mode: 'HTML', disable_web_page_preview: true,
+      text: `🔗 <b>${H.esc(quien)}</b> — ${clave === 'stake' ? 'stake de pago' : 'regalito'}\nTeléfono: ${H.esc(fila.telefono || 'sin teléfono')}\n\nLink de un solo uso (entra directo, sin que apruebes otra vez). Si no lo ve en pantalla, mándaselo tú:\n${unico}`,
+      ...(wa ? { reply_markup: { inline_keyboard: [[{ text: '💬 Abrir su chat de WhatsApp', url: wa }]] } } : {})
+    });
+  } catch (e) { console.error('Aviso de link aprobado:', e.message); }
 }
 
 async function enviarFoto(chat_id, img, caption) {
@@ -216,4 +249,4 @@ async function manejarIngreso(jr) {
   return true;
 }
 
-module.exports = { montar, linkUnico, canalDe, publicar, vaciar, manejarIngreso };
+module.exports = { montar, linkUnico, waLink, avisarLinkAprobado, canalDe, publicar, vaciar, manejarIngreso };
