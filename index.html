@@ -1179,7 +1179,7 @@ function coerceRow(key, row){
     return { id:String(row.id||''), day:row.day||'', title:row.title||'Stake', price:Number(row.price)||0, telegramLink:String(row.telegramLink||'') };
   }
   if(key === 'stakes'){
-    return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending', imageUrl:String(row.imageUrl||''), event:String(row.event||''), seleccion:String(row.seleccion||''), odds:Number(row.odds)||0 };
+    return { id:String(row.id||''), description:row.description||'', amount:Number(row.amount)||0, date:row.date||'', result:row.result||'pending', imageUrl:String(row.imageUrl||''), event:String(row.event||''), seleccion:String(row.seleccion||''), odds:Number(row.odds)||0, imageWonUrl:String(row.imageWonUrl||''), returned:Number(row.returned)||0, ganancia:Number(row.ganancia)||0 };
   }
   if(key === 'financeMovements'){
     return { id:String(row.id||''), date:row.date||'', accountId:row.accountId||'', type:row.type==='out'?'out':'in', amount:Number(row.amount)||0, note:row.note||'', transferId:row.transferId||'', comprobanteNumero:row.comprobanteNumero||'', receiptImage:row.receiptImage||'', createdAt:row.createdAt||'', createdBy:row.createdBy||'' };
@@ -1222,7 +1222,7 @@ function coerceRow(key, row){
     // sin cargar la lista COMPLETA de difusión, no solo ese contacto.
     return { id:String(row.id||''), nombre:String(row.nombre||''), telefono:String(row.telefono||''), listas:String(row.listas||''), createdAt:row.createdAt||'' };
   }
-  return { event:String(row.event||''), seleccion:String(row.seleccion||''), id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending', imageUrl:String(row.imageUrl||'') };
+  return { event:String(row.event||''), seleccion:String(row.seleccion||''), id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending', imageUrl:String(row.imageUrl||''), imageWonUrl:String(row.imageWonUrl||''), returned:Number(row.returned)||0, ganancia:Number(row.ganancia)||0 };
 }
 
 async function fetchSheetKey(key){
@@ -5096,6 +5096,10 @@ const WIN_GROUPS = [
   { nombre: 'VIP Más Parley', link: 'https://chat.whatsapp.com/CKflDIZfyFh9cHPgTYiobt', jid: '120363411657541281@g.us' }
 ];
 const WIN_DESTINOS = WIN_GROUPS.map(g => g.nombre);
+// Canales privados de Telegram a donde también se puede mandar la apuesta GANADA (en verde)
+const WIN_CANALES_GANADA = ['Canal stake de pago', 'Canal regalito del día'];
+const winEsCanal = (n)=>/^canal /i.test(String(n||'').trim());
+const winClaveCanal = (n)=>/regalito/i.test(String(n||'')) ? 'regalito' : 'stake';
 function winGroupLink(nombre){
   const g = WIN_GROUPS.find(x => x.nombre.toLowerCase() === (nombre||'').toLowerCase());
   return g ? g.link : '';
@@ -5107,7 +5111,7 @@ function winGroupJid(nombre){
 // Checkboxes en vez de un select -- así se puede marcar varios grupos a la vez (ej. los 3
 // gratis juntos) y Win manda una entrada en la bandeja por cada uno, cada una con su propio
 // botón de "Abrir grupo". preselected puede ser un string o un array de nombres.
-function winGroupPickerHTML(idPrefix, preselected){
+function winGroupPickerHTML(idPrefix, preselected, extras){
   const pre = Array.isArray(preselected) ? preselected : (preselected ? [preselected] : []);
   const preLower = pre.map(p=>p.toLowerCase());
   return `<div class="win-group-picker" id="${idPrefix}">
@@ -5115,6 +5119,7 @@ function winGroupPickerHTML(idPrefix, preselected){
       <input type="checkbox" value="${g.nombre}" ${preLower.includes(g.nombre.toLowerCase()) ? 'checked' : ''}>
       ${g.nombre}${!g.link ? ' <span style="color:var(--muted); font-size:11px;">(sin link todavía)</span>' : ''}
     </label>`).join('')}
+    ${(extras||[]).map(n=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; cursor:pointer;"><input type="checkbox" value="${n}"> ${n} <span style="color:var(--muted); font-size:11px;">(Telegram)</span></label>`).join('')}
     <label style="display:flex; align-items:center; gap:8px; padding:6px 0 2px; font-size:13px;">
       <input type="text" id="${idPrefix}-custom" placeholder="Otro grupo (opcional)" style="flex:1;">
     </label>
@@ -5159,7 +5164,7 @@ function openWinBetForm(kind, destinoGuess, fijo){
         ${winApuestasPendientes().map(b=>`<option value="${b._key}|${b.id}">[${b._tag}] ${String(b.pick||'').slice(0,60)} · ${fmtDate(b.date)}</option>`).join('')}
       </select></div>`)}
     ${fijo ? '' : `<label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:0 0 12px; cursor:pointer;"><input type="checkbox" id="f-winCensurar"> ✏️ Quiero censurar la captura yo mismo antes de mandar</label>
-    <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winGroups', destinoGuess)}</div>`}
+    <div class="field"><label>A dónde va (marca uno o varios)</label>${winGroupPickerHTML('f-winGroups', destinoGuess, isGanada ? WIN_CANALES_GANADA : [])}</div>`}
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="winGenerateBtn">Generar y mandar a la bandeja</button>
@@ -6642,7 +6647,7 @@ async function openWinGanadasAyerModal(){
 const WIN_TELEFONO = '0987264212';
 // Si el texto va SOLO a grupos VIP, no lleva CTA ("entra al VIP", teléfono): ya están dentro.
 const winSoloVip = (g)=>{ const l = Array.isArray(g) ? g : String(g||'').split(','); const n = l.map(x=>String(x).trim()).filter(Boolean); return n.length > 0 && n.every(x=>/vip/i.test(x)); };
-const winTelPara = (g)=> winSoloVip(g) ? '' : WIN_TELEFONO;
+const winTelPara = (g)=> (winSoloVip(g) || (Array.isArray(g) && g.length && g.every(winEsCanal))) ? '' : WIN_TELEFONO;
 const WIN_CTA_POR_TIPO = {
   nueva_apuesta: n => `📲 *¿Quieres entrar al VIP?* Escríbenos al *${n}*`,
   ganada: n => `📲 *Súmate y gana con nosotros:* escríbenos al *${n}*`,
@@ -6652,7 +6657,8 @@ const WIN_CTA_POR_TIPO = {
   contenido: n => `📲 Escríbenos al ${n}`
 };
 function winAsegurarCTA(texto, kind, grupos){
-  const tel = winSoloVip(grupos) ? '' : String(WIN_TELEFONO || '').trim();
+  const todosCanales = Array.isArray(grupos) && grupos.length && grupos.every(winEsCanal);
+  const tel = (winSoloVip(grupos) || todosCanales) ? '' : String(WIN_TELEFONO || '').trim();
   const t = String(texto || '').trim();
   if(!tel || !t || kind === 'regalito') return t;
   const digitos = tel.replace(/\D/g, '');
@@ -6868,7 +6874,9 @@ function winApuestasPendientes(){
   const todas = [
     ...(state.vipBets||[]).map(b=>({ ...b, _key:'vipBets', _tag:'VIP' })),
     ...(state.freeBets||[]).map(b=>({ ...b, _key:'freeBets', _tag:'Gratis' })),
-    ...(state.liveBets||[]).map(b=>({ ...b, _key:'liveBets', _tag:'Live' }))
+    ...(state.liveBets||[]).map(b=>({ ...b, _key:'liveBets', _tag:'Live' })),
+    ...(state.gifts||[]).map(b=>({ ...b, _key:'gifts', _tag:'Regalito' })),
+    ...(state.stakes||[]).map(b=>({ ...b, pick: b.pick || b.description || b.seleccion || '', _key:'stakes', _tag:'Stake' }))
   ].filter(b=>b.result==='pending');
   return todas.sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,25);
 }
@@ -6897,6 +6905,9 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   const groupButtonsHTML = grupos.map((g, i) => {
     const jid = winGroupJid(g);
     const link = winGroupLink(g);
+    if(winEsCanal(g)){
+      return `<button class="btn ${i===0 ? '' : 'secondary'}" data-win-canal-ganada="${encodeURIComponent(g)}" style="width:100%; margin-bottom:8px;">Mandar al "${g}" (Telegram)</button>`;
+    }
     if(jid){
       return `<button class="btn ${i===0 ? '' : 'secondary'}" data-win-auto-group="${encodeURIComponent(g)}" style="width:100%; margin-bottom:8px;">Mandar directo a "${g}"</button>`;
     }
@@ -7055,6 +7066,27 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       }catch(e){ console.error(e); alert('No se pudo mandar al canal: ' + e.message); canalBtn.disabled = false; canalBtn.textContent = 'Mandar al canal de hoy'; }
     };
   }
+
+  document.querySelectorAll('[data-win-canal-ganada]').forEach(btn=>{
+    const grupo = decodeURIComponent(btn.dataset.winCanalGanada);
+    btn.onclick = async ()=>{
+      const box = document.getElementById('f-winCaptionConfirm');
+      const finalCaption = (box && box.value.trim()) || caption;
+      btn.disabled = true; btn.textContent = 'Mandando...';
+      try{
+        const imagenes = sendImage ? [sendImage.url ? { url: sendImage.url } : { base64: sendImage.base64, mediaType: sendImage.mediaType }] : [];
+        await canalTgLlamar({ modo:'canal_publicar', clave: winClaveCanal(grupo), texto: finalCaption, imagenes }); // sin título: no renombra el canal
+        await pushToOutbox(kind, grupo, finalCaption, thumb, true, 'enviado');
+        await persist('winOutbox');
+        await winRegistrarSiToca(finalCaption, grupo);
+        btn.textContent = `Mandado a "${grupo}" ✓`; btn.classList.add('secondary');
+      }catch(e){
+        console.error(e);
+        alert(`No se pudo mandar a "${grupo}": ${e.message}`);
+        btn.disabled = false; btn.textContent = `Mandar al "${grupo}" (Telegram)`;
+      }
+    };
+  });
 
   document.querySelectorAll('[data-win-auto-group]').forEach(btn=>{
     const grupo = decodeURIComponent(btn.dataset.winAutoGroup);
