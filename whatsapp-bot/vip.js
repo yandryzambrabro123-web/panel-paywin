@@ -239,24 +239,28 @@ function aHtmlTelegram(t) {
 }
 // Sticker separador (el mismo logo PayWin que usan los grupos de WhatsApp): se manda después de cada publicación del VIP para
 // que se vea dónde termina una y empieza otra. Mejor esfuerzo: si falla no tumba el envío.
-let _sepFileId = '';
-async function mandarSeparadorVip(chat_id) {
+const _sepFileIds = {};
+async function mandarSeparadorVip(chat_id, tipo) {
+  const clave = ['vip', 'gratis', 'live', 'ganada', 'stake', 'regalito'].includes(String(tipo)) ? String(tipo) : 'general';
   try {
-    if (_sepFileId) { await H.tg('sendSticker', { chat_id, sticker: _sepFileId }); return; }
-    const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'separador.webp'));
+    if (_sepFileIds[clave]) { await H.tg('sendSticker', { chat_id, sticker: _sepFileIds[clave] }); return; }
+    const fs = require('fs'), path = require('path');
+    let archivo = path.join(__dirname, 'assets', clave === 'general' ? 'separador.webp' : `separador-${clave}.webp`);
+    if (!fs.existsSync(archivo)) archivo = path.join(__dirname, 'assets', 'separador.webp');
+    const buf = fs.readFileSync(archivo);
     const fd = new FormData();
     fd.append('chat_id', chat_id);
     fd.append('sticker', new Blob([buf], { type: 'image/webp' }), 'separador.webp');
     const r = await fetch(`https://api.telegram.org/bot${H.TG_TOKEN()}/sendSticker`, { method: 'POST', body: fd });
     const j = await r.json().catch(() => ({}));
     if (!j.ok) throw new Error(j.description || r.status);
-    _sepFileId = (j.result && j.result.sticker && j.result.sticker.file_id) || '';
+    _sepFileIds[clave] = (j.result && j.result.sticker && j.result.sticker.file_id) || '';
   } catch (e) {
     console.error('No se pudo mandar el separador al VIP de Telegram:', e && e.message);
     try { await H.tg('sendMessage', { chat_id, text: '━━━━━━━━━━━━━━━━━━━━' }); } catch (e2) { /* nada */ }
   }
 }
-async function enviarAlGrupoVip({ texto, imagenes, sinSeparador }) {
+async function enviarAlGrupoVip({ texto, imagenes, sinSeparador, tipo }) {
   const cfg = (await H.leerHoja(HOJA_CONFIG))[0];
   if (!cfg || !cfg.chatId) throw new Error('Falta el grupo VIP de Telegram: escribe /vipgrupo dentro del grupo.');
   const chat_id = cfg.chatId;
@@ -274,10 +278,10 @@ async function enviarAlGrupoVip({ texto, imagenes, sinSeparador }) {
     return j.result;
   };
   const t = String(texto || '');
-  if (fotos.length === 1 && t.length <= 1000) { await subir(fotos[0], t); if (!sinSeparador) await mandarSeparadorVip(chat_id); return; }
+  if (fotos.length === 1 && t.length <= 1000) { await subir(fotos[0], t); if (!sinSeparador) await mandarSeparadorVip(chat_id, tipo); return; }
   for (const f of fotos) await subir(f, '');
   if (t) await H.tg('sendMessage', { chat_id, text: aHtmlTelegram(t), parse_mode: 'HTML' });
-  if (!sinSeparador) await mandarSeparadorVip(chat_id);
+  if (!sinSeparador) await mandarSeparadorVip(chat_id, tipo);
 }
 
 

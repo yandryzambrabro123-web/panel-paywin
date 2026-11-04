@@ -265,12 +265,19 @@ async function mandarBannerGratis(grupoId) {
   try { await sock.sendMessage(grupoId, { image: bannerGratisBuffer, mimetype: 'image/jpeg' }); }
   catch (e) { console.error('No se pudo mandar el banner a', grupoId, '--', e && e.message); }
 }
-async function mandarSeparador(grupoId) {
+// Stickers con el tipo de publicación (APUESTA VIP, APUESTA GRATIS, etc.): assets/separador-<tipo>.webp
+const TIPOS_SEPARADOR = ['vip', 'gratis', 'live', 'ganada', 'stake', 'regalito'];
+const separadoresPorTipo = {};
+for (const t of TIPOS_SEPARADOR) {
+  try { separadoresPorTipo[t] = fs.readFileSync(path.join(__dirname, 'assets', `separador-${t}.webp`)); } catch (e) { /* si falta, se usa el genérico */ }
+}
+async function mandarSeparador(grupoId, tipo) {
   try {
     await pausaHumana();
-    if (separadorStickerBuffer) {
+    const sticker = (tipo && separadoresPorTipo[String(tipo)]) || separadorStickerBuffer;
+    if (sticker) {
       try {
-        await sock.sendMessage(grupoId, { sticker: separadorStickerBuffer, mimetype: 'image/webp' });
+        await sock.sendMessage(grupoId, { sticker, mimetype: 'image/webp' });
         return;
       } catch (e) {
         // Si el sticker falla, se avisa en los logs con el detalle y se manda la línea de
@@ -292,10 +299,10 @@ async function mandarSeparador(grupoId) {
 app.post('/enviar', requireApiKey, async (req, res) => {
   // El grupo VIP ya NO está en WhatsApp: lo que iba ahí sale por el grupo VIP de Telegram.
   if (req.body && req.body.grupoId === vipMod.VIP_WHATSAPP_JID) {
-    const { texto, imagenBase64, imagenUrl, mediaType, sinSeparador } = req.body;
+    const { texto, imagenBase64, imagenUrl, mediaType, sinSeparador, tipo } = req.body;
     if (!texto && !imagenBase64 && !imagenUrl) return res.status(400).json({ error: 'Falta el texto.' });
     try {
-      await vipMod.enviarAlGrupoVip({ texto, sinSeparador, imagenes: (imagenUrl || imagenBase64) ? [{ url: imagenUrl || '', base64: imagenUrl ? '' : imagenBase64, mediaType }] : [] });
+      await vipMod.enviarAlGrupoVip({ texto, sinSeparador, tipo, imagenes: (imagenUrl || imagenBase64) ? [{ url: imagenUrl || '', base64: imagenUrl ? '' : imagenBase64, mediaType }] : [] });
       return res.json({ ok: true, via: 'telegram' });
     } catch (e) {
       console.error('Envío al VIP de Telegram:', e);
@@ -305,7 +312,7 @@ app.post('/enviar', requireApiKey, async (req, res) => {
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
   }
-  const { grupoId, texto, imagenBase64, imagenUrl, mediaType, sinSeparador, banner } = req.body || {};
+  const { grupoId, texto, imagenBase64, imagenUrl, mediaType, sinSeparador, banner, tipo } = req.body || {};
   if (!grupoId || !texto) {
     return res.status(400).json({ error: 'Falta grupoId o texto.' });
   }
@@ -320,7 +327,7 @@ app.post('/enviar', requireApiKey, async (req, res) => {
     } else {
       await sock.sendMessage(grupoId, { text: texto });
     }
-    if (!sinSeparador) await mandarSeparador(grupoId);
+    if (!sinSeparador) await mandarSeparador(grupoId, tipo);
     res.json({ ok: true });
   } catch (e) {
     console.error('Error mandando mensaje:', e);
