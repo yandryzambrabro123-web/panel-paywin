@@ -8973,6 +8973,25 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
   }
 }
 </script>
-<div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;">versión 5 nov, 10:30</div>
+<div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
+<script>
+// Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
+const PANEL_VERSION = '5 nov, 10:45';
+(function(){
+  const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
+  async function revisar(){
+    try{
+      const r = await fetch('/index.html?chk=' + Date.now(), { cache:'no-store' });
+      const m = /const PANEL_VERSION = '([^']+)'/.exec(await r.text());
+      if(!m || m[1] === PANEL_VERSION) return;
+      let ya = ''; try{ ya = sessionStorage.getItem('panelRecarga') || ''; }catch(e){}
+      if(ya !== m[1]){ try{ sessionStorage.setItem('panelRecarga', m[1]); }catch(e){} location.replace(location.pathname + '?v=' + Date.now()); return; }
+      if(el){ el.style.pointerEvents = 'auto'; el.style.opacity = '1'; el.style.color = '#ffb454'; el.style.cursor = 'pointer'; el.textContent = 'Hay una versión nueva: toca aquí para actualizar'; el.onclick = ()=>location.replace(location.pathname + '?v=' + Date.now()); }
+    }catch(e){}
+  }
+  revisar(); setInterval(revisar, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) revisar(); });
+})();
+</script>
 </body>
 </html>
