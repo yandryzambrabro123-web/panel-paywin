@@ -6315,7 +6315,7 @@ async function winMarcaAgua(base64, mediaType){
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
     // Solo el logo, pequeño y muy suave, para que no tape la apuesta
-    const lado = Math.round(Math.min(c.width, c.height) * 0.6);
+    const lado = Math.round(Math.min(c.width, c.height) * 0.78);
     const x = Math.round((c.width - lado) / 2), y = Math.round((c.height - lado) / 2);
     ctx.save();
     ctx.globalAlpha = 0.18;
@@ -8973,6 +8973,6 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
   }
 }
 </script>
-<div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;">versión 4 nov, 15:00</div>
+<div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;">versión 5 nov, 10:30</div>
 </body>
 </html>
