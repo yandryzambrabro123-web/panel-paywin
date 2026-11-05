@@ -98,21 +98,24 @@ async function getDedupeState(today) {
       const json = await res.json();
       if (!Array.isArray(json.data)) throw new Error('respuesta sin datos');
       const row = json.data[0];
-      if (!row || !esHoy(row.lastSentDate, today)) return { sentSteps: new Set() };
+      if (!row || !esHoy(row.lastSentDate, today)) return { sentSteps: new Set(), horas: {} };
       const list = String(row.sentSteps || '').split('|').map(norm).filter(Boolean);
-      return { sentSteps: new Set(list) };
+      const horas = {};
+      String(row.sentLog || '').split('|').forEach((x) => { const i = x.lastIndexOf('='); if (i > 0) horas[norm(x.slice(0, i))] = x.slice(i + 1); });
+      return { sentSteps: new Set(list), horas };
     } catch (e) { ultimo = e; await new Promise((r) => setTimeout(r, 800)); }
   }
   throw new Error('No pude verificar qué se mandó hoy (' + (ultimo && ultimo.message) + '). No mando nada para no repetir.');
 }
 
-async function setDedupeState(today, sentStepsSet) {
+const horaEc = () => new Date(Date.now() - 5 * 3600e3).toISOString().slice(11, 16);
+async function setDedupeState(today, sentStepsSet, horas) {
   await fetch(SHEETS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({
       sheet: DEDUPE_SHEET,
-      data: [{ id: 'estado', lastSentDate: marcaDia(today), sentSteps: Array.from(sentStepsSet).join('|') }]
+      data: [{ id: 'estado', lastSentDate: marcaDia(today), sentSteps: Array.from(sentStepsSet).join('|'), sentLog: Object.entries(horas || {}).map(([k, v]) => k + '=' + v).join('|') }]
     })
   });
 }
@@ -161,15 +164,19 @@ module.exports = async function handler(req, res) {
   }
 
   // Pedido de un solo paso suelto (ej: "manda ya la de buenos días"): viene en el body del POST.
-  let soloPaso = '';
+  let soloPaso = '', forzar = false;
   if (req.method === 'POST' && req.body) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body;
     soloPaso = norm(body.step || '');
+    forzar = body.forzar === true; // solo desde el panel y con confirmación: manda aunque diga que ya salió
   }
 
   try {
     const today = ecuadorDateStr();
-    const { sentSteps } = await getDedupeState(today);
+    const estado = await getDedupeState(today);
+    const sentSteps = forzar && !soloPaso ? new Set() : estado.sentSteps;
+    const horas = estado.horas || {};
+    const detalleHoy = () => PROTOCOLO_STEPS.filter((x) => estado.sentSteps.has(norm(x.nombre))).map((x) => x.nombre.replace('protocolo ', '') + (horas[norm(x.nombre)] ? ' (' + horas[norm(x.nombre)] + ')' : '')).join(', ');
 
     if (soloPaso) {
       const step = PROTOCOLO_STEPS.find(s => norm(s.nombre) === soloPaso);
@@ -177,8 +184,8 @@ module.exports = async function handler(req, res) {
         res.status(400).json({ ok: false, error: 'No reconozco ese paso del protocolo.' });
         return;
       }
-      if (sentSteps.has(norm(step.nombre))) {
-        res.status(200).json({ ok: true, skipped: true, paso: step.nombre, reason: 'Esa pieza ya se había mandado hoy.' });
+      if (!forzar && sentSteps.has(norm(step.nombre))) {
+        res.status(200).json({ ok: true, skipped: true, paso: step.nombre, reason: 'Esa pieza ya se había mandado hoy.', detalle: detalleHoy() });
         return;
       }
       const templates = await fetchTemplatesByName();
@@ -193,8 +200,8 @@ module.exports = async function handler(req, res) {
         res.status(200).json({ ok: false, paso: step.nombre, error: stepErr.message });
         return;
       }
-      sentSteps.add(norm(step.nombre));
-      await setDedupeState(today, sentSteps);
+      sentSteps.add(norm(step.nombre)); horas[norm(step.nombre)] = horaEc();
+      await setDedupeState(today, sentSteps, horas);
       if (sentSteps.size === PROTOCOLO_STEPS.length) await agregarNovedad('protocolo', 'Protocolo de la mañana completo', 'Ya salieron las 4 piezas del día (buenos días, recargas y retiros, beneficios y apuesta gratis).');
       res.status(200).json({ ok: true, skipped: false, paso: step.nombre });
       return;
@@ -203,7 +210,7 @@ module.exports = async function handler(req, res) {
     // Modo completo (cron de las 8am, o "manda ya todo el protocolo"): manda solo lo que
     // falte -- lo que ya se mandó hoy (a mano, paso por paso) se saltea sin repetirlo.
     if (sentSteps.size === PROTOCOLO_STEPS.length) {
-      res.status(200).json({ ok: true, skipped: true, reason: 'El protocolo de hoy ya se había mandado completo.' });
+      res.status(200).json({ ok: true, skipped: true, reason: 'El protocolo de hoy ya se había mandado completo.', detalle: detalleHoy() });
       return;
     }
 
@@ -224,16 +231,16 @@ module.exports = async function handler(req, res) {
       try {
         const enviado = await enviarPaso(step, templates, botUrl, botKey);
         if (!enviado) { missing.push(step.nombre); continue; }
-        sentSteps.add(norm(step.nombre));
+        sentSteps.add(norm(step.nombre)); horas[norm(step.nombre)] = horaEc();
         enviadosAhora.push(step.nombre);
-        try { await setDedupeState(today, sentSteps); } catch (e) { console.error('No pude guardar el avance:', e); }
+        try { await setDedupeState(today, sentSteps, horas); } catch (e) { console.error('No pude guardar el avance:', e); }
       } catch (stepErr) {
         console.error(`Error mandando el paso "${step.nombre}":`, stepErr);
         fallidos.push({ paso: step.nombre, error: stepErr.message });
       }
     }
 
-    await setDedupeState(today, sentSteps);
+    await setDedupeState(today, sentSteps, horas);
     if (sentSteps.size === PROTOCOLO_STEPS.length && enviadosAhora.length) {
       await agregarNovedad('protocolo', 'Protocolo de la mañana enviado', 'Salieron las 4 piezas del día: buenos días, recargas y retiros, beneficios y apuesta gratis.');
     } else if (fallidos.length || missing.length) {

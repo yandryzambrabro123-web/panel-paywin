@@ -3481,10 +3481,15 @@ function renderWin(){
     const btn = document.getElementById('winQuickProtocoloBtn'); const txt = btn.querySelector('span').textContent;
     btn.disabled = true; btn.querySelector('span').textContent = 'Mandando...';
     try{
-      const res = await fetch('/api/win-protocolo-manana', { method:'POST' });
-      const data = await res.json().catch(()=>({}));
+      let res = await fetch('/api/win-protocolo-manana', { method:'POST' });
+      let data = await res.json().catch(()=>({}));
       if(!res.ok || !data.ok) throw new Error(data.error || 'No se pudo mandar.');
-      if(data.skipped) alert('El protocolo de hoy ya se había mandado completo. No lo repito.');
+      if(data.skipped && confirm('Según el registro, el protocolo de hoy ya se mandó completo' + (data.detalle ? ': ' + data.detalle : '') + '.\n\n¿No lo ves en los grupos? Puedes mandarlo OTRA VEZ de todas formas (si sí les llegó, se les repite).\n\nAceptar = mandarlo de nuevo ahora.\nCancelar = no mandar nada.')){
+        res = await fetch('/api/win-protocolo-manana', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ forzar:true }) });
+        data = await res.json().catch(()=>({}));
+        if(!res.ok || !data.ok) throw new Error(data.error || 'No se pudo mandar.');
+      }
+      if(data.skipped) alert('Listo, no mandé nada.');
       else if(!data.enviadosAhora || !data.enviadosAhora.length) alert('Ya estaba todo mandado, no quedaba nada pendiente.');
       else if(data.fallidos && data.fallidos.length) alert(`Mandé ${data.enviadosAhora.length} de ${data.totalSteps}, pero ${data.fallidos.length} fallaron. Vuelve a pulsar el botón para reintentar solo lo que falló.`);
       else alert(`Listo. Mandé ${data.enviadosAhora.length} de ${data.totalSteps} piezas del protocolo.`);
