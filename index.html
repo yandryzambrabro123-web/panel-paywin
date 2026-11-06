@@ -5707,7 +5707,7 @@ function openCanalTgModal(clave, pre){
     const b = document.getElementById('canalPublicarBtn'); b.disabled = true; b.textContent = 'Publicando...';
     try{
       const imagenes = winPendingFile ? [await fileToCompressedImage(winPendingFile).then(x=>({ base64:x.base64, mediaType:x.mediaType }))] : (pickListo ? [{ base64:pickListo.base64, mediaType:pickListo.mediaType }] : []);
-      for(let i=0;i<imagenes.length;i++){ if(imagenes[i].base64){ const m = await winMarcaAgua(imagenes[i].base64, imagenes[i].mediaType); imagenes[i] = { base64:m.base64, mediaType:m.mediaType }; } }
+      for(let i=0;i<imagenes.length;i++){ if(imagenes[i].base64){ const m = await winMarcaAgua(imagenes[i].base64, imagenes[i].mediaType, clave === 'regalito' ? 'regalito' : 'stake'); imagenes[i] = { base64:m.base64, mediaType:m.mediaType }; } }
       await canalTgLlamar({ modo:'canal_publicar', clave, texto, imagenes, titulo: canalTgTitulo(clave) });
       winPickCanalClear(clave); closeModal(); alert('✅ Publicado en el canal.');
     }catch(e){ alert('No se pudo publicar: ' + e.message); b.disabled = false; b.textContent = 'Publicar en el canal'; }
@@ -5726,7 +5726,7 @@ function openCanalTgModal(clave, pre){
       const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'canal_texto', clave, imagenes: img ? [img] : [], nota: (pre && pre.nota) || '' }) }), 58000, 'Pay tardó demasiado. Toca de nuevo.');
       const d = await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(d.error || 'No pude armar el texto.');
-      if(document.getElementById('f-canalTexto')) ta.value = d.texto;
+      if(document.getElementById('f-canalTexto')) ta.value = winAsegurarMasparley(d.texto);
       msg('✓ Texto listo. Léelo y cámbialo si quieres antes de publicar.');
     }catch(e){ msg('No se pudo generar el texto: ' + e.message); }
     generando = false; gb.disabled = false; gb.textContent = '✨ Generar otro texto';
@@ -6306,25 +6306,39 @@ function winCargarLogo(){
     probar('/logo-paywin.png', true);
   });
 }
-async function winMarcaAgua(base64, mediaType){
+// Sin marca de agua: solo un logo chiquito abajo al centro, con el nombre del tipo de apuesta (VIP, gratis, stake de pago…).
+const WIN_ETIQUETA_TIPO = { vip:'APUESTA VIP', gratis:'APUESTA GRATIS', live:'APUESTA LIVE', ganada:'APUESTA GANADA', stake:'STAKE DE PAGO', regalito:'REGALITO DEL DÍA' };
+async function winMarcaAgua(base64, mediaType, tipo){
   try{
     const logo = await winCargarLogo();
-    if(!logo){ alert('No pude cargar el logo para la marca de agua: la imagen saldría SIN marca. Recarga el panel e intenta de nuevo.'); return { base64, mediaType }; }
+    if(!logo){ alert('No pude cargar el logo: la imagen saldría SIN logo. Recarga el panel e intenta de nuevo.'); return { base64, mediaType }; }
     const img = await new Promise((ok, no)=>{ const i = new Image(); i.onload = ()=>ok(i); i.onerror = no; i.src = 'data:' + (mediaType || 'image/jpeg') + ';base64,' + base64; });
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    // Solo el logo, pequeño y muy suave, para que no tape la apuesta
-    const lado = Math.round(Math.min(c.width, c.height) * 0.78);
-    const x = Math.round((c.width - lado) / 2), y = Math.round((c.height - lado) / 2);
+    const lado = Math.max(44, Math.round(Math.min(c.width, c.height) * 0.12));
+    const etiqueta = WIN_ETIQUETA_TIPO[tipo] || '';
+    const fuente = Math.round(lado * 0.3);
+    ctx.font = `800 ${fuente}px Arial, Helvetica, sans-serif`;
+    const anchoTxt = etiqueta ? Math.ceil(ctx.measureText(etiqueta).width) : 0;
+    const gap = etiqueta ? Math.round(lado * 0.18) : 0;
+    const total = lado + (etiqueta ? gap + anchoTxt + Math.round(lado * 0.25) : 0);
+    const x = Math.round((c.width - total) / 2), y = c.height - lado - Math.round(lado * 0.2);
     ctx.save();
-    ctx.globalAlpha = 0.18;
-    ctx.beginPath(); ctx.arc(x + lado/2, y + lado/2, lado * 0.49, 0, Math.PI * 2); ctx.clip(); // solo la insignia redonda, sin el fondo cuadrado
+    ctx.globalAlpha = 0.92;
+    if(etiqueta){
+      const r = lado / 2, h = Math.round(lado * 0.62), py = y + (lado - h) / 2;
+      ctx.fillStyle = 'rgba(12,14,20,0.78)';
+      ctx.beginPath(); ctx.moveTo(x + r, py); ctx.lineTo(x + total - h/2, py); ctx.arc(x + total - h/2, py + h/2, h/2, -Math.PI/2, Math.PI/2); ctx.lineTo(x + r, py + h); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#f2d27a'; ctx.textBaseline = 'middle';
+      ctx.fillText(etiqueta, x + lado + gap, py + h/2 + 1);
+    }
+    ctx.beginPath(); ctx.arc(x + lado/2, y + lado/2, lado * 0.49, 0, Math.PI * 2); ctx.clip();
     ctx.drawImage(logo, x, y, lado, lado);
     ctx.restore();
-    const url = c.toDataURL('image/jpeg', 0.85);
+    const url = c.toDataURL('image/jpeg', 0.88);
     return { base64: url.split(',')[1], mediaType: 'image/jpeg' };
-  }catch(e){ console.error('Marca de agua:', e); return { base64, mediaType }; }
+  }catch(e){ console.error('Logo en la imagen:', e); return { base64, mediaType }; }
 }
 
 async function submitWinBet(kind, opts){
@@ -6361,7 +6375,7 @@ async function submitWinBet(kind, opts){
     const result = await res.json().catch(()=>({}));
     if(!res.ok){ alert('La IA no pudo redactar el texto, por eso saldría uno básico.' + (result && result.detalle ? '\n\nMotivo: ' + result.detalle : '') + '\n\nRevisa los créditos de Anthropic o la ANTHROPIC_API_KEY en Vercel.'); }
     const caption = (result && result.caption) || (isGanadaFallback(kind) ? '🔥 ¡GANADA CONFIRMADA! 🔥' : code || 'Nueva apuesta disponible.');
-    const conMarca = await winMarcaAgua(base64, mediaType);
+    const conMarca = await winMarcaAgua(base64, mediaType, winSepTipo(kind, grupos[0]));
     openWinCaptionConfirm(kind, grupos, caption, thumb || previewUrl, conMarca, { kind, destino: grupos.join(', '), code, imageBase64: base64, mediaType }, ()=> quiereCensurar ? submitWinBet(kind, { grupos, code, file: archivoOriginal, censurar: true, tipo: tipoSel, ganada: ganadaSel }) : winVolverFormularioApuesta(kind, grupos, code, archivoOriginal, tipoSel, ganadaSel));
   }catch(e){
     console.error(e);
@@ -6684,7 +6698,17 @@ const WIN_CTA_POR_TIPO = {
   stake_pago: n => `📲 Pide tu stake escribiéndonos al ${n}`,
   contenido: n => `📲 Escríbenos al ${n}`
 };
+const WIN_MASPARLEY_LINK = 'https://mas1x2.com/JoinPlatform/PAYWIN';
+// Aviso corto de Masparley: va al final de todos los textos, incluidos los del VIP.
+function winAsegurarMasparley(texto){
+  const t = String(texto || '').trim();
+  if(!t || t.includes('mas1x2.com/JoinPlatform/PAYWIN')) return t;
+  return `${t}\n\n🔴 *¿No quieres pagar el 15% que te cobra Ecuabet?* Regístrate en *MASPARLEY*: no cobra nada y es exactamente igual, solo que de color rojo 👉 ${WIN_MASPARLEY_LINK}`;
+}
 function winAsegurarCTA(texto, kind, grupos){
+  return winAsegurarMasparley(winAsegurarCTABase(texto, kind, grupos));
+}
+function winAsegurarCTABase(texto, kind, grupos){
   const todosCanales = Array.isArray(grupos) && grupos.length && grupos.every(winEsCanal);
   const tel = (winSoloVip(grupos) || todosCanales) ? '' : String(WIN_TELEFONO || '').trim();
   const t = String(texto || '').trim();
@@ -8976,7 +9000,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '5 nov, 10:45';
+const PANEL_VERSION = '5 nov, 23:00';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
