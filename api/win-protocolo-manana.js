@@ -139,13 +139,21 @@ async function enviarAlBot(botUrl, botKey, grupoId, texto, imagenBase64, imagenU
   if (!res.ok || !data.ok) throw new Error(data.error || 'El bot de WhatsApp no pudo mandar el mensaje.');
 }
 
+const MASPARLEY_LINK = 'https://mas1x2.com/JoinPlatform/PAYWIN';
+// Aviso corto de Masparley al final de cada pieza del protocolo (no se repite si el texto ya lo trae).
+function conMasparley(texto) {
+  const t = String(texto || '').trim();
+  if (!t || t.includes('mas1x2.com/JoinPlatform/PAYWIN')) return t;
+  return `${t}\n\n🔴 *¿No quieres pagar el 15% que te cobra Ecuabet?* Regístrate en *MASPARLEY*: no cobra nada y es exactamente igual, solo que de color rojo 👉 ${MASPARLEY_LINK}`;
+}
+
 async function enviarPaso(step, templates, botUrl, botKey) {
   const tpl = templates.get(norm(step.nombre));
   if (!tpl) return false; // todavía no se guardó esa publicidad -- se salta sin tumbar el resto
   // "imageUrl" es la foto en buena calidad guardada en Vercel Blob (publicidades nuevas);
   // "base64" queda de respaldo solo para publicidades guardadas ANTES de este cambio.
   for (const jid of step.destinos) {
-    await enviarAlBot(botUrl, botKey, jid, corregirTelefono(tpl.texto || ''), tpl.imageUrl ? '' : (tpl.base64 || ''), tpl.imageUrl || '', tpl.mediaType || 'image/jpeg');
+    await enviarAlBot(botUrl, botKey, jid, conMasparley(corregirTelefono(tpl.texto || '')), tpl.imageUrl ? '' : (tpl.base64 || ''), tpl.imageUrl || '', tpl.mediaType || 'image/jpeg');
   }
   return true;
 }
