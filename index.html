@@ -6306,7 +6306,7 @@ function winCargarLogo(){
     probar('/logo-paywin.png', true);
   });
 }
-// Sin marca de agua: solo un logo chiquito abajo al centro, con el nombre del tipo de apuesta (VIP, gratis, stake de pago…).
+// Sin marca de agua: el logo redondo, sin transparencia y no muy grande, con el nombre del tipo de apuesta en una cinta sobre su parte baja.
 const WIN_ETIQUETA_TIPO = { vip:'APUESTA VIP', gratis:'APUESTA GRATIS', live:'APUESTA LIVE', ganada:'APUESTA GANADA', stake:'STAKE DE PAGO', regalito:'REGALITO DEL DÍA' };
 async function winMarcaAgua(base64, mediaType, tipo){
   try{
@@ -6316,27 +6316,27 @@ async function winMarcaAgua(base64, mediaType, tipo){
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    const lado = Math.max(44, Math.round(Math.min(c.width, c.height) * 0.12));
-    const etiqueta = WIN_ETIQUETA_TIPO[tipo] || '';
-    const fuente = Math.round(lado * 0.3);
-    ctx.font = `800 ${fuente}px Arial, Helvetica, sans-serif`;
-    const anchoTxt = etiqueta ? Math.ceil(ctx.measureText(etiqueta).width) : 0;
-    const gap = etiqueta ? Math.round(lado * 0.18) : 0;
-    const total = lado + (etiqueta ? gap + anchoTxt + Math.round(lado * 0.25) : 0);
-    const x = Math.round((c.width - total) / 2), y = c.height - lado - Math.round(lado * 0.2);
+    const lado = Math.max(90, Math.round(Math.min(c.width, c.height) * 0.27));
+    const cx = Math.round(c.width * 0.68), cy = Math.round(c.height * 0.52);
+    const x = cx - Math.round(lado/2), y = cy - Math.round(lado/2);
+    // logo redondo, 100% visible
     ctx.save();
-    ctx.globalAlpha = 0.92;
-    if(etiqueta){
-      const r = lado / 2, h = Math.round(lado * 0.62), py = y + (lado - h) / 2;
-      ctx.fillStyle = 'rgba(12,14,20,0.78)';
-      ctx.beginPath(); ctx.moveTo(x + r, py); ctx.lineTo(x + total - h/2, py); ctx.arc(x + total - h/2, py + h/2, h/2, -Math.PI/2, Math.PI/2); ctx.lineTo(x + r, py + h); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#f2d27a'; ctx.textBaseline = 'middle';
-      ctx.fillText(etiqueta, x + lado + gap, py + h/2 + 1);
-    }
-    ctx.beginPath(); ctx.arc(x + lado/2, y + lado/2, lado * 0.49, 0, Math.PI * 2); ctx.clip();
+    ctx.beginPath(); ctx.arc(cx, cy, lado * 0.47, 0, Math.PI * 2); ctx.clip();
     ctx.drawImage(logo, x, y, lado, lado);
     ctx.restore();
-    const url = c.toDataURL('image/jpeg', 0.88);
+    // cinta con el nombre del tipo
+    const etiqueta = WIN_ETIQUETA_TIPO[tipo] || '';
+    if(etiqueta){
+      const fuente = Math.round(lado * 0.13);
+      ctx.font = `800 ${fuente}px Arial, Helvetica, sans-serif`;
+      const w = Math.ceil(ctx.measureText(etiqueta).width) + Math.round(fuente * 1.6), h = Math.round(fuente * 1.9);
+      const rx = cx - Math.round(w/2), ry = y + Math.round(lado * 0.95);
+      ctx.fillStyle = '#12141a'; ctx.strokeStyle = '#d9b45a'; ctx.lineWidth = Math.max(2, Math.round(fuente * 0.12));
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(rx, ry, w, h, h/2) : ctx.rect(rx, ry, w, h); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#f2d27a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(etiqueta, cx, ry + h/2 + 1);
+    }
+    const url = c.toDataURL('image/jpeg', 0.9);
     return { base64: url.split(',')[1], mediaType: 'image/jpeg' };
   }catch(e){ console.error('Logo en la imagen:', e); return { base64, mediaType }; }
 }
@@ -9000,7 +9000,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '5 nov, 23:00';
+const PANEL_VERSION = '6 nov, 07:40';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
