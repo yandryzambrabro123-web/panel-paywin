@@ -6380,27 +6380,25 @@ function repRachas(l){
 const repDin = v=>(v>=0?'+':'-')+fmtMoney(Math.abs(v));
 function repFila(nombre, m){
   const pc = v=>v === null ? '—' : v.toFixed(1)+'%';
-  return `| ${nombre} | ${m.total} | ${m.g} | ${m.p} | ${m.pe} | ${pc(m.acierto)} | ${m.cuotaProm === null ? '—' : m.cuotaProm.toFixed(2)} | ${m.nMonto ? fmtMoney(m.inv) : '—'} | ${m.nMonto ? repDin(m.neto) : '—'} | ${pc(m.roi)} |`;
+  return `| ${nombre} | ${m.total} | ${m.g} | ${m.p} | ${m.pe} | ${pc(m.acierto)} | ${m.cuotaProm === null ? '—' : m.cuotaProm.toFixed(2)} |`;
 }
 function winReporteRendimientoMD(dias){
   const hoy = new Date(Date.now() - 5*3600e3);
   const hoyS = hoy.toISOString().slice(0,10);
   const desde = dias ? new Date(hoy.getTime() - (dias-1)*86400000).toISOString().slice(0,10) : '';
   const items = repItems(desde);
-  const cab = '| | Total | Ganadas | Perdidas | Pendientes | Acierto | Cuota prom. | Invertido | Ganancia neta | ROI |\n|---|---|---|---|---|---|---|---|---|---|';
+  const cab = '| | Total | Ganadas | Perdidas | Pendientes | Acierto | Cuota prom. |\n|---|---|---|---|---|---|---|';
   const L = [];
   L.push('# Reporte de rendimiento de apuestas — PayWin');
   L.push(`Generado: ${hoyS} (hora Ecuador). Periodo: ${desde ? `${desde} a ${hoyS} (últimos ${dias} días)` : 'todo el historial registrado en el panel'}.`);
   L.push('');
-  L.push('> Cómo leerlo: **Acierto** = ganadas / (ganadas + perdidas); las pendientes no cuentan. **Invertido, ganancia neta y ROI** solo incluyen apuestas resueltas que tienen el monto invertido registrado (ver la línea "Apuestas con monto registrado" más abajo); si una apuesta no tiene monto, cuenta para el acierto pero no para el dinero.');
+  L.push('> Cómo leerlo: **Acierto** = ganadas / (ganadas + perdidas); las pendientes no cuentan. **Cuota prom.** es el promedio de la cuota de las apuestas que tienen cuota registrada. El reporte mide acierto, no dinero.');
   L.push('');
   if(!items.length){ L.push('No hay apuestas registradas en este periodo.'); return L.join('\n'); }
   L.push('## Resumen global'); L.push(cab); L.push(repFila('Todas', repMetricas(items))); L.push('');
   L.push('## Por categoría'); L.push(cab);
   REP_CATS.forEach(([,n])=>{ const l = items.filter(x=>x.cat===n); if(l.length) L.push(repFila(n, repMetricas(l))); });
   L.push('');
-  const conMonto = items.filter(x=>x.neto!==null).length;
-  L.push(`Apuestas con monto registrado (cuentan para el dinero): ${conMonto} de ${items.filter(x=>x.result!=='pending').length} resueltas.`); L.push('');
   L.push('## Rachas (por categoría, solo resueltas)');
   REP_CATS.forEach(([,n])=>{ const l = items.filter(x=>x.cat===n); if(!l.length) return; const r = repRachas(l); L.push(`- ${n}: racha actual ${r.actual}; mejor racha de ganadas ${r.mejorGanadas}; peor racha de perdidas ${r.peorPerdidas}.`); });
   L.push('');
@@ -6418,15 +6416,15 @@ function winReporteRendimientoMD(dias){
   L.push('');
   const det = items.slice().reverse().slice(0,200);
   L.push(`## Detalle (las ${det.length} más recientes${items.length > det.length ? ` de ${items.length}` : ''})`);
-  L.push('| Fecha | Categoría | Evento | Pick | Cuota | Invertido | Resultado | Ganancia |\n|---|---|---|---|---|---|---|---|');
+  L.push('| Fecha | Categoría | Evento | Pick | Cuota | Resultado |\n|---|---|---|---|---|---|');
   const t = (v,n)=>String(v||'—').replace(/\|/g,'/').slice(0,n);
-  det.forEach(x=>L.push(`| ${x.fecha} | ${x.cat} | ${t(x.evento,50)} | ${t(x.pick,80)} | ${x.cuota>0 ? x.cuota.toFixed(2) : '—'} | ${x.stake>0 ? fmtMoney(x.stake) : '—'} | ${resultLabel(x.result)} | ${x.neto===null ? '—' : repDin(x.neto)} |`));
+  det.forEach(x=>L.push(`| ${x.fecha} | ${x.cat} | ${t(x.evento,50)} | ${t(x.pick,80)} | ${x.cuota>0 ? x.cuota.toFixed(2) : '—'} | ${resultLabel(x.result)} |`));
   return L.join('\n');
 }
 function openReporteRendimientoModal(){
   openModal(`
     <h3>Reporte de rendimiento de apuestas</h3>
-    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Descarga un archivo .md con el acierto, la ganancia y las rachas de tus apuestas (VIP, gratis, live, regalito y stake de pago) para llevarlo al chat del analista deportivo.</div>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Descarga un archivo .md con el acierto, la cuota promedio y las rachas de tus apuestas (VIP, gratis, live, regalito y stake de pago) para llevarlo al chat del analista deportivo.</div>
     <div class="field"><label>Periodo</label><select id="f-repDias"><option value="7">Últimos 7 días</option><option value="14">Últimos 14 días</option><option value="30" selected>Últimos 30 días</option><option value="90">Últimos 90 días</option><option value="0">Todo el historial</option></select></div>
     <div id="repMsg" style="font-size:12.5px; color:var(--muted); min-height:18px; margin-bottom:8px;"></div>
     <div class="modal-actions">
@@ -9253,7 +9251,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '7 nov, 23:30';
+const PANEL_VERSION = '8 nov, 05:20';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
