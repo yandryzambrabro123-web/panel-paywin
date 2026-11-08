@@ -78,10 +78,11 @@ async function procesar(dataUrl, datos) {
   const lectura = await leerConIA(buf, datos.tipo);
   const hoy = H.hoyEC();
   if (lectura && lectura.error) {
-    require('./alertas').avisar('ia', `La IA no pudo revisar una captura de ${datos.tipo === 'regalito' ? 'regalito' : 'stake'} y el cliente fue rechazado (${lectura.error}). Mientras no se arregle, nadie entra.`, { cooldownMin: 30 }).catch(() => {});
+    require('./alertas').avisar('ia', `La IA no pudo revisar la captura de un cliente de ${datos.tipo === 'regalito' ? 'regalito' : 'stake'} y fue rechazado.\nCausa: ${lectura.error}\nMientras no se arregle, nadie entra. Revisa ANTHROPIC_API_KEY y el saldo en console.anthropic.com → Billing.`, { cooldownMin: 30 }).catch(() => {});
     return { buf, rechazo: { motivo: `La IA no pudo revisar la captura (${lectura.error}). No dejé pasar el registro.`, cliente: 'No pudimos verificar tu captura en este momento. Inténtalo de nuevo en unos minutos.' }, parecido: null, atencion: false };
   }
   const ia = lectura;
+  if (ia && !ia.error) require('./alertas').resuelto('ia', 'La IA que revisa las capturas volvió a funcionar.').catch(() => {});
   if (ia) {
     if (!ia.esComprobante) return { buf, rechazo: { motivo: 'La imagen no parece un comprobante de pago.', cliente: 'Esa imagen no parece un comprobante de pago. Sube la captura de tu pago.' }, parecido: null, atencion: false };
     if (datos.tipo === 'regalito' && ia.tipoDoc && ia.tipoDoc !== 'recibo_recarga') {

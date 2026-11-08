@@ -5,12 +5,11 @@
 //
 // Qué vigila:
 //   - WhatsApp desconectado más de 5 minutos, o número desvinculado/bloqueado (hay que escanear el QR).
-//   - La IA que lee las capturas (clave inválida, sin saldo, límite o caída), revisada cada 30 minutos.
+//   - La IA que lee las capturas: avisa cuando falla con un cliente real (clave inválida, sin saldo, límite o caída). No hace pruebas programadas.
 //   - Registros de stake/regalito que se quedaron "pendiente" más de 10 minutos.
 //   - Google Sheets (Apps Script) sin responder varias veces seguidas.
 //   - Fallas al publicar (grupos de WhatsApp, VIP, canales) y al crear el link de un solo uso del cliente.
 //   - Errores que tumban o sacuden al programa (se avisa y Railway lo levanta de nuevo).
-//   - Cada vez que el bot arranca (aviso silencioso, sin sonido).
 
 const TOKEN = () => String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const CHAT = () => String(process.env.TELEGRAM_CHAT_ID || '').trim();
@@ -58,9 +57,6 @@ function montar(stakes, estadoWA, comprobantes) {
     process.exit(1);
   });
 
-  // --- 2) Arranque (silencioso) ---
-  setTimeout(() => enviar('🔄 El bot arrancó (se reinició o se actualizó).', true), 5000);
-
   // --- 3) WhatsApp ---
   setInterval(() => {
     try {
@@ -74,18 +70,7 @@ function montar(stakes, estadoWA, comprobantes) {
   }, 60 * 1000);
 
   // --- 4) IA que lee las capturas ---
-  let fallosIA = 0;
-  const revisarIA = async () => {
-    try {
-      const r = await comprobantes.probarIA();
-      if (r.ok) { fallosIA = 0; await resuelto('ia', 'La IA que revisa las capturas volvió a funcionar.'); return; }
-      fallosIA++;
-      const grave = r.estado === 401 || r.estado === 402 || r.estado === 403 || !r.configurada || /credit|balance|billing/i.test(r.error || '');
-      if (grave || fallosIA >= 2) await avisar('ia', iaTexto(r), { cooldownMin: 120 });
-    } catch (e) { console.error('Alertas IA:', e.message); }
-  };
-  setTimeout(revisarIA, 90 * 1000);
-  setInterval(revisarIA, 30 * 60 * 1000);
+  // Sin pruebas programadas (para no gastar crédito): el aviso sale solo cuando un cliente real es rechazado porque la IA falló (ver comprobantes.js).
 
   // --- 5) Registros atascados y Google Sheets ---
   let fallosSheets = 0;
