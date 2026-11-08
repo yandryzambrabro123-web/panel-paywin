@@ -1,7 +1,8 @@
 // Segundo número de WhatsApp, solo para ATENCIÓN AL CLIENTE (separado del bot de grupos y publicaciones).
 //  - Tiene su propio QR en /qr-atencion y su propia sesión guardada (AUTH_DIR/atencion).
-//  - Cuando alguien le escribe (cualquier mensaje), le responde solo con la cuenta (texto de atencion-texto.js)
-//    y te avisa por Telegram (nombre, teléfono y mensaje, con botón para abrir el chat). Solo recargas; retiros no.
+//  - Cuando alguien le escribe: si pide una recarga le manda la cuenta; si es otra cosa, le manda el otro mensaje
+//    (los dos textos están en atencion-texto.js). SIEMPRE te avisa por Telegram (nombre, teléfono y mensaje,
+//    con botón para abrir el chat). Retiros no se manejan aquí.
 //  - Si el número se bloquea o lo desvinculan: te llega una alerta y se genera un QR nuevo para vincular otro número.
 const fs = require('fs');
 const path = require('path');
@@ -16,7 +17,7 @@ const respondidoA = new Map(); // jid -> última vez que se le mandó la respues
 const avisadoDe = new Map();   // jid -> último aviso por Telegram
 
 const sinAcentos = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-// (Ya no se usa para decidir: cualquier mensaje recibe la cuenta. Queda por si se quiere volver a filtrar.)
+// Palabras que indican que piden una recarga (específicas, para no mandar la cuenta a cualquier mensaje con "cuenta").
 const PIDE_RECARGA = /recarg|deposit|\bn(umero|ro|°)?\.? de cuenta|cuenta (para|de) (pagar|deposit|transfer|recarg)|(pasame|dame|mandame|enviame|envia|manda|pasa) (la |tu |su )?cuenta|donde (te |les )?(pago|transfiero|deposito|envio)|datos (de|para) (el )?(pago|transferencia|deposito)/;
 const pideRecarga = (texto) => PIDE_RECARGA.test(sinAcentos(texto));
 
@@ -42,17 +43,20 @@ async function procesarMensaje(stakes, msg) {
   const texto = textoDe(msg) || (esMedia ? '[envió una imagen, audio o archivo]' : '');
   if (!texto) return; // reacciones, avisos del sistema, etc.
 
-  const RECARGA = String(require('./atencion-texto').RECARGA || '').trim();
-  const hace = Date.now() - (respondidoA.get(jid) || 0);
+  const tipo = pideRecarga(texto) ? 'recarga' : 'otro'; // recarga → manda la cuenta; cualquier otra cosa → el otro mensaje
+  const TEXTOS = require('./atencion-texto');
+  const RESPUESTA = String((tipo === 'recarga' ? TEXTOS.RECARGA : TEXTOS.OTRO) || '').trim();
+  const clave = jid + '|' + tipo;
+  const hace = Date.now() - (respondidoA.get(clave) || 0);
   let respuesta = 'no';
-  if (!RECARGA) respuesta = 'sin_texto';
+  if (!RESPUESTA) respuesta = 'sin_texto';
   else if (hace < 3 * 3600e3) respuesta = 'ya_respondido';
   else {
     try {
       await estado.sock.sendPresenceUpdate('composing', jid);
       await new Promise((ok) => setTimeout(ok, 2000 + Math.floor(Math.random() * 2500)));
-      await estado.sock.sendMessage(jid, { text: RECARGA });
-      respondidoA.set(jid, Date.now());
+      await estado.sock.sendMessage(jid, { text: RESPUESTA });
+      respondidoA.set(clave, Date.now());
       respuesta = 'ok';
     } catch (e) { console.error('Atención: no pude responder:', e.message); respuesta = 'error:' + e.message; }
   }
@@ -60,14 +64,15 @@ async function procesarMensaje(stakes, msg) {
   if (Date.now() - (avisadoDe.get(jid) || 0) < 10 * 60000) return;
   avisadoDe.set(jid, Date.now());
   const num = jid.endsWith('@s.whatsapp.net') ? digitos(jid) : '';
-  const nota = respuesta === 'ok' ? '✅ Ya le respondí con la cuenta.'
-    : respuesta === 'ya_respondido' ? '↩️ Ya le había mandado la cuenta hace poco, no se la repetí.'
+  const que = tipo === 'recarga' ? 'la cuenta' : 'el mensaje de atención';
+  const nota = respuesta === 'ok' ? `✅ Ya le respondí con ${que}.`
+    : respuesta === 'ya_respondido' ? `↩️ Ya le había mandado ${que} hace poco, no se lo repetí.`
     : respuesta === 'sin_texto' ? '⚠️ No le respondí: todavía no hay texto de respuesta configurado.'
     : '⚠️ No pude responderle (' + respuesta.replace('error:', '') + '). Escríbele tú.';
   try {
     await stakes.tg('sendMessage', {
       chat_id: stakes.TG_ADMIN(), parse_mode: 'HTML', disable_web_page_preview: true,
-      text: `💬 <b>Escribieron al WhatsApp de atención</b>\nNombre: ${stakes.esc(msg.pushName || 'sin nombre')}\nTeléfono: ${num ? '+' + num : 'no visible'}\nMensaje: «${stakes.esc(texto.slice(0, 300))}»\n${nota}`,
+      text: `${tipo === 'recarga' ? '💰 <b>Pidieron una recarga</b>' : '💬 <b>Escribieron al WhatsApp de atención</b> (no parece recarga)'}\nNombre: ${stakes.esc(msg.pushName || 'sin nombre')}\nTeléfono: ${num ? '+' + num : 'no visible'}\nMensaje: «${stakes.esc(texto.slice(0, 300))}»\n${nota}`,
       reply_markup: num ? { inline_keyboard: [[{ text: '💬 Abrir en WhatsApp', url: 'https://wa.me/' + num }]] } : undefined
     });
   } catch (e) { console.error('Atención: no pude avisar por Telegram:', e.message); }
