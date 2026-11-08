@@ -35,13 +35,20 @@ const CSS = [
   '@media (prefers-reduced-motion:reduce){.ej-m{animation:none;opacity:1}}',
 ].join('');
 
-const recibo = (titulo, fecha, extra) => "<div class='ej-rc'><span class='ok'>✓</span><div class='t'>" + titulo + "</div><div class='m'>$ 20,00</div><div class='d'>" + (extra ? extra + '<br>' : '') + fecha + "<br>N. de comprobante 00012345</div></div>";
+const recibo = (titulo, fecha, extra, monto) => "<div class='ej-rc'><span class='ok'>✓</span><div class='t'>" + titulo + "</div><div class='m'>$ " + (monto || '20,00') + "</div><div class='d'>" + (extra ? extra + '<br>' : '') + fecha + "<br>N. de comprobante 00012345</div></div>";
 
 const recibo_casa = () => "<div class='ej-rp'><div class='h'><b>CASA DE<br>APUESTAS</b><span>RECIBO DE<br>RECARGA</span></div><hr><div class='f'>Recibo de Recarga No.<i>000123456</i></div><div class='f'>Fecha:<i>HOY 11:09:45</i></div><div class='f'>Punto de venta:<i>AG- TU AGENTE</i></div><div class='f'>No. de Cliente:<i>1234567</i></div><div class='f'>Nombre Cliente:<i>NOMBRE APELLIDO</i></div><div class='f'><b>Valor Recarga:</b><i>20</i></div><div class='p'>Disfruta el juego en vivo</div></div>";
 
 function chat(tipo) {
   let ms;
-  if (tipo === 'stake') {
+  if (tipo === 'vip') {
+    ms = [
+      "<div class='ej-m r a1' style='top:10px'>" + recibo('¡Transferencia exitosa!', 'Fecha: HOY', '', '50,00') + "<small>12:43 p. m.</small></div>",
+      "<div class='ej-m r a2' style='top:178px'>Ya pagué el VIP 👍<small>12:48 p. m. ✓✓</small></div>",
+      "<div class='ej-m l a3' style='top:216px'>Listo, ya te paso el acceso<small>12:50 p. m.</small></div>",
+      "<div class='ej-m l a4' style='top:262px'><div class='ej-lk'><i>👑</i><span><b>GRUPO VIP</b><u>Invitación al grupo</u></span></div></div>",
+    ];
+  } else if (tipo === 'stake') {
     ms = [
       "<div class='ej-m r a1' style='top:10px'>" + recibo('¡Transferencia exitosa!', 'Fecha: HOY') + "<small>12:43 p. m.</small></div>",
       "<div class='ej-m r a2' style='top:178px'>Ya pagué 👍<small>12:48 p. m. ✓✓</small></div>",
@@ -56,7 +63,7 @@ function chat(tipo) {
     ];
   }
   const titulo = tipo === 'stake' ? 'Así debe verse tu captura (ejemplo)' : 'Así debe verse tu captura (ejemplo)';
-  return "<div class='ej'><div class='ej-t'><b>EJEMPLO</b><span>" + titulo + "</span></div><div class='ej-c' style='height:" + (tipo === 'stake' ? 352 : 440) + "px'>" + ms.join('') + "</div></div>";
+  return "<div class='ej'><div class='ej-t'><b>EJEMPLO</b><span>" + titulo + "</span></div><div class='ej-c' style='height:" + (tipo === 'stake' || tipo === 'vip' ? 352 : 440) + "px'>" + ms.join('') + "</div></div>";
 }
 
 module.exports = { CSS, chat };

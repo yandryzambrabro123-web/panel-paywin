@@ -164,6 +164,7 @@ async function procesarVencidos() {
 
 // ---------- Registro público ----------
 
+const EJEMPLO = require('./ejemplo-captura');
 const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Registro VIP</title><style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0b0d12;color:#f3ead6;font-family:Inter,system-ui,sans-serif;display:flex;justify-content:center;padding:20px}
@@ -172,8 +173,9 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:14px 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 input:focus{outline:2px solid #D4AF6A;border-color:transparent}input[disabled]{opacity:.7}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.n{font-size:12.5px;color:#D4AF6A;margin-top:6px;min-height:16px}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-</style></head><body><div class="w"><h1>Registro VIP</h1><p>Completa tus datos para que aprobemos tu ingreso al grupo VIP.</p><div class="c" id="box"></div></div>
+${EJEMPLO.CSS}</style></head><body><div class="w"><h1>Registro VIP</h1><p>Completa tus datos para que aprobemos tu ingreso al grupo VIP.</p><div class="c" id="box"></div></div>
 <script>
+const EJ=${JSON.stringify(EJEMPLO.chat('vip'))};
 const $=s=>document.querySelector(s);let timer=null;const box=$('#box');
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function hoy(){const d=new Date(Date.now()-5*3600e3);return d.toISOString().slice(0,10)}
@@ -184,6 +186,7 @@ function form(d,aviso){
   '<label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off">'+
   '<label>Ciudad</label><input id="ciu" autocomplete="address-level2"><label>Correo electrónico</label><input id="cor" type="email" inputmode="email" autocapitalize="none" autocomplete="email">'+
   '<label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999"><label>Fecha de ingreso</label><input id="fec" disabled value="'+hoy()+'">'+
+  (regId?'':'<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu pago <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>chat completo</b> donde se ve el comprobante de tu pago de <b>$50</b>. <b>No envíes solo la foto del comprobante</b>: debe verse toda la conversación. Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div>'+EJ+'<input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>')+
   '<div class="e" id="err"></div><button id="env">Enviar registro</button>';
   $('#ced').oninput=e=>{e.target.value=e.target.value.replace(/\\D/g,'')};
   $('#env').onclick=enviar;
@@ -195,10 +198,13 @@ async function enviar(){
   const b=$('#env'),er=$('#err');er.textContent='';
   const body={cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,ciudad:$('#ciu').value,correo:$('#cor').value,telefono:$('#tel').value,registroId:regId};
   if(!body.nombre.trim()||!body.apellido.trim()||body.cedula.replace(/\\D/g,'').length!==10||!body.ciudad.trim()||!body.correo.includes('@')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
-  b.disabled=true;b.textContent='Enviando…';
-  try{const r=await fetch('/vip/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
+  const fl=$('#cmp')?$('#cmp').files[0]:null;
+  if(!regId&&!fl){er.textContent='La captura del chat con tu pago es obligatoria: sin ella no puedes continuar.';return}
+  b.disabled=true;b.textContent=fl?'Verificando tu captura…':'Enviando…';
+  try{if(fl)body.comprobante=await leerImg(fl);const r=await fetch('/vip/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}
 }
+function leerImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const m=1400,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',0.85))};im.onerror=()=>no(new Error('No pude leer esa imagen.'));im.src=u})}
 function espera(id){
   box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Registro enviado. Estamos revisando tu pago; no cierres esta pantalla.</p>';
   const tick=async()=>{try{const r=await fetch('/vip/estado/'+id);const d=await r.json();
@@ -575,11 +581,33 @@ function montar(app, stakes, extra) {
         return [...filas, reg];
       });
       if (repetido) return res.json({ id: repetido.id, repetido: true });
-      const texto = `${corregido ? '✏️ <b>Registro VIP corregido</b>' : '🆕 <b>Registro VIP</b>'}\n\nNombre: <b>${H.esc(nombre)} ${H.esc(apellido)}</b>\nCédula: ${H.esc(cedula)}\nCiudad: ${H.esc(ciudad)}\nCorreo: ${H.esc(correo)}\nTeléfono: ${H.esc(telefono)}\nIngreso: ${hoy}\n${previo ? '🔁 Esa cédula ya es miembro activo (se renueva)' : '✨ Nuevo'}\n\nAprueba con el plan que pagó:`;
-      await H.tg('sendMessage', {
-        chat_id: H.TG_ADMIN(), text: texto, parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: [[{ text: '✅ Mensual', callback_data: 'vp:' + reg.id + ':m' }, { text: '✅ Trimestral', callback_data: 'vp:' + reg.id + ':t' }, { text: '✅ Anual', callback_data: 'vp:' + reg.id + ':a' }], [{ text: '✏️ Pedir corrección', callback_data: 'vc:' + reg.id }, { text: '❌ Rechazar', callback_data: 'vr:' + reg.id }]] }
-      }).catch((e) => console.error('No pude avisar al jefe (VIP):', e.message));
+      // Captura del CHAT con el comprobante: obligatoria en el primer envío (no al corregir datos)
+      let cmp = null;
+      if (!corregido) {
+        try { cmp = await require('./comprobantes').procesar(b.comprobante, { tipo: 'vip', registroId: reg.id, nombre: `${nombre} ${apellido}`, telefono }); }
+        catch (e) { await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
+        if (cmp.rechazo) {
+          await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id));
+          await require('./comprobantes').avisarRechazo('vip', { nombre: `${nombre} ${apellido}`.trim(), telefono }, cmp.rechazo.motivo, cmp.buf);
+          return res.status(409).json({ error: cmp.rechazo.cliente });
+        }
+      }
+      const texto = `${corregido ? '✏️ <b>Registro VIP corregido</b>' : '🆕 <b>Registro VIP</b>'}\n\nNombre: <b>${H.esc(nombre)} ${H.esc(apellido)}</b>\nCédula: ${H.esc(cedula)}\nCiudad: ${H.esc(ciudad)}\nCorreo: ${H.esc(correo)}\nTeléfono: ${H.esc(telefono)}\nIngreso: ${hoy}\n${previo ? '🔁 Esa cédula ya es miembro activo (se renueva)' : '✨ Nuevo'}\n\n${cmp && cmp.atencion ? '\n⚠️ La captura se parece a otra ya usada: revísala.' : ''}\n\nAprueba con el plan que pagó:`;
+      const teclado = { inline_keyboard: [[{ text: '✅ Mensual', callback_data: 'vp:' + reg.id + ':m' }, { text: '✅ Trimestral', callback_data: 'vp:' + reg.id + ':t' }, { text: '✅ Anual', callback_data: 'vp:' + reg.id + ':a' }], [{ text: '✏️ Pedir corrección', callback_data: 'vc:' + reg.id }, { text: '❌ Rechazar', callback_data: 'vr:' + reg.id }]] };
+      let enviado = false;
+      if (cmp && cmp.buf) {
+        try {
+          const fd = new FormData();
+          fd.append('chat_id', String(H.TG_ADMIN())); fd.append('caption', texto); fd.append('parse_mode', 'HTML');
+          fd.append('reply_markup', JSON.stringify(teclado));
+          fd.append('photo', new Blob([cmp.buf], { type: 'image/jpeg' }), 'chat.jpg');
+          const r = await fetch(`https://api.telegram.org/bot${H.TG_TOKEN()}/sendPhoto`, { method: 'POST', body: fd });
+          const j = await r.json().catch(() => ({}));
+          enviado = !!j.ok;
+          if (!enviado) console.error('VIP sendPhoto:', j.description || r.status);
+        } catch (e) { console.error('VIP sendPhoto:', e.message); }
+      }
+      if (!enviado) await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: texto, parse_mode: 'HTML', reply_markup: teclado }).catch((e) => console.error('No pude avisar al jefe (VIP):', e.message));
       res.json({ id: reg.id });
     } catch (e) {
       console.error('Registro VIP:', e);
