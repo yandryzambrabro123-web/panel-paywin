@@ -17,6 +17,16 @@ const CSS = [
   '.ej-lk{display:flex;gap:8px;align-items:center;width:230px}',
   '.ej-lk i{font-style:normal;font-size:28px;background:#eee;border-radius:8px;width:44px;height:44px;line-height:44px;text-align:center;flex:none}',
   '.ej-lk span{font-size:12.5px}.ej-lk span u{text-decoration:none;color:#667781;display:block;font-size:11.5px}',
+  '.ej-rp{width:236px;background:#f3e6ea;color:#1b1b1b;border-radius:6px;padding:10px 10px 8px;font-size:11.5px}',
+  '.ej-rp .h{border:2px solid #222;display:flex;gap:6px;align-items:center;padding:6px}',
+  '.ej-rp .h b{background:#222;color:#fff;border-radius:6px;padding:6px 7px;font-size:12px;line-height:1.1;text-align:center}',
+  '.ej-rp .h span{font-weight:800;font-size:15px;line-height:1.1;text-align:center;flex:1;font-family:Georgia,serif}',
+  '.ej-rp hr{border:0;border-top:1px solid #444;margin:8px 0}',
+  '.ej-rp .f{display:flex;justify-content:space-between;gap:8px;margin:3px 0}.ej-rp .f i{font-style:normal;text-align:right}',
+  '.ej-rp .p{text-align:center;font-weight:800;font-size:15px;margin-top:8px}',
+  '.ej-st{width:112px;height:112px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#2b3b66,#10162a);border:5px solid #b88a44;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.3);color:#f2d27a;text-align:center}',
+  '.ej-st .pw{position:absolute;top:22px;left:0;right:0;font-size:22px;font-weight:900;letter-spacing:1px}',
+  '.ej-st .rb{position:absolute;bottom:14px;left:6px;right:6px;background:#1c1710;border:1px solid #b88a44;border-radius:5px;font-size:8.5px;font-weight:800;line-height:1.15;padding:3px 2px;color:#f6e7b8}',
   '@keyframes ejA{0%,4%{opacity:0;transform:translateY(8px)}9%,90%{opacity:1;transform:none}96%,100%{opacity:0}}',
   '@keyframes ejB{0%,24%{opacity:0;transform:translateY(8px)}29%,90%{opacity:1;transform:none}96%,100%{opacity:0}}',
   '@keyframes ejC{0%,44%{opacity:0;transform:translateY(8px)}49%,90%{opacity:1;transform:none}96%,100%{opacity:0}}',
@@ -26,6 +36,8 @@ const CSS = [
 ].join('');
 
 const recibo = (titulo, fecha, extra) => "<div class='ej-rc'><span class='ok'>✓</span><div class='t'>" + titulo + "</div><div class='m'>$ 20,00</div><div class='d'>" + (extra ? extra + '<br>' : '') + fecha + "<br>N. de comprobante 00012345</div></div>";
+
+const recibo_casa = () => "<div class='ej-rp'><div class='h'><b>CASA DE<br>APUESTAS</b><span>RECIBO DE<br>RECARGA</span></div><hr><div class='f'>Recibo de Recarga No.<i>000123456</i></div><div class='f'>Fecha:<i>HOY 11:09:45</i></div><div class='f'>Punto de venta:<i>AG- TU AGENTE</i></div><div class='f'>No. de Cliente:<i>1234567</i></div><div class='f'>Nombre Cliente:<i>NOMBRE APELLIDO</i></div><div class='f'><b>Valor Recarga:</b><i>20</i></div><div class='p'>Disfruta el juego en vivo</div></div>";
 
 function chat(tipo) {
   let ms;
@@ -38,12 +50,13 @@ function chat(tipo) {
     ];
   } else {
     ms = [
-      "<div class='ej-m l a1' style='top:10px'>" + recibo('¡Recarga exitosa!', 'Fecha: HOY', 'Recarga a tu cuenta de apuestas<br>Usuario: ****4821') + "<small>12:43 p. m.</small></div>",
-      "<div class='ej-m r a2' style='top:178px'>Gracias, ya me llegó 🙌<small>12:48 p. m. ✓✓</small></div>",
+      "<div class='ej-m l a1' style='top:10px'>" + recibo_casa() + "<small>11:10 p. m.</small></div>",
+      "<div class='ej-m l a2' style='top:262px;background:transparent;box-shadow:none;padding:0'><div class='ej-st'><div class='pw'>PAYWIN</div><div class='rb'>✔ RECARGA REALIZADA<br>PAYWIN</div></div></div>",
+      "<div class='ej-m r a3' style='top:386px'>Gracias, ya me llegó 🙌<small>11:12 p. m. ✓✓</small></div>",
     ];
   }
   const titulo = tipo === 'stake' ? 'Así debe verse tu captura (ejemplo)' : 'Así debe verse tu captura (ejemplo)';
-  return "<div class='ej'><div class='ej-t'><b>EJEMPLO</b><span>" + titulo + "</span></div><div class='ej-c' style='height:" + (tipo === 'stake' ? 352 : 250) + "px'>" + ms.join('') + "</div></div>";
+  return "<div class='ej'><div class='ej-t'><b>EJEMPLO</b><span>" + titulo + "</span></div><div class='ej-c' style='height:" + (tipo === 'stake' ? 352 : 440) + "px'>" + ms.join('') + "</div></div>";
 }
 
 module.exports = { CSS, chat };
