@@ -282,6 +282,24 @@ function montar(app, stakes, extra) {
   });
 
   // El panel (a través de Vercel) publica el regalito del día
+  // Reinicio de la cola: borra de la hoja a todos los que están "en cola" o "pendientes" (los aprobados y rechazados no se tocan).
+  // Sin &confirmar=si solo muestra a quién borraría. Abrir: /regalito/reiniciar-cola?key=TU_API_KEY  (y luego agregar &confirmar=si)
+  app.get('/regalito/reiniciar-cola', requireApiKey, async (req, res) => {
+    try {
+      const filas = await H.leerHoja(HOJA_REG);
+      const cola = filas.filter((f) => f.estado === 'cola' || f.estado === 'pendiente');
+      const lista = cola.map((f) => `${f.nombre || '(sin nombre)'} ${f.telefono ? '(' + f.telefono + ')' : ''} — ${f.estado}`);
+      if (String(req.query.confirmar || '') !== 'si') {
+        return res.json({ enCola: cola.length, seBorraria: lista, paraConfirmar: 'Agrega &confirmar=si al final del link para borrarlos.' });
+      }
+      const ids = new Set(cola.map((f) => String(f.id)));
+      let borrados = 0;
+      await H.cambiarHoja(HOJA_REG, (fs) => fs.filter((f) => { if (ids.has(String(f.id))) { borrados++; return false; } return true; }));
+      await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `🧹 Cola del regalito reiniciada: borré ${borrados} registro(s) en cola o pendientes. Desde ahora todo entra por la estructura nueva.` }).catch(() => {});
+      res.json({ ok: true, borrados, lista });
+    } catch (e) { console.error('Reiniciar cola del regalito:', e); res.status(500).json({ error: e.message }); }
+  });
+
   app.post('/regalito/publicar', requireApiKey, async (req, res) => {
     try {
       const link = H.limpio((req.body || {}).link, 300);
