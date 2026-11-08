@@ -25,7 +25,7 @@ const CSS = [
   '@media (prefers-reduced-motion:reduce){.ej-m{animation:none;opacity:1}}',
 ].join('');
 
-const recibo = (titulo, fecha) => "<div class='ej-rc'><span class='ok'>✓</span><div class='t'>" + titulo + "</div><div class='m'>$ 20,00</div><div class='d'>" + fecha + "<br>N. de comprobante 00012345</div></div>";
+const recibo = (titulo, fecha, extra) => "<div class='ej-rc'><span class='ok'>✓</span><div class='t'>" + titulo + "</div><div class='m'>$ 20,00</div><div class='d'>" + (extra ? extra + '<br>' : '') + fecha + "<br>N. de comprobante 00012345</div></div>";
 
 function chat(tipo) {
   let ms;
@@ -38,7 +38,7 @@ function chat(tipo) {
     ];
   } else {
     ms = [
-      "<div class='ej-m l a1' style='top:10px'>" + recibo('¡Recarga exitosa!', 'Fecha: HOY') + "<small>12:43 p. m.</small></div>",
+      "<div class='ej-m l a1' style='top:10px'>" + recibo('¡Recarga exitosa!', 'Fecha: HOY', 'Recarga a tu cuenta de apuestas<br>Usuario: ****4821') + "<small>12:43 p. m.</small></div>",
       "<div class='ej-m r a2' style='top:178px'>Gracias, ya me llegó 🙌<small>12:48 p. m. ✓✓</small></div>",
     ];
   }
