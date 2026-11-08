@@ -16,6 +16,8 @@ const sharp = require('sharp');
 
 let H = null;
 const HOJA = 'Comprobantes';
+// Monto mínimo de la recarga para el regalito (se puede cambiar con REGALITO_MINIMO en Railway).
+const MINIMO_REGALITO = () => Number(process.env.REGALITO_MINIMO) > 0 ? Number(process.env.REGALITO_MINIMO) : 20;
 const MAX_BYTES = 8 * 1024 * 1024;
 const UMBRAL_PARECIDO = 10; // bits distintos (de 256) para avisar "se parece a otra"
 
@@ -81,10 +83,14 @@ async function procesar(dataUrl, datos) {
       return { buf, rechazo: { motivo: `El comprobante es de otra fecha (${f}), no de hoy.`, cliente: `Esa captura es del ${f}. Sube la captura de tu pago de hoy.` }, parecido: null, atencion: false };
     }
   }
+  if (ia && datos.tipo === 'regalito' && ia.monto != null && ia.monto < MINIMO_REGALITO()) {
+    const min = MINIMO_REGALITO();
+    return { buf, rechazo: { motivo: `La recarga es de $${ia.monto}, menos del mínimo de $${min}.`, cliente: `La recarga mínima para el regalito es de $${min}. Tu captura muestra $${ia.monto}.` }, parecido: null, atencion: false };
+  }
   // 3) se anota (aquí también se detecta la misma referencia de pago ya usada)
   const r = await revisarYGuardar(h, datos, ia);
   if (r.repetido) return { buf, rechazo: usada, parecido: null, atencion: false };
-  const sinLeer = !ia || (!ia.fecha && !ia.referencia);
+  const sinLeer = !ia || (!ia.fecha && !ia.referencia) || (datos.tipo === 'regalito' && ia.monto == null);
   return { buf, rechazo: null, parecido: r.parecido, atencion: sinLeer || !!(r.parecido && !(ia && ia.referencia)), ia };
 }
 
