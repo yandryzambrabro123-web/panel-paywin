@@ -265,7 +265,7 @@ function montar(app, stakes, extra) {
       const b = req.body || {};
       if (!CLAVES.includes(b.clave)) return res.status(400).json({ error: 'Canal inválido.' });
       res.json(await publicar({ clave: b.clave, texto: b.texto, imagenes: b.imagenes, titulo: b.titulo }));
-    } catch (e) { console.error('Publicar en canal:', e); res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error('Publicar en canal:', e); require('./alertas').avisar('pub-canal', `Falló una publicación en un canal de Telegram: ${e.message}`, { cooldownMin: 5 }).catch(() => {}); res.status(500).json({ error: e.message }); }
   });
 
   app.post('/canal/vaciar', requireApiKey, async (req, res) => {

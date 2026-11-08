@@ -78,6 +78,7 @@ async function procesar(dataUrl, datos) {
   const lectura = await leerConIA(buf, datos.tipo);
   const hoy = H.hoyEC();
   if (lectura && lectura.error) {
+    require('./alertas').avisar('ia', `La IA no pudo revisar una captura de ${datos.tipo === 'regalito' ? 'regalito' : 'stake'} y el cliente fue rechazado (${lectura.error}). Mientras no se arregle, nadie entra.`, { cooldownMin: 30 }).catch(() => {});
     return { buf, rechazo: { motivo: `La IA no pudo revisar la captura (${lectura.error}). No dejé pasar el registro.`, cliente: 'No pudimos verificar tu captura en este momento. Inténtalo de nuevo en unos minutos.' }, parecido: null, atencion: false };
   }
   const ia = lectura;
@@ -202,4 +203,20 @@ function montar(stakes, app) {
   };
 }
 
-module.exports = { montar, procesar, avisarRechazo, leerDataUrl, huellas, distancia };
+// Prueba rápida y barata: ¿la IA responde? Lo usan las alertas (cada 30 min). Devuelve { configurada, ok, estado, error }.
+async function probarIA() {
+  const key = String(process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!key) return { configurada: false, ok: false };
+  let ultimo = { configurada: true, ok: false, error: 'sin respuesta' };
+  for (const modelo of MODELOS()) {
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: modelo, max_tokens: 5, messages: [{ role: 'user', content: 'hola' }] }), signal: AbortSignal.timeout(20000) });
+      if (r.ok) return { configurada: true, ok: true, estado: r.status };
+      const j = await r.json().catch(() => ({}));
+      ultimo = { configurada: true, ok: false, estado: r.status, error: ((j.error && j.error.message) || '').slice(0, 120) };
+    } catch (e) { ultimo = { configurada: true, ok: false, error: e.message.slice(0, 120) }; }
+  }
+  return ultimo;
+}
+
+module.exports = { probarIA, montar, procesar, avisarRechazo, leerDataUrl, huellas, distancia };

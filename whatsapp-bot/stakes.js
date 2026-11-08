@@ -449,7 +449,7 @@ function montar(app) {
           const nombreLink = `Stake ${reg.day || hoyEC()} ${reg.nombre || ''}`.trim();
           unico = await require('./canales').linkUnico('stake', nombreLink);
           if (unico) await cambiarHoja(HOJA_REGISTROS, (filas) => filas.map((f) => String(f.id) === String(reg.id) ? { ...f, linkUnico: unico } : f));
-        } catch (e) { console.error('Link único del stake:', e.message); }
+        } catch (e) { console.error('Link único del stake:', e.message); require('./alertas').avisar('link-unico', `No pude crear el link de un solo uso del stake para ${reg.nombre || 'un cliente'}: ${e.message}. Revisa que el bot siga siendo admin del canal.`, { cooldownMin: 15 }).catch(() => {}); }
       }
       res.json({ estado: 'aprobado', link: unico || (sec && sec.telegramLink) || '' });
     } catch (e) { res.json({ estado: 'pendiente' }); }

@@ -275,7 +275,7 @@ function montar(app, stakes, extra) {
         try {
           unico = await require('./canales').linkUnico('regalito', `Regalito ${reg.day || H.hoyEC()} ${reg.nombre || ''}`.trim());
           if (unico) await H.cambiarHoja(HOJA_REG, (filas) => filas.map((f) => String(f.id) === String(reg.id) ? { ...f, linkUnico: unico } : f));
-        } catch (e) { console.error('Link único del regalito:', e.message); }
+        } catch (e) { console.error('Link único del regalito:', e.message); require('./alertas').avisar('link-unico', `No pude crear el link de un solo uso del regalito para ${reg.nombre || 'un cliente'}: ${e.message}. Revisa que el bot siga siendo admin del canal.`, { cooldownMin: 15 }).catch(() => {}); }
       }
       res.json({ estado: 'aprobado', link: unico || reg.link || '' });
     } catch (e) { res.json({ estado: 'pendiente' }); }
@@ -289,6 +289,7 @@ function montar(app, stakes, extra) {
       res.json(await publicar(link));
     } catch (e) {
       console.error('Publicar regalito:', e);
+      require('./alertas').avisar('pub-regalito', `Falló la publicación del regalito: ${e.message}`, { cooldownMin: 5 }).catch(() => {});
       res.status(500).json({ error: 'No se pudo publicar: ' + e.message });
     }
   });

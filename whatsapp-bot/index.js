@@ -48,6 +48,7 @@ let lastQR = null;
 let connected = false;
 let connectingSince = Date.now();
 let ultimoCierre = '';
+let desconectadoDesde = Date.now(); // desde cuándo no hay conexión con WhatsApp (para las alertas)
 
 // Pequeña pausa aleatoria antes de mandar cada mensaje -- no evita un bloqueo si
 // WhatsApp decide marcar el número, pero ayuda a que el patrón de envíos no se vea
@@ -126,12 +127,14 @@ async function iniciarConexion() {
 
     if (connection === 'open') {
       connected = true;
+      desconectadoDesde = null;
       lastQR = null;
       console.log('✅ Conectado a WhatsApp.');
     }
 
     if (connection === 'close') {
       connected = false;
+      if (!desconectadoDesde) desconectadoDesde = Date.now();
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const deslogueado = statusCode === DisconnectReason.loggedOut;
       console.log(
@@ -142,6 +145,7 @@ async function iniciarConexion() {
       ultimoCierre = `statusCode=${statusCode} ${lastDisconnect?.error?.message || ''} (${new Date().toISOString()})`;
       // Número desvinculado o bloqueado (401 / 403): la sesión guardada ya no sirve. Se borra para que salga un QR nuevo.
       if (deslogueado || statusCode === 403) {
+        require('./alertas').avisar('wa-baja', `El número de WhatsApp fue ${deslogueado ? 'desvinculado' : 'bloqueado'} (código ${statusCode}). Abre el /qr del bot y escanea el código con el número dedicado para volver a conectarlo.`, { cooldownMin: 30 }).catch(() => {});
         borrarSesionYReiniciar().catch((e) => console.error('No pude reiniciar la sesión:', e.message));
       } else {
         setTimeout(iniciarConexion, 3000);
@@ -163,6 +167,7 @@ require('./comprobantes').montar(stakes, app); // capturas de pago de stake y re
 require('./regalito').montar(app, stakes, { requireApiKey });
 require('./canales').montar(app, stakes, { requireApiKey });
 require('./cuadre').montar(stakes); // cuadre financiero automático al aprobar pagos // canales privados de Telegram (stake y regalito)
+require('./alertas').montar(stakes, () => ({ conectado: connected, desde: desconectadoDesde, ultimoCierre }), require('./comprobantes')); // avisos por Telegram cuando algo falla
 require('./pay').montar(app, stakes, { requireApiKey }); // registro VIP (Telegram) + salida automática de vencidos
 
 function requireApiKey(req, res, next) {
@@ -307,6 +312,7 @@ app.post('/enviar', requireApiKey, async (req, res) => {
       return res.json({ ok: true, via: 'telegram' });
     } catch (e) {
       console.error('Envío al VIP de Telegram:', e);
+      require('./alertas').avisar('pub-vip', `Falló una publicación al grupo VIP de Telegram: ${e.message}`, { cooldownMin: 5 }).catch(() => {});
       return res.status(500).json({ error: 'No se pudo mandar al grupo VIP de Telegram: ' + e.message });
     }
   }
@@ -332,6 +338,7 @@ app.post('/enviar', requireApiKey, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('Error mandando mensaje:', e);
+    require('./alertas').avisar('pub-wa', `Falló una publicación a un grupo de WhatsApp: ${e.message}`, { cooldownMin: 5 }).catch(() => {});
     res.status(500).json({ error: 'No se pudo mandar el mensaje.', detalle: e.message });
   }
 });
