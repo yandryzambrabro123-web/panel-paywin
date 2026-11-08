@@ -29,7 +29,41 @@ async function canalDe(clave) {
   return fila && fila.chatId ? fila : null;
 }
 async function guardarCanal(clave, chat) {
-  await H.cambiarHoja(HOJA_CANALES, (filas) => [...filas.filter((f) => f.clave !== clave), { clave, chatId: String(chat.id), titulo: chat.title || '', actualizado: new Date().toISOString() }]);
+  await H.cambiarHoja(HOJA_CANALES, (filas) => {
+    const previo = filas.find((f) => f.clave === clave);
+    // si es el mismo canal se conserva lo que ya tenía (por ejemplo, que ya tiene su foto de perfil)
+    const mismo = previo && String(previo.chatId) === String(chat.id) ? previo : {};
+    return [...filas.filter((f) => f.clave !== clave), { ...mismo, clave, chatId: String(chat.id), titulo: chat.title || '', actualizado: new Date().toISOString() }];
+  });
+}
+
+// Foto de perfil de cada canal (assets/canal-stake.png y assets/canal-regalito.png). Se pone una sola vez por canal
+// (queda anotado en la hoja CanalesTg) y se reintenta sola cada pocos minutos si falla; el bot necesita ser administrador
+// con permiso para "cambiar la información del canal". Si no puede, le avisa al jefe una sola vez.
+const FOTO_VERSION = 'v1';
+const avisadoFoto = {};
+async function aplicarFotos() {
+  const fs = require('fs'), path = require('path');
+  for (const f of await H.leerHoja(HOJA_CANALES)) {
+    if (!CLAVES.includes(f.clave) || !f.chatId || f.foto === FOTO_VERSION) continue;
+    try {
+      const archivo = path.join(__dirname, 'assets', `canal-${f.clave}.png`);
+      const fd = new FormData();
+      fd.append('chat_id', String(f.chatId));
+      fd.append('photo', new Blob([fs.readFileSync(archivo)], { type: 'image/png' }), 'foto.png');
+      const r = await fetch(`https://api.telegram.org/bot${H.TG_TOKEN()}/setChatPhoto`, { method: 'POST', body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) throw new Error(j.description || r.status);
+      await H.cambiarHoja(HOJA_CANALES, (filas) => filas.map((x) => x.clave === f.clave ? { ...x, foto: FOTO_VERSION } : x));
+      await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `🖼 Le puse la foto de perfil al canal de ${f.clave === 'stake' ? 'stake de pago' : 'regalito'}.` }).catch(() => {});
+    } catch (e) {
+      console.error('Foto del canal', f.clave + ':', e.message);
+      if (!avisadoFoto[f.clave]) {
+        avisadoFoto[f.clave] = true;
+        await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `⚠️ No pude poner la foto de perfil al canal de ${f.clave === 'stake' ? 'stake de pago' : 'regalito'}: ${e.message}.\nRevisa que el bot sea administrador del canal con permiso para "Cambiar información del canal". Lo reintento solo.` }).catch(() => {});
+      }
+    }
+  }
 }
 async function anotarMsg(chatId, msgId) {
   if (!chatId || !msgId) return;
@@ -171,6 +205,8 @@ async function vaciar({ clave, conservar }) {
 
 function montar(app, stakes, extra) {
   H = stakes;
+  setTimeout(() => aplicarFotos().catch((e) => console.error('Fotos de canales:', e.message)), 45 * 1000);
+  setInterval(() => aplicarFotos().catch((e) => console.error('Fotos de canales:', e.message)), 10 * 60 * 1000);
   const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
 
   H.hooks.push(async (u) => {
@@ -265,4 +301,4 @@ async function manejarIngreso(jr) {
   return true;
 }
 
-module.exports = { montar, linkUnico, waLink, avisarLinkAprobado, canalDe, publicar, vaciar, manejarIngreso };
+module.exports = { montar, linkUnico, waLink, avisarLinkAprobado, canalDe, publicar, vaciar, manejarIngreso, aplicarFotos };
