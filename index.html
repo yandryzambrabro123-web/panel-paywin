@@ -3450,6 +3450,7 @@ function renderWin(){
             <button class="win-quick-btn" id="winQuickFlyersBtn" type="button">${winIcon('difusion')}<span>Flyers de la semana</span></button>
             <button class="win-quick-btn" id="winQuickProtocoloBtn" type="button">${winIcon('sol')}<span>Mandar protocolo de la mañana</span></button>
             <button class="win-quick-btn" id="winQuickComunicadoBtn" type="button">${winIcon('difusion')}<span>Comunicado</span></button>
+            <button class="win-quick-btn" id="winQuickReporteBtn" type="button">${winIcon('trofeo')}<span>Reporte de rendimiento</span></button>
           </div>
         </div>
       </div>
@@ -3507,6 +3508,7 @@ function renderWin(){
   document.getElementById('winQuickPartidosBtn').onclick = ()=>{ playWinSfx('action'); openPartidosDiaModal(); };
   document.getElementById('winQuickRegalitoBtn').onclick = ()=>{ playWinSfx('action'); openRegalitoDiaModal(); };
   document.getElementById('winQuickFlyersBtn').onclick = ()=>{ playWinSfx('action'); openFlyersSemanaModal(); };
+  document.getElementById('winQuickReporteBtn').onclick = ()=>{ playWinSfx('action'); openReporteRendimientoModal(); };
   document.getElementById('winQuickCanalStakeBtn').onclick = ()=>{ playWinSfx('action'); openCanalTgModal('stake'); };
   document.getElementById('winQuickCanalRegBtn').onclick = ()=>{ playWinSfx('action'); openCanalTgModal('regalito'); };
   winPowerRefresh = actualizarPower;
@@ -6343,6 +6345,109 @@ async function flyerUnico(seccion, lunes){
   return flyerDibujarUnico(seccion, flyerDatos(seccion, lunes), lunes, filas, escudos);
 }
 
+// ===== Reporte de rendimiento de apuestas (se descarga en .md para llevarlo al chat del analista deportivo) =====
+const REP_CATS = [['vipBets','Apuesta VIP'],['freeBets','Apuesta gratis'],['liveBets','Apuesta live'],['gifts','Regalito'],['stakes','Stake de pago']];
+function repItems(desde){
+  const out = [];
+  REP_CATS.forEach(([key, nombre])=>{
+    (state[key]||[]).forEach(b=>{
+      const fecha = String(b.date||'').slice(0,10);
+      if(!fecha || (desde && fecha < desde)) return;
+      const stake = Number(key === 'stakes' ? b.amount : b.stake) || 0;
+      const cuota = Number(b.odds) || 0;
+      const result = b.result === 'won' || b.result === 'lost' ? b.result : 'pending';
+      let neto = null;
+      if(stake > 0 && result === 'won') neto = (b.ganancia !== undefined && b.ganancia !== '' && Number(b.ganancia) > 0) ? Number(b.ganancia) : (Number(b.returned) > 0 ? Number(b.returned) - stake : (cuota > 1 ? stake*(cuota-1) : null));
+      if(stake > 0 && result === 'lost') neto = -stake;
+      out.push({ cat:nombre, fecha, evento:String(b.event || b.description || '').replace(/\s+/g,' ').trim(), pick:String(b.pick || b.seleccion || b.description || '').replace(/\s+/g,' ').trim(), cuota, stake, result, neto, tipo:b.betType === 'combo' ? 'combinada' : (b.betType ? 'simple' : ''), deporte:String(b.sport||'').trim() });
+    });
+  });
+  return out.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+}
+function repMetricas(l){
+  const g = l.filter(x=>x.result==='won').length, p = l.filter(x=>x.result==='lost').length, pe = l.length - g - p;
+  const conCuota = l.filter(x=>x.cuota > 0);
+  const conMonto = l.filter(x=>x.neto !== null);
+  const inv = conMonto.reduce((t,x)=>t+x.stake,0), neto = conMonto.reduce((t,x)=>t+x.neto,0);
+  return { total:l.length, g, p, pe, acierto:(g+p) ? g/(g+p)*100 : null, cuotaProm:conCuota.length ? conCuota.reduce((t,x)=>t+x.cuota,0)/conCuota.length : null, nMonto:conMonto.length, inv, neto, roi:inv > 0 ? neto/inv*100 : null };
+}
+function repRachas(l){
+  const r = l.filter(x=>x.result!=='pending'); let mg=0, mp=0, cg=0, cp=0;
+  r.forEach(x=>{ if(x.result==='won'){ cg++; cp=0; } else { cp++; cg=0; } mg=Math.max(mg,cg); mp=Math.max(mp,cp); });
+  const ult = r.length ? r[r.length-1].result : '';
+  return { mejorGanadas:mg, peorPerdidas:mp, actual: ult==='won' ? `${cg} ganada(s) seguidas` : (ult==='lost' ? `${cp} perdida(s) seguidas` : 'sin datos') };
+}
+const repDin = v=>(v>=0?'+':'-')+fmtMoney(Math.abs(v));
+function repFila(nombre, m){
+  const pc = v=>v === null ? '—' : v.toFixed(1)+'%';
+  return `| ${nombre} | ${m.total} | ${m.g} | ${m.p} | ${m.pe} | ${pc(m.acierto)} | ${m.cuotaProm === null ? '—' : m.cuotaProm.toFixed(2)} | ${m.nMonto ? fmtMoney(m.inv) : '—'} | ${m.nMonto ? repDin(m.neto) : '—'} | ${pc(m.roi)} |`;
+}
+function winReporteRendimientoMD(dias){
+  const hoy = new Date(Date.now() - 5*3600e3);
+  const hoyS = hoy.toISOString().slice(0,10);
+  const desde = dias ? new Date(hoy.getTime() - (dias-1)*86400000).toISOString().slice(0,10) : '';
+  const items = repItems(desde);
+  const cab = '| | Total | Ganadas | Perdidas | Pendientes | Acierto | Cuota prom. | Invertido | Ganancia neta | ROI |\n|---|---|---|---|---|---|---|---|---|---|';
+  const L = [];
+  L.push('# Reporte de rendimiento de apuestas — PayWin');
+  L.push(`Generado: ${hoyS} (hora Ecuador). Periodo: ${desde ? `${desde} a ${hoyS} (últimos ${dias} días)` : 'todo el historial registrado en el panel'}.`);
+  L.push('');
+  L.push('> Cómo leerlo: **Acierto** = ganadas / (ganadas + perdidas); las pendientes no cuentan. **Invertido, ganancia neta y ROI** solo incluyen apuestas resueltas que tienen el monto invertido registrado (ver la línea "Apuestas con monto registrado" más abajo); si una apuesta no tiene monto, cuenta para el acierto pero no para el dinero.');
+  L.push('');
+  if(!items.length){ L.push('No hay apuestas registradas en este periodo.'); return L.join('\n'); }
+  L.push('## Resumen global'); L.push(cab); L.push(repFila('Todas', repMetricas(items))); L.push('');
+  L.push('## Por categoría'); L.push(cab);
+  REP_CATS.forEach(([,n])=>{ const l = items.filter(x=>x.cat===n); if(l.length) L.push(repFila(n, repMetricas(l))); });
+  L.push('');
+  const conMonto = items.filter(x=>x.neto!==null).length;
+  L.push(`Apuestas con monto registrado (cuentan para el dinero): ${conMonto} de ${items.filter(x=>x.result!=='pending').length} resueltas.`); L.push('');
+  L.push('## Rachas (por categoría, solo resueltas)');
+  REP_CATS.forEach(([,n])=>{ const l = items.filter(x=>x.cat===n); if(!l.length) return; const r = repRachas(l); L.push(`- ${n}: racha actual ${r.actual}; mejor racha de ganadas ${r.mejorGanadas}; peor racha de perdidas ${r.peorPerdidas}.`); });
+  L.push('');
+  L.push('## Por rango de cuota'); L.push(cab);
+  [['menos de 1.50',0.01,1.5],['1.50 a 1.99',1.5,2],['2.00 a 2.99',2,3],['3.00 a 4.99',3,5],['5.00 o más',5,1e9]].forEach(([n,a,b])=>{ const l = items.filter(x=>x.cuota>=a && x.cuota<b); if(l.length) L.push(repFila(n, repMetricas(l))); });
+  const sinCuota = items.filter(x=>!(x.cuota>0)); if(sinCuota.length) L.push(repFila('sin cuota registrada', repMetricas(sinCuota)));
+  L.push('');
+  const tipos = ['simple','combinada'].map(t=>[t, items.filter(x=>x.tipo===t)]).filter(([,l])=>l.length);
+  if(tipos.length){ L.push('## Simples vs combinadas (VIP, gratis y live)'); L.push(cab); tipos.forEach(([t,l])=>L.push(repFila(t, repMetricas(l)))); L.push(''); }
+  const deportes = {}; items.forEach(x=>{ if(x.deporte) (deportes[x.deporte] = deportes[x.deporte] || []).push(x); });
+  if(Object.keys(deportes).length){ L.push('## Por deporte'); L.push(cab); Object.keys(deportes).sort().forEach(d=>L.push(repFila(d, repMetricas(deportes[d])))); L.push(''); }
+  const dias_ = {}; items.forEach(x=>{ (dias_[x.fecha] = dias_[x.fecha] || []).push(x); });
+  L.push('## Por día (más reciente primero, máximo 31 días)'); L.push(cab);
+  Object.keys(dias_).sort().reverse().slice(0,31).forEach(f=>L.push(repFila(f, repMetricas(dias_[f]))));
+  L.push('');
+  const det = items.slice().reverse().slice(0,200);
+  L.push(`## Detalle (las ${det.length} más recientes${items.length > det.length ? ` de ${items.length}` : ''})`);
+  L.push('| Fecha | Categoría | Evento | Pick | Cuota | Invertido | Resultado | Ganancia |\n|---|---|---|---|---|---|---|---|');
+  const t = (v,n)=>String(v||'—').replace(/\|/g,'/').slice(0,n);
+  det.forEach(x=>L.push(`| ${x.fecha} | ${x.cat} | ${t(x.evento,50)} | ${t(x.pick,80)} | ${x.cuota>0 ? x.cuota.toFixed(2) : '—'} | ${x.stake>0 ? fmtMoney(x.stake) : '—'} | ${resultLabel(x.result)} | ${x.neto===null ? '—' : repDin(x.neto)} |`));
+  return L.join('\n');
+}
+function openReporteRendimientoModal(){
+  openModal(`
+    <h3>Reporte de rendimiento de apuestas</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Descarga un archivo .md con el acierto, la ganancia y las rachas de tus apuestas (VIP, gratis, live, regalito y stake de pago) para llevarlo al chat del analista deportivo.</div>
+    <div class="field"><label>Periodo</label><select id="f-repDias"><option value="7">Últimos 7 días</option><option value="14">Últimos 14 días</option><option value="30" selected>Últimos 30 días</option><option value="90">Últimos 90 días</option><option value="0">Todo el historial</option></select></div>
+    <div id="repMsg" style="font-size:12.5px; color:var(--muted); min-height:18px; margin-bottom:8px;"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn" id="repDescargarBtn">Descargar reporte (.md)</button>
+    </div>`);
+  document.getElementById('repDescargarBtn').onclick = ()=>{
+    try{
+      const dias = Number(document.getElementById('f-repDias').value) || 0;
+      const md = winReporteRendimientoMD(dias);
+      const blob = new Blob([md], { type:'text/markdown;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `reporte-rendimiento-paywin-${new Date(Date.now()-5*3600e3).toISOString().slice(0,10)}${dias ? '-' + dias + 'd' : '-todo'}.md`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+      document.getElementById('repMsg').textContent = '✅ Reporte descargado.';
+    }catch(e){ console.error(e); document.getElementById('repMsg').textContent = 'No se pudo crear el reporte: ' + e.message; }
+  };
+}
+
 function openFlyersSemanaModal(){
   const opciones = [0, -1].map(o=>`<option value="${o}">${o === 0 ? 'Esta semana' : 'Semana pasada'} — ${flyerRangoTexto(flyerLunes(o))}</option>`).join('');
   openModal(`
@@ -9148,7 +9253,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '7 nov, 22:45';
+const PANEL_VERSION = '7 nov, 23:30';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
