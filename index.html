@@ -1004,7 +1004,7 @@
     .modal, .modal-box{ max-width:100%; }
 
     /* Win: herramientas arriba en una fila, orbe más chico, botones a todo el ancho */
-    body.win-locked .win-fullscreen{ padding:150px 12px 130px !important; }
+    body.win-locked .win-fullscreen{ padding:calc(env(safe-area-inset-top, 0px) + 190px) 12px 130px !important; }
     .win-corner-icons{ top:calc(env(safe-area-inset-top, 0px) + 68px) !important; left:12px !important; right:12px !important; width:auto !important; flex-direction:row !important; justify-content:space-between; gap:6px !important; padding:6px !important; border-radius:18px !important; }
     .win-icon-btn{ flex:1 1 0; width:auto !important; height:52px !important; border-radius:14px; }
     .win-aura-wrap{ transform:scale(.56) !important; margin:-92px 0 -34px; }
@@ -3324,6 +3324,7 @@ const WIN_ICON_PATHS = {
   memoria:'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/>',
   imagen:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 3.5 3L16 12l4 4.5"/>',
   difusion:'<path d="M4 10v4h3l7 4V6L7 10H4z"/><path d="M17.5 9.5a3.5 3.5 0 0 1 0 5"/>',
+  telefono:'<rect x="7" y="2.8" width="10" height="18.4" rx="2.4"/><path d="M11 18h2"/>',
   mic:'<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
   ojo:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
   trofeo:'<path d="M8 4h8v5a4 4 0 0 1-8 0V4z"/><path d="M8 6H5v1.5A3 3 0 0 0 8 10.5M16 6h3v1.5a3 3 0 0 1-3 3M12 13v4M9 20h6M10 17h4"/>',
@@ -3370,6 +3371,7 @@ function renderWin(){
       </div>
       <div class="win-corner-icons">
         <button class="win-icon-btn" id="winMemoryBtn" title="Lo que Win sabe de ti" aria-label="Lo que Win sabe de ti">${winIcon('memoria')}<span class="win-lbl">Memoria</span>${state.winMemory.length ? `<span class="win-icon-badge">${state.winMemory.length}</span>` : ''}</button>
+        <button class="win-icon-btn" id="winNumbersBtn" title="Números de WhatsApp" aria-label="Números de WhatsApp">${winIcon('telefono')}<span class="win-lbl">Números</span></button>
         <button class="win-icon-btn" id="winTemplatesBtn" title="Imágenes guardadas" aria-label="Imágenes guardadas">${winIcon('imagen')}<span class="win-lbl">Imágenes</span>${state.winTemplates.length ? `<span class="win-icon-badge">${state.winTemplates.length}</span>` : ''}</button>
         <button class="win-icon-btn" id="winMicModeBtn" title="${winModoManual() ? 'Micrófono manual · toca para pasar a escucha automática' : 'Escucha automática · toca para pasar a micrófono manual'}" aria-label="Cambiar modo del micrófono">${winIcon(winModoManual() ? 'mic' : 'ojo')}<span class="win-lbl">${winModoManual() ? 'Mic manual' : 'Mic auto'}</span></button>
       </div>
@@ -3518,6 +3520,7 @@ function renderWin(){
   };
   document.getElementById('winMemoryBtn').onclick = openWinMemoryModal;
   document.getElementById('winTemplatesBtn').onclick = openWinTemplatesModal;
+  document.getElementById('winNumbersBtn').onclick = openWinNumbersModal;
   document.getElementById('winMicModeBtn').onclick = ()=>{
     const manual = winModoManual();
     if(!manual || confirm('La escucha automática capta todo lo que se oiga alrededor (incluida la gente de la oficina). ¿Cambiar a escucha automática?')){
@@ -3718,6 +3721,98 @@ function openWinMemoryModal(){
     if(texto && texto.trim()){ saveWinMemory(texto.trim()).then(()=>{ closeModal(); openWinMemoryModal(); }); }
   };
   document.querySelectorAll('[data-del-memory]').forEach(b=>b.onclick=async ()=>{ await delItem('winMemory', b.dataset.delMemory, ()=>{}); closeModal(); openWinMemoryModal(); });
+}
+
+
+// ---------- Números de WhatsApp de la agencia (cambiar cuando te bloquean uno) ----------
+// Viven en la hoja "WinNumeros": { id, numero, nota, estado: 'activo' | 'disponible' | 'bloqueado' }.
+// El que está "activo" es el que sale en los textos, flyers y mensajes (panel, Win, protocolo de la mañana, VIP).
+const WIN_NUMEROS_HOJA = 'WinNumeros';
+const winNormTel = (t)=>{ const d = String(t||'').replace(/\D/g,'').replace(/^593/, '0'); return /^09\d{8}$/.test(d) ? d : ''; };
+async function winNumerosLeer(){
+  const r = await fetch(`${SHEETS_API_URL}?sheet=${WIN_NUMEROS_HOJA}&_=${Date.now()}`);
+  const j = await r.json();
+  if(Array.isArray(j.data)) return j.data;
+  if(j && j.error && /exist|encontr|found|no hay/i.test(String(j.error))) return [];
+  throw new Error('No pude leer la hoja de números.');
+}
+async function winNumerosGuardar(lista){
+  await fetch(SHEETS_API_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet: WIN_NUMEROS_HOJA, data: lista }) });
+}
+function winNumeroAplicar(lista){
+  const act = (lista||[]).find(n=>n.estado==='activo' && winNormTel(n.numero));
+  if(!act) return false;
+  WIN_TELEFONO = winNormTel(act.numero);
+  try{ localStorage.setItem('winNumeroActivo', WIN_TELEFONO); }catch(e){}
+  return true;
+}
+// Al abrir el panel se trae el número activo (sin bloquear nada si falla).
+setTimeout(()=>{ winNumerosLeer().then(winNumeroAplicar).catch(()=>{}); }, 1500);
+
+async function openWinNumbersModal(){
+  openModal('<h3>Números de WhatsApp</h3><div class="empty">Cargando…</div>');
+  let lista;
+  try{ lista = await winNumerosLeer(); }
+  catch(e){ openModal('<h3>Números de WhatsApp</h3><div class="empty">No pude leer tus números. Revisa la conexión e inténtalo de nuevo.</div><div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>'); return; }
+  if(!lista.length){ // primera vez: el número de siempre queda como activo
+    lista = [{ id: uid(), numero: WIN_TELEFONO, nota: 'Principal', estado: 'activo' }];
+    await winNumerosGuardar(lista);
+  }
+  winNumeroAplicar(lista);
+  const estadoTxt = { activo:'<span style="color:#4ade80;font-weight:700;">● En uso</span>', disponible:'<span style="color:var(--muted);">Disponible</span>', bloqueado:'<span style="color:var(--loss);font-weight:700;">Bloqueado</span>' };
+  const fila = (n)=>`<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:10px 0; border-top:1px solid var(--border);">
+      <div style="flex:1; min-width:150px;"><div style="font-size:15px; font-weight:700; letter-spacing:.3px;">${n.numero}</div>
+        <div style="font-size:12px; color:var(--muted);">${n.nota ? n.nota + ' · ' : ''}${estadoTxt[n.estado] || n.estado}</div></div>
+      ${n.estado==='activo' ? `<button class="btn danger small" data-num-block="${n.id}">🚫 Me lo bloquearon</button>`
+        : n.estado==='bloqueado' ? `<button class="btn secondary small" data-num-free="${n.id}">Ya sirve de nuevo</button>`
+        : `<button class="btn small" data-num-use="${n.id}">Usar este</button><button class="btn secondary small" data-num-block="${n.id}">Bloqueado</button>`}
+      ${n.estado!=='activo' ? `<button class="btn secondary small" data-num-del="${n.id}">Quitar</button>` : ''}
+    </div>`;
+  openModal(`
+    <h3>Números de WhatsApp</h3>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">El número <b>en uso</b> es el que sale en todos los textos, flyers y mensajes. Si te bloquean uno, toca "Me lo bloquearon" o elige otro con "Usar este": todo lo que mandes desde ese momento sale con el nuevo. Lo que ya se mandó no cambia.</div>
+    ${lista.map(fila).join('')}
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <input id="winNumNuevo" inputmode="tel" placeholder="Número nuevo (09XXXXXXXX)" style="flex:1; min-width:0; padding:11px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px;">
+      <input id="winNumNota" placeholder="Nota (opcional)" style="flex:1; min-width:0; padding:11px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px;">
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn" id="winNumAddBtn">+ Agregar número</button>
+    </div>`);
+  const guardar = async (nueva, aviso)=>{ await winNumerosGuardar(nueva); winNumeroAplicar(nueva); if(aviso) alert(aviso); openWinNumbersModal(); };
+  const cambiarActivo = (nueva, id)=>nueva.map(n=>n.id===id ? { ...n, estado:'activo' } : (n.estado==='activo' ? { ...n, estado:'disponible' } : n));
+  document.getElementById('winNumAddBtn').onclick = async ()=>{
+    const num = winNormTel(document.getElementById('winNumNuevo').value);
+    if(!num){ alert('Escribe un celular ecuatoriano válido, por ejemplo 0987654321.'); return; }
+    if(lista.some(n=>winNormTel(n.numero)===num)){ alert('Ese número ya está en la lista.'); return; }
+    const nota = (document.getElementById('winNumNota').value||'').trim();
+    const nuevo = { id: uid(), numero: num, nota, estado:'disponible' };
+    await guardar([...lista, nuevo]);
+  };
+  document.querySelectorAll('[data-num-use]').forEach(b=>b.onclick = ()=>{
+    const n = lista.find(x=>x.id===b.dataset.numUse); if(!n) return;
+    guardar(cambiarActivo(lista, n.id), `Listo: desde ahora los textos usan el ${n.numero}.`);
+  });
+  document.querySelectorAll('[data-num-block]').forEach(b=>b.onclick = async ()=>{
+    const n = lista.find(x=>x.id===b.dataset.numBlock); if(!n) return;
+    let nueva = lista.map(x=>x.id===n.id ? { ...x, estado:'bloqueado' } : x);
+    if(n.estado==='activo'){
+      let sig = nueva.find(x=>x.estado==='disponible');
+      if(!sig){
+        const t = prompt('Ese era el único número disponible. Escribe el número nuevo (09XXXXXXXX):');
+        const num = winNormTel(t);
+        if(!num){ alert('No cambié nada: sin un número nuevo los textos se quedan con el actual.'); return; }
+        sig = { id: uid(), numero: num, nota: '', estado:'disponible' };
+        nueva = [...nueva, sig];
+      }
+      nueva = cambiarActivo(nueva, sig.id).map(x=>x.id===n.id ? { ...x, estado:'bloqueado' } : x);
+      return guardar(nueva, `Marcado como bloqueado. Desde ahora los textos usan el ${sig.numero}.`);
+    }
+    guardar(nueva);
+  });
+  document.querySelectorAll('[data-num-free]').forEach(b=>b.onclick = ()=>guardar(lista.map(x=>x.id===b.dataset.numFree ? { ...x, estado:'disponible' } : x)));
+  document.querySelectorAll('[data-num-del]').forEach(b=>b.onclick = ()=>{ if(confirm('¿Quitar este número de la lista?')) guardar(lista.filter(x=>x.id!==b.dataset.numDel)); });
 }
 
 function openWinTemplatesModal(){
@@ -6058,7 +6153,7 @@ const FLYER_SECCIONES = [
   { key:'gifts', titulo:'REGALITO DEL DÍA', archivo:'Regalito', color:'#B48CFF' },
   { key:'stakes', titulo:'STAKE DE PAGO', archivo:'Stake', color:'#5AA9FF' }
 ];
-const FLYER_TEL = '0987264212';
+
 const DIAS_CORTO = ['LUN','MAR','MIÉ','JUE','VIE','SÁB'];
 const MESES_CORTO = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 function flyerFechaSumar(iso, dias){ const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + dias); return d.toISOString().slice(0,10); }
@@ -6235,7 +6330,7 @@ async function flyerDibujarUnico(seccion, datos, lunes, filas, escudos){
   // pie
   const yf = Y_FILAS + filas.length * (ALTO + SEP) + 34;
   ctx.textAlign = 'center'; ctx.fillStyle = '#9aa3b2'; ctx.font = '600 22px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 5); ctx.fillText('RESULTADOS REALES · SIN EDITAR', W/2, yf + 20); flyerSpacing(ctx, 0);
-  ctx.fillStyle = col; ctx.font = '800 32px Montserrat, sans-serif'; ctx.fillText('PAYWIN  ·  ' + FLYER_TEL, W/2, yf + 66);
+  ctx.fillStyle = col; ctx.font = '800 32px Montserrat, sans-serif'; ctx.fillText('PAYWIN  ·  ' + WIN_TELEFONO, W/2, yf + 66);
   return c;
 }
 async function flyerUnico(seccion, lunes){
@@ -6316,8 +6411,10 @@ async function winMarcaAgua(base64, mediaType, tipo){
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    const lado = Math.max(90, Math.round(Math.min(c.width, c.height) * 0.27));
-    const cx = Math.round(c.width * 0.68), cy = Math.round(c.height * 0.52);
+    // Grande (casi la mitad de la imagen) y pegado a la derecha, para dejar libre el texto de la izquierda
+    const lado = Math.max(180, Math.round(Math.min(c.width, c.height) * 0.54));
+    const radio = lado * 0.47;
+    const cx = Math.round(Math.max(radio + 4, c.width - radio - c.width * 0.03)), cy = Math.round(c.height * 0.52);
     const x = cx - Math.round(lado/2), y = cy - Math.round(lado/2);
     // logo redondo, 100% visible
     ctx.save();
@@ -6327,14 +6424,16 @@ async function winMarcaAgua(base64, mediaType, tipo){
     // cinta con el nombre del tipo
     const etiqueta = WIN_ETIQUETA_TIPO[tipo] || '';
     if(etiqueta){
-      const fuente = Math.round(lado * 0.13);
+      let fuente = Math.round(lado * 0.11);
       ctx.font = `800 ${fuente}px Arial, Helvetica, sans-serif`;
-      const w = Math.ceil(ctx.measureText(etiqueta).width) + Math.round(fuente * 1.6), h = Math.round(fuente * 1.9);
-      const rx = cx - Math.round(w/2), ry = y + Math.round(lado * 0.95);
+      let w = Math.ceil(ctx.measureText(etiqueta).width) + Math.round(fuente * 1.6);
+      if(w > lado * 0.98){ fuente = Math.floor(fuente * (lado * 0.98) / w); ctx.font = `800 ${fuente}px Arial, Helvetica, sans-serif`; w = Math.ceil(ctx.measureText(etiqueta).width) + Math.round(fuente * 1.6); }
+      const h = Math.round(fuente * 1.9);
+      const rx = Math.max(4, Math.min(c.width - w - 4, cx - Math.round(w/2))), ry = Math.min(c.height - h - 4, y + Math.round(lado * 0.95));
       ctx.fillStyle = '#12141a'; ctx.strokeStyle = '#d9b45a'; ctx.lineWidth = Math.max(2, Math.round(fuente * 0.12));
       ctx.beginPath(); ctx.roundRect ? ctx.roundRect(rx, ry, w, h, h/2) : ctx.rect(rx, ry, w, h); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#f2d27a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(etiqueta, cx, ry + h/2 + 1);
+      ctx.fillText(etiqueta, rx + w/2, ry + h/2 + 1);
     }
     const url = c.toDataURL('image/jpeg', 0.9);
     return { base64: url.split(',')[1], mediaType: 'image/jpeg' };
@@ -6686,7 +6785,7 @@ async function openWinGanadasAyerModal(){
 // El número va en WIN_TELEFONO. Win redacta el CTA adaptado a lo que se publica (ver "telefono"
 // en api/win-redactar.js) y, por si el texto sale sin él (o lo editas), aquí se agrega uno
 // estándar al final. No aplica a los regalitos ni a los mensajes de difusión uno a uno.
-const WIN_TELEFONO = '0987264212';
+let WIN_TELEFONO = (()=>{ try{ const v = localStorage.getItem('winNumeroActivo'); return /^09\d{8}$/.test(v||'') ? v : '0987264212'; }catch(e){ return '0987264212'; } })();
 // Si el texto va SOLO a grupos VIP, no lleva CTA ("entra al VIP", teléfono): ya están dentro.
 const winSoloVip = (g)=>{ const l = Array.isArray(g) ? g : String(g||'').split(','); const n = l.map(x=>String(x).trim()).filter(Boolean); return n.length > 0 && n.every(x=>/vip/i.test(x)); };
 const winTelPara = (g)=> (winSoloVip(g) || (Array.isArray(g) && g.length && g.every(winEsCanal))) ? '' : WIN_TELEFONO;
@@ -6705,8 +6804,15 @@ function winAsegurarMasparley(texto){
   if(!t || t.includes('mas1x2.com/JoinPlatform/PAYWIN')) return t;
   return `${t}\n\n🔴 *¿No quieres pagar el 15% que te cobra Ecuabet?* Regístrate en *MASPARLEY*: no cobra nada y es exactamente igual, solo que de color rojo 👉 ${WIN_MASPARLEY_LINK}`;
 }
+// Cualquier otro celular ecuatoriano que aparezca en el texto se cambia por el número activo.
+function winCorregirTel(texto){
+  return String(texto || '').replace(/(?:\+?593[\s-]?|0)9(?:[\s-]?\d){8}/g, (m)=>{
+    const d = m.replace(/\D/g, '').replace(/^593/, '0');
+    return d === WIN_TELEFONO ? m : WIN_TELEFONO;
+  });
+}
 function winAsegurarCTA(texto, kind, grupos){
-  return winAsegurarMasparley(winAsegurarCTABase(texto, kind, grupos));
+  return winAsegurarMasparley(winAsegurarCTABase(winCorregirTel(texto), kind, grupos));
 }
 function winAsegurarCTABase(texto, kind, grupos){
   const todosCanales = Array.isArray(grupos) && grupos.length && grupos.every(winEsCanal);
@@ -9000,7 +9106,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '6 nov, 07:40';
+const PANEL_VERSION = '7 nov, 21:40';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){

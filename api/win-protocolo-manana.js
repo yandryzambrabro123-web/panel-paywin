@@ -24,6 +24,7 @@
 // Si todavía falta guardar alguna de estas cuatro, ese paso se salta solo (no tumba el resto
 // del protocolo) hasta que la guardes con ese nombre exacto.
 
+const { numeroVigente, corregirTelefono } = require('./_numero');
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhbzMCcoJ5jDjp1lgsaGjLMkGI47SVAfemVMuMnggWd_k-ubqzmBEMlA/exec';
 const TEMPLATES_SHEET = 'WinPlantillas';
 const DEDUPE_SHEET = 'WinProtocoloManana';
@@ -43,12 +44,6 @@ const PROTOCOLO_STEPS = [
   { nombre: 'protocolo beneficios recargar', destinos: GRATIS_JIDS },
   { nombre: 'protocolo apuesta gratis', destinos: GRATIS_JIDS }
 ];
-
-const TELEFONO_VIGENTE = '0987264212';
-const corregirTelefono = (t) => String(t || '').replace(/(?:\+?593[\s-]?|0)9(?:[\s-]?\d){8}/g, (m) => {
-  const d = m.replace(/\D/g, '').replace(/^593/, '0');
-  return d === TELEFONO_VIGENTE ? m : TELEFONO_VIGENTE;
-});
 
 const norm = s => (s || '').toLowerCase().trim();
 
@@ -152,8 +147,9 @@ async function enviarPaso(step, templates, botUrl, botKey) {
   if (!tpl) return false; // todavía no se guardó esa publicidad -- se salta sin tumbar el resto
   // "imageUrl" es la foto en buena calidad guardada en Vercel Blob (publicidades nuevas);
   // "base64" queda de respaldo solo para publicidades guardadas ANTES de este cambio.
+  const vigente = await numeroVigente();
   for (const jid of step.destinos) {
-    await enviarAlBot(botUrl, botKey, jid, conMasparley(corregirTelefono(tpl.texto || '')), tpl.imageUrl ? '' : (tpl.base64 || ''), tpl.imageUrl || '', tpl.mediaType || 'image/jpeg');
+    await enviarAlBot(botUrl, botKey, jid, conMasparley(corregirTelefono(tpl.texto || '', vigente)), tpl.imageUrl ? '' : (tpl.base64 || ''), tpl.imageUrl || '', tpl.mediaType || 'image/jpeg');
   }
   return true;
 }

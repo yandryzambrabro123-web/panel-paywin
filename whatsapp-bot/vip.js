@@ -37,7 +37,15 @@ const CORTE_MS = 1792930800000; // mismo corte que el panel (PANEL_CORTE_MS en i
 const PLAN_MESES = { mensual: 1, trimestral: 3, anual: 12 };
 // Mensaje de bienvenida que recibe por Telegram quien entra al grupo VIP (cámbialo aquí si quieres otro texto).
 const MENSAJE_VIP = (nombre) => `Hola${nombre ? ' ' + nombre : ''} 👋 ¡Bienvenido al grupo VIP!\n\nDesde hoy recibes aquí nuestras apuestas. Te pedimos apostar siempre con responsabilidad y solo lo que puedas permitirte perder.\n\nCualquier duda, escríbenos al 0987264212.`;
-const TELEFONO_AGENCIA = '0987264212';
+// Número activo de la agencia: se cambia desde el panel (Win > Números) y se lee de la hoja WinNumeros cada 2 minutos.
+let TELEFONO_AGENCIA = '0987264212';
+async function refrescarTelefonoAgencia() {
+  try {
+    const f = (await H.leerHoja('WinNumeros')).find((x) => String(x.estado) === 'activo');
+    const n = f ? String(f.numero || '').replace(/\D/g, '').replace(/^593/, '0') : '';
+    if (/^09\d{8}$/.test(n)) TELEFONO_AGENCIA = n;
+  } catch (e) { /* se queda con el último */ }
+}
 const MAX_POR_DIA = 10;
 const HORA_SALIDA_MIN = 9 * 60; // 9:00 Ecuador
 
@@ -325,6 +333,7 @@ async function enviarAvisosFaltantes() {
 
 function montar(app, stakes, extra) {
   H = stakes;
+  refrescarTelefonoAgencia(); setInterval(refrescarTelefonoAgencia, 2 * 60 * 1000);
   const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
 
   // El panel (a través de Vercel) llama a este endpoint con la clave del bot.

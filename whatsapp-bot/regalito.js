@@ -36,7 +36,7 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:0 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito y tu número de teléfono. Lo revisamos y te mostramos el link del grupo.</p><div class="c" id="box"></div></div>
+</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito, tu número de teléfono y sube la captura de tu recarga. Al enviar te mostramos el link del grupo.</p><div class="c" id="box"></div></div>
 <script>
 const $=s=>document.querySelector(s);let timer=null;const box=$('#box');
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -44,7 +44,7 @@ function guardar(id){try{localStorage.setItem('rgId',id)}catch(e){}}
 function leer(){try{return localStorage.getItem('rgId')||''}catch(e){return ''}}
 function limpiar(){try{localStorage.removeItem('rgId')}catch(e){}}
 function form(){
-  box.innerHTML='<label>Asignar el regalito a nombre de</label><input id="nom" autocomplete="name" placeholder="Nombre y apellido"><label style="margin-top:14px">Tu número de teléfono (WhatsApp)</label><input id="tel" inputmode="tel" autocomplete="tel" maxlength="10" placeholder="0999999999"><div class="e" id="err"></div><button id="env">Pedir mi regalito</button>';
+  box.innerHTML='<label>Asignar el regalito a nombre de</label><input id="nom" autocomplete="name" placeholder="Nombre y apellido"><label style="margin-top:14px">Tu número de teléfono (WhatsApp)</label><input id="tel" inputmode="tel" autocomplete="tel" maxlength="10" placeholder="0999999999"><label style="margin-top:14px">Captura de tu recarga</label><input id="cmp" type="file" accept="image/*"><p style="font-size:12.5px;margin:6px 0 0">Cada captura se puede usar una sola vez.</p><div class="e" id="err"></div><button id="env">Pedir mi regalito</button>';
   $('#env').onclick=enviar;
 }
 async function enviar(){
@@ -53,15 +53,18 @@ async function enviar(){
   const telefono=$('#tel').value.replace(/\\D/g,'');
   if(nombre.length<3){er.textContent='Escribe el nombre completo.';return}
   if(telefono.length<9||telefono.length>10){er.textContent='Revisa tu número de teléfono.';return}
+  const fl=$('#cmp').files[0];
+  if(!fl){er.textContent='Sube la captura de tu recarga.';return}
   b.disabled=true;b.textContent='Enviando…';
-  try{const r=await fetch('/regalito/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,telefono})});const d=await r.json();
+  try{const comprobante=await leerImg(fl);const r=await fetch('/regalito/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,telefono,comprobante})});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');guardar(d.id);espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Pedir mi regalito'}
 }
+function leerImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const m=1400,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',0.85))};im.onerror=()=>no(new Error('No pude leer esa imagen.'));im.src=u})}
 function pinta(d,id){
   if(d.estado==='aprobado'){clearInterval(timer);limpiar();box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado! Tu regalito está listo.</p><a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al grupo del regalito</a>';return true}
   if(d.estado==='rechazado'){clearInterval(timer);limpiar();box.innerHTML='<p style="color:#ff7a7a;font-size:16px">No pudimos aprobar tu solicitud. Comunícate con la agencia.</p>';return true}
   if(d.estado==='cola'){box.innerHTML='<p style="color:#D4AF6A;font-size:16px">🕒 El regalito todavía no está disponible, pero ya estás en la cola.</p><p>Cuando salga el siguiente regalito te lo mostramos aquí. Puedes cerrar esta pantalla y volver a abrir este mismo link.</p>';return false}
-  box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Solicitud enviada. La estamos revisando; no cierres esta pantalla.</p>';return false;
+  box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Solicitud enviada. Preparando tu acceso…</p>';return false;
 }
 function espera(id){
   clearInterval(timer);
@@ -71,7 +74,7 @@ function espera(id){
   tick();timer=setInterval(tick,5000);
 }
 const previo=leer();
-if(previo){fetch('/regalito/estado/'+previo).then(r=>r.json()).then(d=>{if(d.estado==='pendiente'||d.estado==='cola'){espera(previo)}else{limpiar();form()}}).catch(form)}else form();
+if(previo){fetch('/regalito/estado/'+previo).then(r=>r.json()).then(d=>{if(d.estado==='pendiente'||d.estado==='cola'||d.estado==='aprobado'){espera(previo)}else{limpiar();form()}}).catch(form)}else form();
 </script></body></html>`;
 
 // ---- Regalito vigente ----
@@ -231,18 +234,26 @@ function montar(app, stakes, extra) {
       const telefono = H.soloDigitos((req.body || {}).telefono);
       if (nombre.length < 3) return res.status(400).json({ error: 'Escribe el nombre completo.' });
       if (telefono.length < 9 || telefono.length > 10) return res.status(400).json({ error: 'Revisa tu número de teléfono.' });
-      const reg = { id: H.nuevoId(), createdAt: new Date().toISOString(), day: H.hoyEC(), nombre, telefono, estado: 'pendiente', link: '', regalitoId: '', resueltoAt: '' };
+      const reg = { id: H.nuevoId(), createdAt: new Date().toISOString(), day: H.hoyEC(), nombre, telefono, estado: 'aprobado', link: '', regalitoId: '', resueltoAt: new Date().toISOString() };
       let repetido = null;
       await H.cambiarHoja(HOJA_REG, (filas) => {
-        repetido = filas.find((f) => (f.estado === 'pendiente' || f.estado === 'cola') && (f.nombre.toLowerCase() === nombre.toLowerCase() || (f.telefono && f.telefono === telefono)));
+        repetido = filas.find((f) => (f.estado === 'pendiente' || f.estado === 'cola' || (f.estado === 'aprobado' && f.day === reg.day)) && (f.nombre.toLowerCase() === nombre.toLowerCase() || (f.telefono && f.telefono === telefono)));
         return repetido ? filas : [...filas, reg];
       });
       if (repetido) {
         // si el pedido anterior nunca le llegó al jefe (falla de ayer), se le vuelve a avisar ahora
-        if (!repetido.avisado) await avisarYMarcar(repetido, false);
+        if (repetido.estado !== 'aprobado' && !repetido.avisado) await avisarYMarcar(repetido, false);
         return res.json({ id: repetido.id, repetido: true });
       }
-      await avisarYMarcar(reg, false);
+      // Captura de la recarga obligatoria y que no se repita; con eso entra directo (sin aprobación del jefe)
+      let cmp;
+      try { cmp = await require('./comprobantes').procesar((req.body || {}).comprobante, { tipo: 'regalito', registroId: reg.id, nombre, telefono }); }
+      catch (e) { await H.cambiarHoja(HOJA_REG, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
+      if (cmp.repetido) {
+        await H.cambiarHoja(HOJA_REG, (filas) => filas.filter((f) => f.id !== reg.id));
+        return res.status(409).json({ error: 'Esa captura ya fue usada. Sube la captura de tu recarga de hoy.' });
+      }
+      await require('./canales').avisarLinkAprobado('regalito', HOJA_REG, reg, { foto: cmp.buf, parecido: cmp.parecido });
       res.json({ id: reg.id });
     } catch (e) {
       console.error('Registro de regalito:', e);

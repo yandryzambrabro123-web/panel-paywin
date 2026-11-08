@@ -314,13 +314,14 @@ function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt
 async function init(){
   try{const r=await fetch('/stake/hoy');const d=await r.json();
     if(!d.abierto){$('#sub').textContent='Hoy todavía no hay un stake de pago abierto. Vuelve a intentarlo cuando se anuncie.';box.style.display='none';return}
-    sec=d;$('#sub').textContent='Elige el stake que compraste y completa tus datos para que aprobemos tu acceso.';form()
+    sec=d;$('#sub').textContent='Elige el stake que compraste, completa tus datos y sube la captura de tu pago. Al enviar, entras al canal de una.';form()
   }catch(e){$('#sub').textContent='No se pudo cargar. Intenta de nuevo.';box.style.display='none'}
 }
 function form(){
   box.innerHTML='<label>¿Qué stake compraste?</label><select id="sec">'+sec.secciones.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.titulo)+' · $'+s.precio+'</option>').join('')+'</select><label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off"><div class="n" id="nota"></div>'+
   '<div id="resto" style="display:none"><label>Nombre</label><input id="nom" autocomplete="given-name"><label>Apellido</label><input id="ape" autocomplete="family-name">'+
   '<label>Usuario de Telegram</label><input id="tgu" placeholder="@tuusuario" autocapitalize="none" autocomplete="off"><label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999">'+
+  '<label>Captura de tu pago (comprobante)</label><input id="cmp" type="file" accept="image/*"><div class="n">Sube la captura completa. Cada captura se puede usar una sola vez.</div>'+
   '<div class="e" id="err"></div><button id="env">Enviar registro</button></div>';
   let t=null;$('#ced').oninput=e=>{const v=e.target.value.replace(/\\D/g,'');e.target.value=v;clearTimeout(t);$('#nota').textContent='';
     if(v.length===10){t=setTimeout(()=>buscar(v),250)}else{$('#resto').style.display='none'}};
@@ -338,12 +339,15 @@ async function enviar(){
   const b=$('#env'),er=$('#err');er.textContent='';
   const body={sectionId:$('#sec').value,cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,telegram:$('#tgu').value,telefono:$('#tel').value};
   if(!body.nombre.trim()||!body.apellido.trim()||!body.telegram.trim().replace('@','')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
+  const fl=$('#cmp').files[0];
+  if(!fl){er.textContent='Sube la captura de tu pago.';return}
   b.disabled=true;b.textContent='Enviando…';
-  try{const r=await fetch('/stake/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
+  try{body.comprobante=await leerImg(fl);const r=await fetch('/stake/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}
 }
+function leerImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const m=1400,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',0.85))};im.onerror=()=>no(new Error('No pude leer esa imagen.'));im.src=u})}
 function espera(id){
-  box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Registro enviado. Estamos revisando tu pago; no cierres esta pantalla.</p>';
+  box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Registro enviado. Preparando tu acceso…</p>';
   const tick=async()=>{try{const r=await fetch('/stake/estado/'+id);const d=await r.json();
     if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado!</p><p>Entra al canal con el botón. Si te pide unirte, solicítalo con tu usuario de Telegram registrado.</p>'+(d.link?'<a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al canal de Telegram</a>':'<p>En un momento te pasamos el link por mensaje.</p>')}
     else if(d.estado==='cola'){box.innerHTML='<p style="color:#D4AF6A;font-size:16px">🕒 Tu pago está confirmado. Este stake ya terminó; en cuanto salga el siguiente te mostramos aquí el link del canal.</p><p>No cierres esta pantalla.</p>'}
@@ -409,7 +413,18 @@ function montar(app) {
         return [...filas, reg];
       });
       if (repetido) return res.json({ id: repetido.id, repetido: true });
-      await avisarJefe(reg, sec).catch((e) => console.error('No pude avisar al jefe:', e.message));
+      // Captura de pago obligatoria y que no se repita; con eso entra directo (sin aprobación del jefe)
+      let cmp;
+      try { cmp = await require('./comprobantes').procesar(b.comprobante, { tipo: 'stake', registroId: reg.id, nombre: `${nombre} ${apellido}`, telefono }); }
+      catch (e) { await cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
+      if (cmp.repetido) {
+        await cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id));
+        return res.status(409).json({ error: 'Esa captura ya fue usada. Sube la captura de tu pago de hoy.' });
+      }
+      const ap = await resolverRegistro(reg.id, true);
+      if (ap.error && !ap.ok) console.error('Auto-aprobación de stake:', ap.error);
+      await require('./canales').avisarLinkAprobado('stake', HOJA_REGISTROS, reg, { foto: cmp.buf, parecido: cmp.parecido });
+      await require('./cuadre').ofrecer({ tipo: 'st', regId: reg.id, monto: 20, etiqueta: `Stake de pago — ${nombre} ${apellido}`.trim() }).catch(() => {});
       res.json({ id: reg.id });
     } catch (e) {
       console.error('Registro de stake:', e);

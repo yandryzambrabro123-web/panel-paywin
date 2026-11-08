@@ -59,7 +59,8 @@ function waLink(tel) {
 
 // Al aprobar un registro: crea (o reutiliza) su link de un solo uso y se lo manda al jefe con el teléfono,
 // para que pueda pasárselo por WhatsApp aunque la persona ya haya cerrado la página. No manda nada al cliente.
-async function avisarLinkAprobado(clave, hoja, reg) {
+async function avisarLinkAprobado(clave, hoja, reg, extra) {
+  extra = extra || {};
   try {
     const c = await canalDe(clave);
     if (!c || !reg) return;
@@ -73,11 +74,26 @@ async function avisarLinkAprobado(clave, hoja, reg) {
     if (!unico) return;
     const quien = `${fila.nombre || ''} ${fila.apellido || ''}`.trim() || 'cliente';
     const wa = waLink(fila.telefono);
-    await H.tg('sendMessage', {
-      chat_id: H.TG_ADMIN(), parse_mode: 'HTML', disable_web_page_preview: true,
-      text: `🔗 <b>${H.esc(quien)}</b> — ${clave === 'stake' ? 'stake de pago' : 'regalito'}\nTeléfono: ${H.esc(fila.telefono || 'sin teléfono')}\n\nLink de un solo uso (entra directo, sin que apruebes otra vez). Si no lo ve en pantalla, mándaselo tú:\n${unico}`,
-      ...(wa ? { reply_markup: { inline_keyboard: [[{ text: '💬 Abrir su chat de WhatsApp', url: wa }]] } } : {})
-    });
+    let texto = `🔗 <b>${H.esc(quien)}</b> — ${clave === 'stake' ? 'stake de pago' : 'regalito'}\nTeléfono: ${H.esc(fila.telefono || 'sin teléfono')}\n`;
+    if (extra.foto) texto += `\n📎 Captura de pago adjunta. Entró directo con su link, sin tu aprobación.\n`;
+    if (extra.parecido) texto += `\n⚠️ <b>Ojo:</b> esta captura se parece mucho a otra ya usada (${H.esc(extra.parecido.nombre || 'otro cliente')}, ${H.esc(String(extra.parecido.createdAt || '').slice(0, 10))}). Revísala.\n`;
+    texto += `\nLink de un solo uso. Si no lo ve en pantalla, mándaselo tú:\n${unico}`;
+    const teclado = [];
+    if (wa) teclado.push([{ text: '💬 Abrir su chat de WhatsApp', url: wa }]);
+    if (extra.foto) teclado.push([{ text: '🚫 Captura falsa: revocar su link', callback_data: `rv:${clave}:${fila.id}` }]);
+    if (extra.foto) {
+      const fd = new FormData();
+      fd.append('chat_id', H.TG_ADMIN());
+      fd.append('caption', texto.slice(0, 1020));
+      fd.append('parse_mode', 'HTML');
+      if (teclado.length) fd.append('reply_markup', JSON.stringify({ inline_keyboard: teclado }));
+      fd.append('photo', new Blob([extra.foto], { type: 'image/jpeg' }), 'comprobante.jpg');
+      const r = await fetch(`https://api.telegram.org/bot${H.TG_TOKEN()}/sendPhoto`, { method: 'POST', body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) throw new Error('Telegram sendPhoto: ' + (j.description || r.status));
+    } else {
+      await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), parse_mode: 'HTML', disable_web_page_preview: true, text: texto, ...(teclado.length ? { reply_markup: { inline_keyboard: teclado } } : {}) });
+    }
   } catch (e) { console.error('Aviso de link aprobado:', e.message); }
 }
 
