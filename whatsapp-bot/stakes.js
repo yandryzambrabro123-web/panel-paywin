@@ -82,19 +82,6 @@ async function recuperarRegistro(hoja, id, cq, tipo) {
 async function guardarHoja(hoja, data) {
   const r = await fetch(SHEETS, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ sheet: hoja, data }) });
   if (!r.ok) throw new Error('No se pudo guardar ' + hoja);
-  verificarGuardado(hoja, data); // en segundo plano: avisa si Google no guardó de verdad
-}
-const avisosHoja = {};
-async function verificarGuardado(hoja, data) {
-  try {
-    await new Promise((ok) => setTimeout(ok, 2500));
-    const leidas = await leerHoja(hoja);
-    if (leidas.length >= (Array.isArray(data) ? data.length : 0)) return;
-    console.error('La hoja no confirmó el guardado:', hoja, leidas.length, '<', data.length);
-    if (Date.now() - (avisosHoja[hoja] || 0) < 30 * 60 * 1000) return;
-    avisosHoja[hoja] = Date.now();
-    await tg('sendMessage', { chat_id: TG_ADMIN(), text: `⚠️ Google Sheets NO está guardando la hoja "${hoja}" (mandé ${data.length} filas y solo hay ${leidas.length}). Por eso los registros o botones pueden decir "No encontré ese registro". Revisa el Apps Script o la hoja.` });
-  } catch (e) { /* sin verificación */ }
 }
 // Lee, aplica el cambio y guarda. Si la lectura falla NO guarda (así nunca se borra nada).
 function cambiarHoja(hoja, fn) {
