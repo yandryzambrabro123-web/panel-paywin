@@ -300,6 +300,33 @@ function montar(app, stakes, extra) {
     } catch (e) { console.error('Reiniciar cola del regalito:', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Limpia registros que quedaron "pendiente" hace más de 10 minutos (los que disparan el aviso de "sin resolver").
+  // Sin &confirmar=si solo los lista. Filtro opcional: &nombre=Alan (solo borra los que contengan ese nombre).
+  // Abrir: /registros/limpiar-atascados?key=TU_API_KEY   (y luego agregar &confirmar=si)
+  app.get('/registros/limpiar-atascados', requireApiKey, async (req, res) => {
+    try {
+      const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      const filtro = norm(req.query.nombre);
+      const atascado = (f) => f.estado === 'pendiente' && f.createdAt && Date.now() - new Date(f.createdAt).getTime() > 10 * 60000
+        && (!filtro || norm(`${f.nombre || ''} ${f.apellido || ''}`).includes(filtro));
+      const hojas = [['RegistrosStake', 'stake'], ['RegistrosRegalito', 'regalito']];
+      const encontrados = [];
+      for (const [hoja, etiqueta] of hojas) {
+        for (const f of await H.leerHoja(hoja)) if (atascado(f)) encontrados.push({ hoja, etiqueta, id: String(f.id), texto: `${etiqueta}: ${f.nombre || ''} ${f.apellido || ''} ${f.telefono ? '(' + f.telefono + ')' : ''} — creado ${f.createdAt}`.replace(/\s+/g, ' ') });
+      }
+      if (String(req.query.confirmar || '') !== 'si') {
+        return res.json({ atascados: encontrados.length, seBorraria: encontrados.map((e) => e.texto), paraConfirmar: 'Agrega &confirmar=si al final del link para borrarlos.' });
+      }
+      let borrados = 0;
+      for (const [hoja] of hojas) {
+        const ids = new Set(encontrados.filter((e) => e.hoja === hoja).map((e) => e.id));
+        if (!ids.size) continue;
+        await H.cambiarHoja(hoja, (fs) => fs.filter((f) => { if (ids.has(String(f.id)) && atascado(f)) { borrados++; return false; } return true; }));
+      }
+      res.json({ ok: true, borrados, lista: encontrados.map((e) => e.texto) });
+    } catch (e) { console.error('Limpiar atascados:', e); res.status(500).json({ error: e.message }); }
+  });
+
   app.post('/regalito/publicar', requireApiKey, async (req, res) => {
     try {
       const link = H.limpio((req.body || {}).link, 300);
