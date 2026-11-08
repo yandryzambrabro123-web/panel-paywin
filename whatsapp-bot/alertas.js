@@ -44,7 +44,7 @@ async function resuelto(clave, texto) {
 
 const hace = (ms) => { const m = Math.round(ms / 60000); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
 
-function montar(stakes, estadoWA, comprobantes) {
+function montar(stakes, estadoWA, comprobantes, estadoAtencion) {
   // --- 1) Errores que sacuden al programa ---
   process.on('unhandledRejection', (e) => {
     console.error('Promesa sin atender:', e);
@@ -66,6 +66,17 @@ function montar(stakes, estadoWA, comprobantes) {
         avisar('wa', `WhatsApp lleva ${hace(Date.now() - desde)} desconectado.${s.ultimoCierre ? '\nÚltimo cierre: ' + s.ultimoCierre : ''}\nSi sigue así, abre /qr del bot y escanea el código con el número dedicado.`, { cooldownMin: 60 });
       }
     } catch (e) { console.error('Alertas WhatsApp:', e.message); }
+  }, 60 * 1000);
+
+  // --- 3b) WhatsApp de atención al cliente (solo si ya estuvo vinculado) ---
+  if (estadoAtencion) setInterval(() => {
+    try {
+      const s = estadoAtencion();
+      if (s.conectado) { resuelto('wa-at', 'El WhatsApp de atención volvió a conectarse.'); resuelto('at-baja', 'El WhatsApp de atención volvió a conectarse.'); return; }
+      if (!s.vinculado) return; // sin número vinculado todavía (esperando QR): no molestar
+      const desde = s.desde || Date.now();
+      if (Date.now() - desde > 5 * 60000) avisar('wa-at', `El WhatsApp de ATENCIÓN lleva ${hace(Date.now() - desde)} desconectado.${s.ultimoCierre ? '\nÚltimo cierre: ' + s.ultimoCierre : ''}\nSi sigue así, abre /qr-atencion del bot y escanea el código.`, { cooldownMin: 60 });
+    } catch (e) { console.error('Alertas atención:', e.message); }
   }, 60 * 1000);
 
   // --- 4) IA que lee las capturas ---

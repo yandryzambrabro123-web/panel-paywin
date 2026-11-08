@@ -68,6 +68,7 @@ function vaciarCarpetaSesion() {
   let n = 0;
   try { fs.mkdirSync(AUTH_DIR, { recursive: true }); } catch (e) { /* ya existe */ }
   for (const f of fs.readdirSync(AUTH_DIR)) {
+    if (f === 'atencion') continue; // la sesión del número de atención es aparte
     try { fs.rmSync(path.join(AUTH_DIR, f), { recursive: true, force: true }); n++; }
     catch (e) { console.error('No pude borrar', f, e.message); }
   }
@@ -167,7 +168,9 @@ require('./comprobantes').montar(stakes, app); // capturas de pago de stake y re
 require('./regalito').montar(app, stakes, { requireApiKey });
 require('./canales').montar(app, stakes, { requireApiKey });
 require('./cuadre').montar(stakes); // cuadre financiero automático al aprobar pagos // canales privados de Telegram (stake y regalito)
-require('./alertas').montar(stakes, () => ({ conectado: connected, desde: desconectadoDesde, ultimoCierre }), require('./comprobantes')); // avisos por Telegram cuando algo falla
+const atencion = require('./atencion');
+atencion.montar(app, stakes); // segundo número de WhatsApp: atención al cliente (recargas)
+require('./alertas').montar(stakes, () => ({ conectado: connected, desde: desconectadoDesde, ultimoCierre }), require('./comprobantes'), atencion.estado); // avisos por Telegram cuando algo falla
 require('./pay').montar(app, stakes, { requireApiKey }); // registro VIP (Telegram) + salida automática de vencidos
 
 function requireApiKey(req, res, next) {
@@ -418,6 +421,7 @@ async function resetSessionHandler(req, res) {
     // así que se borra solo lo que hay adentro.
     if (fs.existsSync(AUTH_DIR)) {
       for (const f of fs.readdirSync(AUTH_DIR)) {
+        if (f === 'atencion') continue; // la sesión del número de atención es aparte
         fs.rmSync(path.join(AUTH_DIR, f), { recursive: true, force: true });
       }
     }
