@@ -6555,6 +6555,16 @@ function winEsEncabezado(l){
   const mayus = letras.replace(/[^\p{Lu}]/gu,'').length / Math.max(1, letras.length);
   return mayus > 0.7 || /apuesta|pick|listo|ganad|nuevo|nueva|vip|gratis|stake|regalito/i.test(limpio);
 }
+// Letras "negrita gruesa sin serifa" de Unicode (se ven como una Montserrat Bold en WhatsApp y Telegram).
+// Solo A-Z y a-z; la Ñ, las tildes y los números se quedan normales (por eso los títulos y el llamado a escribir no los llevan).
+function winNegrita(texto){
+  return Array.from(String(texto||'')).map(c=>{
+    const k = c.charCodeAt(0);
+    if(k >= 65 && k <= 90) return String.fromCodePoint(0x1D5D4 + k - 65);
+    if(k >= 97 && k <= 122) return String.fromCodePoint(0x1D5EE + k - 97);
+    return c;
+  }).join('');
+}
 // Todo el texto en MAYÚSCULAS (menos los links, que se rompen si cambian de letra).
 function winMayusculas(texto){
   return String(texto||'').split(/(https?:\/\/\S+)/).map((p,i)=> i%2 ? p : p.toLocaleUpperCase('es')).join('');
@@ -6564,7 +6574,7 @@ function winPonerTitulo(texto, titulo){
   let n = 0;
   while(n < lineas.length && n < 4 && winEsEncabezado(lineas[n])) n++;
   const resto = lineas.slice(n).join('\n').replace(/^\n+/, '');
-  return `*${titulo}*\n\n${resto}`.trim();
+  return `${winNegrita(titulo)}\n\n${resto}`.trim();
 }
 // Ganada: el título sigue de dónde viene: VIP, gratis, live, stake de pago o regalito.
 function winTituloGanadaTexto(texto, key){
@@ -6814,13 +6824,14 @@ let WIN_TELEFONO = (()=>{ try{ const v = localStorage.getItem('winNumeroActivo')
 // Si el texto va SOLO a grupos VIP, no lleva CTA ("entra al VIP", teléfono): ya están dentro.
 const winSoloVip = (g)=>{ const l = Array.isArray(g) ? g : String(g||'').split(','); const n = l.map(x=>String(x).trim()).filter(Boolean); return n.length > 0 && n.every(x=>/vip/i.test(x)); };
 const winTelPara = (g)=> (winSoloVip(g) || (Array.isArray(g) && g.length && g.every(winEsCanal))) ? '' : WIN_TELEFONO;
+// Llamado a escribir: en negrita gruesa y sin tildes ni Ñ (así las letras salen parejas); el número va normal para que sea tocable.
 const WIN_CTA_POR_TIPO = {
-  nueva_apuesta: n => `📲 *¿Quieres entrar al VIP?* Escríbenos al *${n}*`,
-  ganada: n => `📲 *Súmate y gana con nosotros:* escríbenos al *${n}*`,
-  partidos_dia: n => `📲 Pregúntanos por los picks de hoy: ${n}`,
-  collage: n => `📲 Recarga y retira con confianza: ${n}`,
-  stake_pago: n => `📲 Pide tu stake escribiéndonos al ${n}`,
-  contenido: n => `📲 Escríbenos al ${n}`
+  nueva_apuesta: n => `📲 ${winNegrita('¿QUIERES ENTRAR AL VIP? ESCRIBE AL')} *${n}*`,
+  ganada: n => `📲 ${winNegrita('GANA CON NOSOTROS: ESCRIBE AL')} *${n}*`,
+  partidos_dia: n => `📲 ${winNegrita('PREGUNTA POR LOS PICKS DE HOY:')} ${n}`,
+  collage: n => `📲 ${winNegrita('RECARGA Y RETIRA CON CONFIANZA:')} ${n}`,
+  stake_pago: n => `📲 ${winNegrita('PIDE TU STAKE ESCRIBIENDO AL')} ${n}`,
+  contenido: n => `📲 ${winNegrita('ESCRIBE AL')} ${n}`
 };
 const WIN_MASPARLEY_LINK = 'https://mas1x2.com/JoinPlatform/PAYWIN';
 // Aviso corto de Masparley: va al final de todos los textos, incluidos los del VIP.
@@ -9137,7 +9148,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '7 nov, 22:25';
+const PANEL_VERSION = '7 nov, 22:45';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){

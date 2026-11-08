@@ -39,6 +39,16 @@ const PROMPTS = {
 };
 
 
+// Letras "negrita gruesa sin serifa" de Unicode (A-Z y a-z); lo demás queda igual.
+function negritaUni(t) {
+  return Array.from(String(t || '')).map((c) => {
+    const k = c.charCodeAt(0);
+    if (k >= 65 && k <= 90) return String.fromCodePoint(0x1D5D4 + k - 65);
+    if (k >= 97 && k <= 122) return String.fromCodePoint(0x1D5EE + k - 97);
+    return c;
+  }).join('');
+}
+
 function extractText(text) {
   return (text || '').trim().replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
 }
@@ -486,6 +496,9 @@ Haz esto:
   if (!ia.ok) { res.status(502).json({ error: `No pude armar el texto (IA ${ia.status}).` }); return; }
   let texto = String(ia.texto || '').replace(/^```[a-z]*\n?|```$/g, '').trim();
   if (!texto) { res.status(502).json({ error: 'No salió texto. Intenta de nuevo.' }); return; }
+  // El título va fijo y en negrita gruesa (letras Unicode, sin Ñ ni tildes), pase lo que pase con lo que escribió la IA
+  const tit = clave === 'stake' ? 'NUEVA APUESTA STAKE DE PAGO' : 'NUEVA APUESTA REGALITO';
+  texto = negritaUni(tit) + '\n\n' + texto.split('\n').slice(1).join('\n').replace(/^\n+/, '');
   res.status(200).json({ texto });
 }
 
@@ -926,7 +939,9 @@ Debes devolver EXACTAMENTE ${n} versiones DIFERENTES del mismo mensaje -- mismo 
     if (dests.length && dests.every((x) => /vip/i.test(x))) {
       systemPrompt += `\n\nIMPORTANTE: este texto va SOLO a miembros que YA están dentro del grupo VIP. NO incluyas ningún llamado a la acción, NO invites a entrar, unirse, escribir o pagar por el VIP, y NO pongas teléfono. Solo da la información (pick, cuota, ganada, etc.) en tono directo de equipo.`;
     }
-    if (telefono && kind !== 'regalito' && kind !== 'difusion_preview') {
+    if (kind === 'nueva_apuesta' || kind === 'ganada') {
+      systemPrompt += `\n\nIMPORTANTE: NO escribas ningún llamado a la acción ni teléfono: el sistema lo agrega solo al final.`;
+    } else if (telefono && kind !== 'regalito' && kind !== 'difusion_preview') {
       systemPrompt += `\n\nIMPORTANTE: termina el texto con una línea breve de llamado a la acción (CTA), adaptada a lo que se está publicando (apuesta nueva, ganada, testimonio, partidos, etc.), que incluya SIEMPRE este número de teléfono tal cual: ${telefono}. Una sola línea, con un emoji.`;
     }
 
