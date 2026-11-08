@@ -6555,6 +6555,10 @@ function winEsEncabezado(l){
   const mayus = letras.replace(/[^\p{Lu}]/gu,'').length / Math.max(1, letras.length);
   return mayus > 0.7 || /apuesta|pick|listo|ganad|nuevo|nueva|vip|gratis|stake|regalito/i.test(limpio);
 }
+// Todo el texto en MAYÚSCULAS (menos los links, que se rompen si cambian de letra).
+function winMayusculas(texto){
+  return String(texto||'').split(/(https?:\/\/\S+)/).map((p,i)=> i%2 ? p : p.toLocaleUpperCase('es')).join('');
+}
 function winPonerTitulo(texto, titulo){
   const lineas = String(texto||'').split('\n');
   let n = 0;
@@ -6837,7 +6841,8 @@ function winAsegurarCTA(texto, kind, grupos){
   const lista = Array.isArray(grupos) ? grupos : String(grupos||'').split(',').map(x=>x.trim()).filter(Boolean);
   if(kind === 'nueva_apuesta') t = winTituloNuevaTexto(t, winKeyGanadaDeGrupos(lista) || ((winPreset && WIN_TITULO_NUEVA[winPreset.tipo]) ? winPreset.tipo : ''));
   else if(kind === 'ganada'){ const k = winKeyGanadaDeGrupos(lista); if(k) t = winTituloGanadaTexto(t, k); }
-  return winAsegurarMasparley(winAsegurarCTABase(t, kind, grupos));
+  const final = winAsegurarMasparley(winAsegurarCTABase(t, kind, grupos));
+  return (kind === 'nueva_apuesta' || kind === 'ganada') ? winMayusculas(final) : final;
 }
 function winAsegurarCTABase(texto, kind, grupos){
   const todosCanales = Array.isArray(grupos) && grupos.length && grupos.every(winEsCanal);
@@ -7134,11 +7139,11 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   { const selG = document.getElementById('f-winGanadaBet'); if(selG) selG.addEventListener('change', winPonerTituloGanada); }
   // El título de la ganada sigue al grupo al que se manda (VIP, gratis, stake de pago, regalito); si el grupo no lo define, usa el de la apuesta marcada.
   const winCaptionDestino = (texto, grupo)=>{
-    if(kind === 'nueva_apuesta') return winTituloNuevaTexto(texto, winKeyGanadaDeGrupos([grupo]) || ((winPreset && WIN_TITULO_NUEVA[winPreset.tipo]) ? winPreset.tipo : ''));
+    if(kind === 'nueva_apuesta') return winMayusculas(winTituloNuevaTexto(texto, winKeyGanadaDeGrupos([grupo]) || ((winPreset && WIN_TITULO_NUEVA[winPreset.tipo]) ? winPreset.tipo : '')));
     if(kind !== 'ganada') return texto;
     const sel = document.getElementById('f-winGanadaBet');
     const key = winKeyGanadaDeGrupos([grupo]) || (sel && sel.value ? sel.value.split('|')[0] : '');
-    return key ? winTituloGanadaTexto(texto, key) : texto;
+    return winMayusculas(key ? winTituloGanadaTexto(texto, key) : texto);
   };
   wireWinCaptionTools(redactCtx);
   if(kind === 'ganada' && sendImage && sendImage.base64){
@@ -9132,7 +9137,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '7 nov, 22:05';
+const PANEL_VERSION = '7 nov, 22:25';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
