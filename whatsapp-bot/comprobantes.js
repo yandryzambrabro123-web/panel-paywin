@@ -83,6 +83,10 @@ async function procesar(dataUrl, datos) {
   const ia = lectura;
   if (ia) {
     if (!ia.esComprobante) return { buf, rechazo: { motivo: 'La imagen no parece un comprobante de pago.', cliente: 'Esa imagen no parece un comprobante de pago. Sube la captura de tu pago.' }, parecido: null, atencion: false };
+    if (datos.tipo === 'regalito' && ia.tipoDoc && ia.tipoDoc !== 'recibo_recarga') {
+      const que = ia.tipoDoc === 'transferencia' ? 'una transferencia o depósito bancario' : ia.tipoDoc === 'pago_stake' ? 'el pago de un stake' : 'algo que no es un recibo de recarga';
+      return { buf, rechazo: { motivo: `Subió ${que}, no el recibo de recarga.`, cliente: 'Para el regalito debes subir la captura del chat donde tu agente PayWin te manda el recibo de recarga (no una transferencia ni el pago de un stake).' }, parecido: null, atencion: false };
+    }
     if (ia.fecha && ia.fecha !== hoy) {
       const f = ia.fecha.split('-').reverse().join('/');
       return { buf, rechazo: { motivo: `El comprobante es de otra fecha (${f}), no de hoy.`, cliente: `Esa captura es del ${f}. Sube la captura de tu pago de hoy.` }, parecido: null, atencion: false };
@@ -116,8 +120,9 @@ async function leerConIA(buf, tipo) {
   const ayer = new Date(Date.parse(hoy + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
   const sistema = `Eres un verificador de capturas de pago para una agencia de Ecuador. El cliente sube la captura de ${tipo === 'regalito' ? 'una recarga a una casa de apuestas' : 'su pago (transferencia, depósito o recarga)'}.
 Hoy es ${hoy} (ayer fue ${ayer}). En Ecuador las fechas se escriben día/mes/año. Si la captura dice "hoy" usa ${hoy}; si dice "ayer" usa ${ayer}.
-Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAAA-MM-DD"|null,"monto":numero|null,"referencia":"texto"|null,"emisor":"banco o casa"|null}
+Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAAA-MM-DD"|null,"monto":numero|null,"referencia":"texto"|null,"emisor":"banco o casa"|null,"tipoDoc":"recibo_recarga"|"transferencia"|"pago_stake"|"otro"}
 - esComprobante: true solo si la imagen muestra un comprobante, notificación o historial de transferencia, depósito, pago o recarga. false para cualquier otra imagen (fotos, memes, capturas sin relación).
+- tipoDoc: "recibo_recarga" si es el recibo/comprobante de una recarga a una cuenta de casa de apuestas (dice recibo de recarga, recarga realizada, valor recarga, punto de venta, cliente); "transferencia" si es una transferencia o depósito bancario; "pago_stake" si es el pago de un stake o pronóstico; "otro" en cualquier otro caso.
 - fecha: la fecha de la transacción que se VE en la imagen. null si no aparece o no estás seguro. No la inventes.
 - referencia: número de comprobante / documento / transacción / secuencial, tal cual se ve. null si no hay.`;
   for (const modelo of MODELOS()) {
@@ -140,7 +145,8 @@ Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAA
         fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(o.fecha || '')) ? o.fecha : null,
         monto: Number(o.monto) > 0 ? Number(o.monto) : null,
         referencia: o.referencia ? String(o.referencia).replace(/\s+/g, '').slice(0, 40) : null,
-        emisor: o.emisor ? String(o.emisor).slice(0, 40) : null
+        emisor: o.emisor ? String(o.emisor).slice(0, 40) : null,
+        tipoDoc: ['recibo_recarga', 'transferencia', 'pago_stake', 'otro'].includes(o.tipoDoc) ? o.tipoDoc : null
       };
     } catch (e) { ultimoError = `${modelo}: ${e.message}`.slice(0, 120); console.error('Lector de capturas:', e.message); }
   }
