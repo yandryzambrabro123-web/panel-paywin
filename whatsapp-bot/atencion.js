@@ -77,7 +77,7 @@ async function iniciar(stakes) {
   estado.vinculado = !!(state.creds && state.creds.registered);
   let version;
   try { ({ version } = await fetchLatestBaileysVersion()); } catch (e) { /* usa la de la librería */ }
-  const sock = makeWASocket({ version, auth: state, logger: pino({ level: 'silent' }), printQRInTerminal: false, browser: ['Atencion PayWin', 'Chrome', '110.0.0'] });
+  const sock = makeWASocket({ version, auth: state, logger: pino({ level: 'silent' }), printQRInTerminal: false, browser: ['Ubuntu', 'Chrome', '22.04.4'] }); // nombre estándar: WhatsApp rechaza la vinculación por código con nombres raros
   estado.sock = sock;
   sock.ev.on('creds.update', saveCreds);
   sock.ev.on('messages.upsert', ({ messages, type }) => {
