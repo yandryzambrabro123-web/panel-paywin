@@ -7,7 +7,6 @@
 //   - WhatsApp desconectado más de 5 minutos, o número desvinculado/bloqueado (hay que escanear el QR).
 //   - La IA que lee las capturas: avisa cuando falla con un cliente real (clave inválida, sin saldo, límite o caída). No hace pruebas programadas.
 //   - Registros de stake/regalito que se quedaron "pendiente" más de 10 minutos.
-//   - Google Sheets (Apps Script) sin responder varias veces seguidas.
 //   - Fallas al publicar (grupos de WhatsApp, VIP, canales) y al crear el link de un solo uso del cliente.
 //   - Errores que tumban o sacuden al programa (se avisa y Railway lo levanta de nuevo).
 
@@ -72,8 +71,7 @@ function montar(stakes, estadoWA, comprobantes) {
   // --- 4) IA que lee las capturas ---
   // Sin pruebas programadas (para no gastar crédito): el aviso sale solo cuando un cliente real es rechazado porque la IA falló (ver comprobantes.js).
 
-  // --- 5) Registros atascados y Google Sheets ---
-  let fallosSheets = 0;
+  // --- 5) Registros atascados ---
   const revisarRegistros = async () => {
     try {
       const atascados = [];
@@ -84,15 +82,9 @@ function montar(stakes, estadoWA, comprobantes) {
           }
         }
       }
-      fallosSheets = 0;
-      await resuelto('sheets', 'Google Sheets volvió a responder.');
       if (atascados.length) await avisar('registros', `Hay ${atascados.length} registro(s) que se quedaron sin resolver más de 10 minutos:\n${atascados.slice(0, 8).join('\n')}\nRevísalos en el panel o escríbele al cliente.`, { cooldownMin: 60 });
       else await resuelto('registros', 'Ya no hay registros atascados.');
-    } catch (e) {
-      fallosSheets++;
-      console.error('Alertas registros:', e.message);
-      if (fallosSheets >= 3) await avisar('sheets', `Google Sheets (Apps Script) no responde desde hace ${fallosSheets * 5} min:\n${String(e.message).slice(0, 200)}\nSin eso no se guardan registros ni se leen datos.`, { cooldownMin: 60 });
-    }
+    } catch (e) { console.error('Alertas registros:', e.message); }
   };
   setTimeout(revisarRegistros, 2 * 60 * 1000);
   setInterval(revisarRegistros, 5 * 60 * 1000);
