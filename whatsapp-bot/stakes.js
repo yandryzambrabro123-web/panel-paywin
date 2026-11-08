@@ -321,7 +321,7 @@ function form(){
   box.innerHTML='<label>¿Qué stake compraste?</label><select id="sec">'+sec.secciones.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.titulo)+' · $'+s.precio+'</option>').join('')+'</select><label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off"><div class="n" id="nota"></div>'+
   '<div id="resto" style="display:none"><label>Nombre</label><input id="nom" autocomplete="given-name"><label>Apellido</label><input id="ape" autocomplete="family-name">'+
   '<label>Usuario de Telegram</label><input id="tgu" placeholder="@tuusuario" autocapitalize="none" autocomplete="off"><label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999">'+
-  '<label>Captura de tu pago (comprobante)</label><input id="cmp" type="file" accept="image/*"><div class="n">Sube la captura completa. Cada captura se puede usar una sola vez.</div>'+
+  '<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu pago <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>comprobante de tu pago del stake</b>. Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div><input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>'+
   '<div class="e" id="err"></div><button id="env">Enviar registro</button></div>';
   let t=null;$('#ced').oninput=e=>{const v=e.target.value.replace(/\\D/g,'');e.target.value=v;clearTimeout(t);$('#nota').textContent='';
     if(v.length===10){t=setTimeout(()=>buscar(v),250)}else{$('#resto').style.display='none'}};
@@ -340,7 +340,7 @@ async function enviar(){
   const body={sectionId:$('#sec').value,cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,telegram:$('#tgu').value,telefono:$('#tel').value};
   if(!body.nombre.trim()||!body.apellido.trim()||!body.telegram.trim().replace('@','')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
   const fl=$('#cmp').files[0];
-  if(!fl){er.textContent='Sube la captura de tu pago.';return}
+  if(!fl){er.textContent='La captura de tu pago es obligatoria: sin ella no puedes continuar.';return}
   b.disabled=true;b.textContent='Verificando tu captura…';
   try{body.comprobante=await leerImg(fl);const r=await fetch('/stake/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}

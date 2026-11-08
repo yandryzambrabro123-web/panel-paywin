@@ -44,7 +44,7 @@ function guardar(id){try{localStorage.setItem('rgId',id)}catch(e){}}
 function leer(){try{return localStorage.getItem('rgId')||''}catch(e){return ''}}
 function limpiar(){try{localStorage.removeItem('rgId')}catch(e){}}
 function form(){
-  box.innerHTML='<label>Asignar el regalito a nombre de</label><input id="nom" autocomplete="name" placeholder="Nombre y apellido"><label style="margin-top:14px">Tu número de teléfono (WhatsApp)</label><input id="tel" inputmode="tel" autocomplete="tel" maxlength="10" placeholder="0999999999"><label style="margin-top:14px">Captura de tu recarga</label><input id="cmp" type="file" accept="image/*"><p style="font-size:12.5px;margin:6px 0 0">Cada captura se puede usar una sola vez.</p><div class="e" id="err"></div><button id="env">Pedir mi regalito</button>';
+  box.innerHTML='<label>Asignar el regalito a nombre de</label><input id="nom" autocomplete="name" placeholder="Nombre y apellido"><label style="margin-top:14px">Tu número de teléfono (WhatsApp)</label><input id="tel" inputmode="tel" autocomplete="tel" maxlength="10" placeholder="0999999999"><div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu recarga <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del chat donde <b>tu agente PayWin te manda el comprobante de recarga</b>. Debe verse la <b>fecha de hoy</b> y el <b>monto</b> (recarga mínima: $20). Sin esta captura no puedes continuar.</div><input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div><div class="e" id="err"></div><button id="env">Pedir mi regalito</button>';
   $('#env').onclick=enviar;
 }
 async function enviar(){
@@ -54,7 +54,7 @@ async function enviar(){
   if(nombre.length<3){er.textContent='Escribe el nombre completo.';return}
   if(telefono.length<9||telefono.length>10){er.textContent='Revisa tu número de teléfono.';return}
   const fl=$('#cmp').files[0];
-  if(!fl){er.textContent='Sube la captura de tu recarga.';return}
+  if(!fl){er.textContent='La captura de tu recarga es obligatoria: sin ella no puedes continuar.';return}
   b.disabled=true;b.textContent='Verificando tu captura…';
   try{const comprobante=await leerImg(fl);const r=await fetch('/regalito/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,telefono,comprobante})});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');guardar(d.id);espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Pedir mi regalito'}
