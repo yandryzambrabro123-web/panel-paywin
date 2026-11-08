@@ -140,7 +140,7 @@ async function avisarJefe(reg, sec) {
   const texto = `🆕 <b>Registro de stake de pago</b>\n\n` +
     `Nombre: <b>${esc(reg.nombre)} ${esc(reg.apellido)}</b>\n` +
     `Cédula: ${esc(reg.cedula)}\n` +
-    `Telegram: @${esc(reg.telegram)}\n` +
+    (reg.telegram ? `Telegram: @${esc(reg.telegram)}\n` : '') +
     `Teléfono: ${esc(reg.telefono)}\n` +
     `${reg.recurrente ? '🔁 Ya había comprado antes\n' : '✨ Cliente nuevo\n'}` +
     `Sección: ${esc(sec ? sec.title : 'sin sección')}`;
@@ -322,7 +322,7 @@ async function init(){
 function form(){
   box.innerHTML='<label>¿Qué stake compraste?</label><select id="sec">'+sec.secciones.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.titulo)+' · $'+s.precio+'</option>').join('')+'</select><label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off"><div class="n" id="nota"></div>'+
   '<div id="resto" style="display:none"><label>Nombre</label><input id="nom" autocomplete="given-name"><label>Apellido</label><input id="ape" autocomplete="family-name">'+
-  '<label>Usuario de Telegram</label><input id="tgu" placeholder="@tuusuario" autocapitalize="none" autocomplete="off"><label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999">'+
+  '<label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999">'+
   '<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu pago <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>comprobante de tu pago del stake</b>. Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div>'+EJ+'<input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>'+
   '<div class="e" id="err"></div><button id="env">Enviar registro</button></div>';
   let t=null;$('#ced').oninput=e=>{const v=e.target.value.replace(/\\D/g,'');e.target.value=v;clearTimeout(t);$('#nota').textContent='';
@@ -332,15 +332,15 @@ function form(){
 async function buscar(c){
   $('#nota').textContent='Buscando…';
   try{const r=await fetch('/stake/cedula/'+c);const d=await r.json();
-    if(d.found){$('#nom').value=d.nombre||'';$('#ape').value=d.apellido||'';$('#tgu').value=d.telegram?'@'+d.telegram:'';$('#tel').value=d.telefono||'';$('#nota').textContent='Ya estás registrado. Revisa tus datos y envía.'}
-    else{$('#nom').value=$('#ape').value=$('#tgu').value=$('#tel').value='';$('#nota').textContent='Primera vez: completa tus datos.'}
+    if(d.found){$('#nom').value=d.nombre||'';$('#ape').value=d.apellido||'';$('#tel').value=d.telefono||'';$('#nota').textContent='Ya estás registrado. Revisa tus datos y envía.'}
+    else{$('#nom').value=$('#ape').value=$('#tel').value='';$('#nota').textContent='Primera vez: completa tus datos.'}
     $('#resto').style.display='block';
   }catch(e){$('#nota').textContent='No pude buscar. Completa tus datos.';$('#resto').style.display='block'}
 }
 async function enviar(){
   const b=$('#env'),er=$('#err');er.textContent='';
-  const body={sectionId:$('#sec').value,cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,telegram:$('#tgu').value,telefono:$('#tel').value};
-  if(!body.nombre.trim()||!body.apellido.trim()||!body.telegram.trim().replace('@','')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
+  const body={sectionId:$('#sec').value,cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,telefono:$('#tel').value};
+  if(!body.nombre.trim()||!body.apellido.trim()||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
   const fl=$('#cmp').files[0];
   if(!fl){er.textContent='La captura de tu pago es obligatoria: sin ella no puedes continuar.';return}
   b.disabled=true;b.textContent='Verificando tu captura…';
@@ -400,7 +400,7 @@ function montar(app) {
       const telegram = normUser(limpio(b.telegram, 60));
       if (cedula.length !== 10) return res.status(400).json({ error: 'La cédula debe tener 10 dígitos.' });
       if (!nombre || !apellido) return res.status(400).json({ error: 'Falta tu nombre y apellido.' });
-      if (!/^[a-z0-9_]{4,32}$/.test(telegram)) return res.status(400).json({ error: 'Revisa tu usuario de Telegram (sin espacios).' });
+      if (telegram && !/^[a-z0-9_]{4,32}$/.test(telegram)) return res.status(400).json({ error: 'Revisa tu usuario de Telegram (sin espacios).' });
       if (telefono.length < 9 || telefono.length > 10) return res.status(400).json({ error: 'Revisa tu número de teléfono.' });
       const secs = await seccionesAbiertas();
       const sec = secs.find((x) => String(x.id) === String(b.sectionId)) || secs[0];

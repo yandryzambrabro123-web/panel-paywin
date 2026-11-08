@@ -31,15 +31,15 @@ function chat(tipo) {
   let ms;
   if (tipo === 'stake') {
     ms = [
-      "<div class='ej-m l a1' style='top:10px'>" + recibo('¡Transferencia exitosa!', 'Fecha: HOY') + "<small>12:43 p. m.</small></div>",
-      "<div class='ej-m l a2' style='top:178px'>Ya pagué 👍<small>12:48 p. m.</small></div>",
-      "<div class='ej-m r a3' style='top:216px'>Ya te paso el acceso<small>12:50 p. m. ✓✓</small></div>",
-      "<div class='ej-m r a4' style='top:262px'><div class='ej-lk'><i>💸</i><span><b>STAKE DE PAGO</b><u>Invitación a la comunidad</u></span></div></div>",
+      "<div class='ej-m r a1' style='top:10px'>" + recibo('¡Transferencia exitosa!', 'Fecha: HOY') + "<small>12:43 p. m.</small></div>",
+      "<div class='ej-m r a2' style='top:178px'>Ya pagué 👍<small>12:48 p. m. ✓✓</small></div>",
+      "<div class='ej-m l a3' style='top:216px'>Ya te paso el acceso<small>12:50 p. m.</small></div>",
+      "<div class='ej-m l a4' style='top:262px'><div class='ej-lk'><i>💸</i><span><b>STAKE DE PAGO</b><u>Invitación a la comunidad</u></span></div></div>",
     ];
   } else {
     ms = [
-      "<div class='ej-m r a1' style='top:10px'>" + recibo('¡Recarga exitosa!', 'Fecha: HOY') + "<small>12:43 p. m. ✓✓</small></div>",
-      "<div class='ej-m l a2' style='top:178px'>Gracias, ya me llegó 🙌<small>12:48 p. m.</small></div>",
+      "<div class='ej-m l a1' style='top:10px'>" + recibo('¡Recarga exitosa!', 'Fecha: HOY') + "<small>12:43 p. m.</small></div>",
+      "<div class='ej-m r a2' style='top:178px'>Gracias, ya me llegó 🙌<small>12:48 p. m. ✓✓</small></div>",
     ];
   }
   const titulo = tipo === 'stake' ? 'Así debe verse tu captura (ejemplo)' : 'Así debe verse tu captura (ejemplo)';
