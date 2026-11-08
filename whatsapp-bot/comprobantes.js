@@ -4,7 +4,8 @@
 // - La IA (Anthropic, clave ANTHROPIC_API_KEY en Railway) lee la captura: si no es un comprobante, si la fecha NO es de hoy
 //   o si su número de referencia ya se usó, se RECHAZA al instante y solo entonces se le avisa al jefe (con foto, teléfono y
 //   botón de WhatsApp). Las capturas válidas entran directo y no mandan nada. Si no hay clave o la IA no pudo leer la fecha,
-//   entra igual pero se le manda la foto al jefe para que la mire.
+//   entra igual (no es culpa del cliente) pero se le manda la foto al jefe para que la mire.
+//   Si la IA responde pero no logra leer la fecha (o el monto en el regalito), se RECHAZA igual y se le avisa al jefe.
 // - Guarda su "huella" (no la foto): una exacta (sha256) y una visual (parecido). Se guarda en la hoja "Comprobantes".
 // - Misma captura exacta  -> se rechaza (no se puede usar dos veces, ni en stake ni en regalito).
 // - Captura MUY parecida   -> se deja pasar pero se le avisa al jefe con una alerta (dos pagos distintos de la misma
@@ -63,7 +64,7 @@ async function revisarYGuardar(h, datos, ia) {
 // Procesa el comprobante que mandó el cliente.
 // Devuelve { buf, rechazo: { motivo, cliente }|null, parecido, atencion }.
 //   rechazo  -> hay que rechazar el registro (motivo = para el jefe, cliente = lo que ve la persona).
-//   atencion -> entró, pero conviene que el jefe vea la foto (no hay IA, no se pudo leer la fecha o se parece a otra).
+//   atencion -> entró, pero conviene que el jefe vea la foto (no hay IA disponible o se parece a otra).
 // Lanza Error (con .status) solo si ni siquiera es una imagen válida.
 async function procesar(dataUrl, datos) {
   const buf = leerDataUrl(dataUrl);
@@ -83,6 +84,13 @@ async function procesar(dataUrl, datos) {
       return { buf, rechazo: { motivo: `El comprobante es de otra fecha (${f}), no de hoy.`, cliente: `Esa captura es del ${f}. Sube la captura de tu pago de hoy.` }, parecido: null, atencion: false };
     }
   }
+  if (ia) {
+    // La IA sí respondió pero no logró leer lo necesario: se rechaza igual y se le avisa al jefe
+    const faltan = [];
+    if (!ia.fecha) faltan.push('la fecha');
+    if (datos.tipo === 'regalito' && ia.monto == null) faltan.push('el monto');
+    if (faltan.length) return { buf, rechazo: { motivo: `La IA no pudo leer bien ${faltan.join(' ni ')} de la captura.`, cliente: `No pudimos leer bien tu captura. Sube una captura completa y clara de tu ${datos.tipo === 'regalito' ? 'recarga' : 'pago'}, donde se vea ${faltan.join(' y ')}.` }, parecido: null, atencion: false };
+  }
   if (ia && datos.tipo === 'regalito' && ia.monto != null && ia.monto < MINIMO_REGALITO()) {
     const min = MINIMO_REGALITO();
     return { buf, rechazo: { motivo: `La recarga es de $${ia.monto}, menos del mínimo de $${min}.`, cliente: `La recarga mínima para el regalito es de $${min}. Tu captura muestra $${ia.monto}.` }, parecido: null, atencion: false };
@@ -90,7 +98,7 @@ async function procesar(dataUrl, datos) {
   // 3) se anota (aquí también se detecta la misma referencia de pago ya usada)
   const r = await revisarYGuardar(h, datos, ia);
   if (r.repetido) return { buf, rechazo: usada, parecido: null, atencion: false };
-  const sinLeer = !ia || (!ia.fecha && !ia.referencia) || (datos.tipo === 'regalito' && ia.monto == null);
+  const sinLeer = !ia; // sin clave o la IA falló por un error técnico: entra, pero se le manda la foto al jefe
   return { buf, rechazo: null, parecido: r.parecido, atencion: sinLeer || !!(r.parecido && !(ia && ia.referencia)), ia };
 }
 
