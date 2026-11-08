@@ -55,7 +55,7 @@ async function enviar(){
   if(telefono.length<9||telefono.length>10){er.textContent='Revisa tu número de teléfono.';return}
   const fl=$('#cmp').files[0];
   if(!fl){er.textContent='Sube la captura de tu recarga.';return}
-  b.disabled=true;b.textContent='Enviando…';
+  b.disabled=true;b.textContent='Verificando tu captura…';
   try{const comprobante=await leerImg(fl);const r=await fetch('/regalito/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nombre,telefono,comprobante})});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');guardar(d.id);espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Pedir mi regalito'}
 }
@@ -249,11 +249,12 @@ function montar(app, stakes, extra) {
       let cmp;
       try { cmp = await require('./comprobantes').procesar((req.body || {}).comprobante, { tipo: 'regalito', registroId: reg.id, nombre, telefono }); }
       catch (e) { await H.cambiarHoja(HOJA_REG, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
-      if (cmp.repetido) {
+      if (cmp.rechazo) {
         await H.cambiarHoja(HOJA_REG, (filas) => filas.filter((f) => f.id !== reg.id));
-        return res.status(409).json({ error: 'Esa captura ya fue usada. Sube la captura de tu recarga de hoy.' });
+        await require('./comprobantes').avisarRechazo('regalito', { nombre, telefono }, cmp.rechazo.motivo, cmp.buf);
+        return res.status(409).json({ error: cmp.rechazo.cliente.replace('tu pago de hoy', 'tu recarga de hoy') });
       }
-      await require('./canales').avisarLinkAprobado('regalito', HOJA_REG, reg, { foto: cmp.buf, parecido: cmp.parecido });
+      await require('./canales').avisarLinkAprobado('regalito', HOJA_REG, reg, cmp.atencion ? { foto: cmp.buf, parecido: cmp.parecido } : { silencioso: true });
       res.json({ id: reg.id });
     } catch (e) {
       console.error('Registro de regalito:', e);

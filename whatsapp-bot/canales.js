@@ -71,7 +71,7 @@ async function avisarLinkAprobado(clave, hoja, reg, extra) {
       unico = await linkUnico(clave, nombre);
       if (unico) await H.cambiarHoja(hoja, (filas) => filas.map((f) => String(f.id) === String(fila.id) ? { ...f, linkUnico: unico } : f));
     }
-    if (!unico) return;
+    if (!unico || extra.silencioso) return; // silencioso: solo deja el link guardado, sin avisar al jefe
     const quien = `${fila.nombre || ''} ${fila.apellido || ''}`.trim() || 'cliente';
     const wa = waLink(fila.telefono);
     let texto = `🔗 <b>${H.esc(quien)}</b> — ${clave === 'stake' ? 'stake de pago' : 'regalito'}\nTeléfono: ${H.esc(fila.telefono || 'sin teléfono')}\n`;

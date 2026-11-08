@@ -341,7 +341,7 @@ async function enviar(){
   if(!body.nombre.trim()||!body.apellido.trim()||!body.telegram.trim().replace('@','')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
   const fl=$('#cmp').files[0];
   if(!fl){er.textContent='Sube la captura de tu pago.';return}
-  b.disabled=true;b.textContent='Enviando…';
+  b.disabled=true;b.textContent='Verificando tu captura…';
   try{body.comprobante=await leerImg(fl);const r=await fetch('/stake/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}
 }
@@ -417,13 +417,14 @@ function montar(app) {
       let cmp;
       try { cmp = await require('./comprobantes').procesar(b.comprobante, { tipo: 'stake', registroId: reg.id, nombre: `${nombre} ${apellido}`, telefono }); }
       catch (e) { await cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
-      if (cmp.repetido) {
+      if (cmp.rechazo) {
         await cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id));
-        return res.status(409).json({ error: 'Esa captura ya fue usada. Sube la captura de tu pago de hoy.' });
+        await require('./comprobantes').avisarRechazo('stake', { nombre: `${nombre} ${apellido}`.trim(), telefono }, cmp.rechazo.motivo, cmp.buf);
+        return res.status(409).json({ error: cmp.rechazo.cliente });
       }
       const ap = await resolverRegistro(reg.id, true);
       if (ap.error && !ap.ok) console.error('Auto-aprobación de stake:', ap.error);
-      await require('./canales').avisarLinkAprobado('stake', HOJA_REGISTROS, reg, { foto: cmp.buf, parecido: cmp.parecido });
+      await require('./canales').avisarLinkAprobado('stake', HOJA_REGISTROS, reg, cmp.atencion ? { foto: cmp.buf, parecido: cmp.parecido } : { silencioso: true });
       await require('./cuadre').ofrecer({ tipo: 'st', regId: reg.id, monto: 20, etiqueta: `Stake de pago — ${nombre} ${apellido}`.trim() }).catch(() => {});
       res.json({ id: reg.id });
     } catch (e) {
