@@ -87,7 +87,6 @@ async function procesar(dataUrl, datos) {
   const ia = lectura;
   if (ia && !ia.error) require('./alertas').resuelto('ia', 'La IA que revisa las capturas volvió a funcionar.').catch(() => {});
   if (ia) {
-    if (datos.tipo === 'vip' && ia.chatCompleto === false) return { buf, rechazo: { motivo: 'Subió solo el comprobante, no la captura del chat completo.', cliente: 'Debes subir la captura del chat completo, donde se vea el comprobante de $' + MINIMO_VIP() + ' y la conversación. No envíes solo la foto del comprobante.' }, parecido: null, atencion: false };
     if (!ia.esComprobante) return { buf, rechazo: { motivo: 'La imagen no parece un comprobante de pago.', cliente: 'Esa imagen no parece un comprobante de pago. Sube la captura de tu pago.' }, parecido: null, atencion: false };
     if (datos.tipo === 'regalito' && ia.tipoDoc && ia.tipoDoc !== 'recibo_recarga') {
       const que = ia.tipoDoc === 'transferencia' ? 'una transferencia o depósito bancario' : ia.tipoDoc === 'pago_stake' ? 'el pago de un stake' : 'algo que no es un recibo de recarga';
@@ -128,13 +127,12 @@ async function leerConIA(buf, tipo) {
   let ultimoError = 'no respondió';
   const hoy = H.hoyEC();
   const ayer = new Date(Date.parse(hoy + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
-  const sistema = `Eres un verificador de capturas de pago para una agencia de Ecuador. El cliente sube la captura de ${tipo === 'regalito' ? 'una recarga a una casa de apuestas' : tipo === 'vip' ? 'el CHAT de WhatsApp donde se ve su pago de la membresía VIP (transferencia o depósito)' : 'su pago (transferencia, depósito o recarga)'}.
+  const sistema = `Eres un verificador de capturas de pago para una agencia de Ecuador. El cliente sube la captura de ${tipo === 'regalito' ? 'una recarga a una casa de apuestas' : tipo === 'vip' ? 'el comprobante de su transferencia de la membresía VIP' : 'su pago (transferencia, depósito o recarga)'}.
 Hoy es ${hoy} (ayer fue ${ayer}). En Ecuador las fechas se escriben día/mes/año. Si la captura dice "hoy" usa ${hoy}; si dice "ayer" usa ${ayer}.
-Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAAA-MM-DD"|null,"monto":numero|null,"referencia":"texto"|null,"emisor":"banco o casa"|null,"tipoDoc":"recibo_recarga"|"transferencia"|"pago_stake"|"otro","chatCompleto":true|false}
+Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAAA-MM-DD"|null,"monto":numero|null,"referencia":"texto"|null,"emisor":"banco o casa"|null,"tipoDoc":"recibo_recarga"|"transferencia"|"pago_stake"|"otro"}
 - esComprobante: true solo si la imagen muestra un comprobante, notificación o historial de transferencia, depósito, pago o recarga. false para cualquier otra imagen (fotos, memes, capturas sin relación).
 - tipoDoc: "recibo_recarga" si es el recibo/comprobante de una recarga a una cuenta de casa de apuestas (dice recibo de recarga, recarga realizada, valor recarga, punto de venta, cliente); "transferencia" si es una transferencia o depósito bancario; "pago_stake" si es el pago de un stake o pronóstico; "otro" en cualquier otro caso.
 - fecha: la fecha de la transacción que se VE en la imagen. null si no aparece o no estás seguro. No la inventes.
-- chatCompleto: true si la imagen es una captura de una CONVERSACIÓN de chat (burbujas de mensajes, encabezado del contacto, horas) donde aparece el comprobante dentro del chat. false si es solo la foto o captura del comprobante suelto, sin la conversación alrededor.
 - referencia: número de comprobante / documento / transacción / secuencial, tal cual se ve. null si no hay.`;
   for (const modelo of MODELOS()) {
     try {
@@ -157,8 +155,7 @@ Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAA
         monto: Number(o.monto) > 0 ? Number(o.monto) : null,
         referencia: o.referencia ? String(o.referencia).replace(/\s+/g, '').slice(0, 40) : null,
         emisor: o.emisor ? String(o.emisor).slice(0, 40) : null,
-        tipoDoc: ['recibo_recarga', 'transferencia', 'pago_stake', 'otro'].includes(o.tipoDoc) ? o.tipoDoc : null,
-        chatCompleto: o.chatCompleto === false ? false : o.chatCompleto === true ? true : null
+        tipoDoc: ['recibo_recarga', 'transferencia', 'pago_stake', 'otro'].includes(o.tipoDoc) ? o.tipoDoc : null
       };
     } catch (e) { ultimoError = `${modelo}: ${e.message}`.slice(0, 120); console.error('Lector de capturas:', e.message); }
   }

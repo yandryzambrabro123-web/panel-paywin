@@ -186,7 +186,7 @@ function form(d,aviso){
   '<label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off">'+
   '<label>Ciudad</label><input id="ciu" autocomplete="address-level2"><label>Correo electrónico</label><input id="cor" type="email" inputmode="email" autocapitalize="none" autocomplete="email">'+
   '<label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999"><label>Fecha de ingreso</label><input id="fec" disabled value="'+hoy()+'">'+
-  (regId?'':'<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu pago <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>chat completo</b> donde se ve el comprobante de tu pago de <b>$50</b> (membresía mensual). <b>No envíes solo la foto del comprobante</b>: debe verse toda la conversación. Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div>'+EJ+'<input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>')+
+  (regId?'':'<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí el comprobante de tu transferencia <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>comprobante de la transferencia de $50</b> (membresía mensual). Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div>'+EJ+'<input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>')+
   '<div class="e" id="err"></div><button id="env">Enviar registro</button>';
   $('#ced').oninput=e=>{e.target.value=e.target.value.replace(/\\D/g,'')};
   $('#env').onclick=enviar;
@@ -199,7 +199,7 @@ async function enviar(){
   const body={cedula:$('#ced').value,nombre:$('#nom').value,apellido:$('#ape').value,ciudad:$('#ciu').value,correo:$('#cor').value,telefono:$('#tel').value,registroId:regId};
   if(!body.nombre.trim()||!body.apellido.trim()||body.cedula.replace(/\\D/g,'').length!==10||!body.ciudad.trim()||!body.correo.includes('@')||body.telefono.replace(/\\D/g,'').length<9){er.textContent='Completa todos los campos.';return}
   const fl=$('#cmp')?$('#cmp').files[0]:null;
-  if(!regId&&!fl){er.textContent='La captura del chat con tu pago es obligatoria: sin ella no puedes continuar.';return}
+  if(!regId&&!fl){er.textContent='El comprobante de tu transferencia es obligatorio: sin él no puedes continuar.';return}
   b.disabled=true;b.textContent=fl?'Verificando tu captura…':'Enviando…';
   try{if(fl)body.comprobante=await leerImg(fl);const r=await fetch('/vip/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}

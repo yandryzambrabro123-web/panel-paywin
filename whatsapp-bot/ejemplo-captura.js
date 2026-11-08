@@ -2,7 +2,7 @@
 // Sin comillas dobles, saltos de línea, backticks ni backslashes: se incrusta dentro de las páginas.
 const CSS = [
   '.ej{margin:0 0 12px;border-radius:12px;overflow:hidden;border:1px solid #3a3f4d;background:#e7dfd2;position:relative}',
-  '.ej-t{background:#1f2a2e;color:#cfe3dc;font-size:11.5px;padding:6px 10px;display:flex;justify-content:space-between}',
+  '.ej-t{gap:8px;background:#1f2a2e;color:#cfe3dc;font-size:11.5px;padding:6px 10px;display:flex;justify-content:space-between}',
   '.ej-t b{color:#f2d27a}',
   '.ej-c{padding:10px 10px 12px;height:292px;position:relative;overflow:hidden}',
   '.ej-m{position:absolute;left:10px;right:10px;max-width:84%;padding:7px 9px;border-radius:9px;font-size:13px;line-height:1.3;color:#1b1b1b;box-shadow:0 1px 1px rgba(0,0,0,.15);opacity:0;animation-duration:12s;animation-iteration-count:infinite;animation-timing-function:ease-out}',
@@ -40,30 +40,22 @@ const recibo = (titulo, fecha, extra, monto) => "<div class='ej-rc'><span class=
 const recibo_casa = () => "<div class='ej-rp'><div class='h'><b>CASA DE<br>APUESTAS</b><span>RECIBO DE<br>RECARGA</span></div><hr><div class='f'>Recibo de Recarga No.<i>000123456</i></div><div class='f'>Fecha:<i>HOY 11:09:45</i></div><div class='f'>Punto de venta:<i>AG- TU AGENTE</i></div><div class='f'>No. de Cliente:<i>1234567</i></div><div class='f'>Nombre Cliente:<i>NOMBRE APELLIDO</i></div><div class='f'><b>Valor Recarga:</b><i>20</i></div><div class='p'>Disfruta el juego en vivo</div></div>";
 
 function chat(tipo) {
-  let ms;
+  let ms, alto;
   if (tipo === 'vip') {
-    ms = [
-      "<div class='ej-m r a1' style='top:10px'>" + recibo('¡Transferencia exitosa!', 'Fecha: HOY', '', '50,00') + "<small>12:43 p. m.</small></div>",
-      "<div class='ej-m r a2' style='top:178px'>Ya pagué el VIP 👍<small>12:48 p. m. ✓✓</small></div>",
-      "<div class='ej-m l a3' style='top:216px'>Listo, ya te paso el acceso<small>12:50 p. m.</small></div>",
-      "<div class='ej-m l a4' style='top:262px'><div class='ej-lk'><i>👑</i><span><b>GRUPO VIP</b><u>Invitación al grupo</u></span></div></div>",
-    ];
+    ms = ["<div class='ej-m r a1' style='top:12px;right:auto;left:50%;margin-left:-100px'>" + recibo('¡Transferencia exitosa!', 'Fecha: HOY', '', '50,00') + "</div>"];
+    alto = 170;
   } else if (tipo === 'stake') {
-    ms = [
-      "<div class='ej-m r a1' style='top:10px'>" + recibo('¡Transferencia exitosa!', 'Fecha: HOY') + "<small>12:43 p. m.</small></div>",
-      "<div class='ej-m r a2' style='top:178px'>Ya pagué 👍<small>12:48 p. m. ✓✓</small></div>",
-      "<div class='ej-m l a3' style='top:216px'>Ya te paso el acceso<small>12:50 p. m.</small></div>",
-      "<div class='ej-m l a4' style='top:262px'><div class='ej-lk'><i>💸</i><span><b>STAKE DE PAGO</b><u>Invitación a la comunidad</u></span></div></div>",
-    ];
+    ms = ["<div class='ej-m r a1' style='top:12px;right:auto;left:50%;margin-left:-100px'>" + recibo('¡Transferencia exitosa!', 'Fecha: HOY', '', '20,00') + "</div>"];
+    alto = 170;
   } else {
     ms = [
-      "<div class='ej-m l a1' style='top:10px'>" + recibo_casa() + "<small>11:10 p. m.</small></div>",
+      "<div class='ej-m l a1' style='top:10px'>" + recibo_casa() + "</div>",
       "<div class='ej-m l a2' style='top:262px;background:transparent;box-shadow:none;padding:0'><div class='ej-st'><div class='pw'>PAYWIN</div><div class='rb'>✔ RECARGA REALIZADA<br>PAYWIN</div></div></div>",
-      "<div class='ej-m r a3' style='top:386px'>Gracias, ya me llegó 🙌<small>11:12 p. m. ✓✓</small></div>",
     ];
+    alto = 390;
   }
-  const titulo = tipo === 'stake' ? 'Así debe verse tu captura (ejemplo)' : 'Así debe verse tu captura (ejemplo)';
-  return "<div class='ej'><div class='ej-t'><b>EJEMPLO</b><span>" + titulo + "</span></div><div class='ej-c' style='height:" + (tipo === 'stake' || tipo === 'vip' ? 352 : 440) + "px'>" + ms.join('') + "</div></div>";
+  const titulo = tipo === 'regalito' ? 'Así debe verse (recarga)' : 'Así debe verse (transferencia)';
+  return "<div class='ej'><div class='ej-t'><b>EJEMPLO</b><span>" + titulo + "</span></div><div class='ej-c' style='height:" + alto + "px'>" + ms.join('') + "</div></div>";
 }
 
 module.exports = { CSS, chat };
