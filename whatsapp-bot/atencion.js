@@ -102,13 +102,37 @@ async function iniciar(stakes) {
   });
 }
 
-function montar(app, stakes) {
+function montar(app, stakes, { requireApiKey } = {}) {
   iniciar(stakes).catch((e) => console.error('Atención: error iniciando:', e));
+  montarCodigo(app, requireApiKey);
   app.get('/qr-atencion', async (req, res) => {
     if (estado.conectado) return res.send('<h2 style="font-family:sans-serif;">El número de atención ya está conectado. No hace falta escanear nada.</h2>');
     if (!estado.qr) return res.send('<html><head><meta http-equiv="refresh" content="3"></head><body style="font-family:sans-serif;text-align:center;margin-top:60px;"><h2>Generando el código...</h2><p>Espera unos segundos, esta página se actualiza sola.</p></body></html>');
     const png = await qrcode.toDataURL(estado.qr);
     res.send(`<html><head><meta http-equiv="refresh" content="20"></head><body style="font-family:sans-serif;text-align:center;margin-top:40px;"><h2>Escanea con el WhatsApp del número de ATENCIÓN</h2><img src="${png}" style="width:280px;height:280px;"><p>WhatsApp → Ajustes → Dispositivos vinculados → Vincular un dispositivo</p><p style="color:#888;font-size:13px;">El código cambia cada rato; si ya no sirve, espera a que la página se refresque sola.</p></body></html>`);
+  });
+}
+
+// Vincular con CÓDIGO de 8 caracteres en vez de QR (WhatsApp → Dispositivos vinculados → Vincular con el número de teléfono).
+function montarCodigo(app, requireApiKey) {
+  const pagina = (cuerpo) => `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:sans-serif;text-align:center;margin:40px 16px;">${cuerpo}</body></html>`;
+  app.get('/codigo-atencion', requireApiKey || ((q, r, n) => n()), async (req, res) => {
+    const key = String(req.query.key || '');
+    const numero = String(req.query.numero || '').replace(/\D/g, '');
+    if (estado.conectado) return res.send(pagina('<h2>El número de atención ya está conectado.</h2>'));
+    if (!numero) {
+      return res.send(pagina(`<h2>Vincular el número de atención con código</h2><p>Escribe el número del celular con código de país y sin signos. Ecuador: 593 y el número sin el 0 inicial, por ejemplo <b>593991234567</b>.</p><form method="get"><input type="hidden" name="key" value="${key.replace(/[^\w-]/g, '')}"><input name="numero" inputmode="numeric" placeholder="593991234567" style="font-size:20px;padding:10px;width:260px"><br><br><button style="font-size:18px;padding:10px 24px">Darme el código</button></form>`));
+    }
+    if (numero.length < 9 || numero.length > 15) return res.send(pagina('<h2>El número no parece válido.</h2><p>Usa código de país y sin signos, por ejemplo 593991234567.</p>'));
+    if (!estado.sock) return res.send(pagina('<h2>El bot todavía está arrancando.</h2><p>Espera 10 segundos y recarga.</p>'));
+    try {
+      const codigo = await estado.sock.requestPairingCode(numero);
+      const c = String(codigo).replace(/(.{4})(.{4})/, '$1-$2');
+      res.send(pagina(`<h2>Tu código de vinculación</h2><div style="font-size:44px;letter-spacing:6px;font-weight:800;margin:20px 0">${c}</div><ol style="text-align:left;max-width:380px;margin:0 auto;line-height:1.6"><li>En el celular de ese número abre WhatsApp.</li><li>Ajustes → Dispositivos vinculados → Vincular un dispositivo.</li><li>Toca <b>Vincular con el número de teléfono</b> (abajo).</li><li>Escribe este código antes de que caduque (unos 2 minutos).</li></ol>`));
+    } catch (e) {
+      console.error('Atención: no pude pedir el código:', e.message);
+      res.send(pagina(`<h2>No se pudo generar el código</h2><p>${String(e.message).replace(/[<>]/g, '')}</p><p>Espera unos segundos y recarga.</p>`));
+    }
   });
 }
 

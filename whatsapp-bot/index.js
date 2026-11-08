@@ -169,7 +169,7 @@ require('./regalito').montar(app, stakes, { requireApiKey });
 require('./canales').montar(app, stakes, { requireApiKey });
 require('./cuadre').montar(stakes); // cuadre financiero automático al aprobar pagos // canales privados de Telegram (stake y regalito)
 const atencion = require('./atencion');
-atencion.montar(app, stakes); // segundo número de WhatsApp: atención al cliente (recargas)
+atencion.montar(app, stakes, { requireApiKey }); // segundo número de WhatsApp: atención al cliente (recargas)
 require('./alertas').montar(stakes, () => ({ conectado: connected, desde: desconectadoDesde, ultimoCierre }), require('./comprobantes'), atencion.estado); // avisos por Telegram cuando algo falla
 require('./pay').montar(app, stakes, { requireApiKey }); // registro VIP (Telegram) + salida automática de vencidos
 
