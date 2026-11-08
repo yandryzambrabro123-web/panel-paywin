@@ -3782,7 +3782,7 @@ async function openWinNumbersModal(){
       <button class="btn secondary" onclick="closeModal()">Cerrar</button>
       <button class="btn" id="winNumAddBtn">+ Agregar número</button>
     </div>`);
-  const guardar = async (nueva, aviso)=>{ await winNumerosGuardar(nueva); winNumeroAplicar(nueva); if(aviso) alert(aviso); openWinNumbersModal(); };
+  const guardar = async (nueva, aviso, nuevoNum)=>{ await winNumerosGuardar(nueva); winNumeroAplicar(nueva); if(nuevoNum){ openWinAvisoNumeroModal(nuevoNum); return; } if(aviso) alert(aviso); openWinNumbersModal(); };
   const cambiarActivo = (nueva, id)=>nueva.map(n=>n.id===id ? { ...n, estado:'activo' } : (n.estado==='activo' ? { ...n, estado:'disponible' } : n));
   document.getElementById('winNumAddBtn').onclick = async ()=>{
     const num = winNormTel(document.getElementById('winNumNuevo').value);
@@ -3794,7 +3794,7 @@ async function openWinNumbersModal(){
   };
   document.querySelectorAll('[data-num-use]').forEach(b=>b.onclick = ()=>{
     const n = lista.find(x=>x.id===b.dataset.numUse); if(!n) return;
-    guardar(cambiarActivo(lista, n.id), `Listo: desde ahora los textos usan el ${n.numero}.`);
+    guardar(cambiarActivo(lista, n.id), '', n.numero);
   });
   document.querySelectorAll('[data-num-block]').forEach(b=>b.onclick = async ()=>{
     const n = lista.find(x=>x.id===b.dataset.numBlock); if(!n) return;
@@ -3809,12 +3809,62 @@ async function openWinNumbersModal(){
         nueva = [...nueva, sig];
       }
       nueva = cambiarActivo(nueva, sig.id).map(x=>x.id===n.id ? { ...x, estado:'bloqueado' } : x);
-      return guardar(nueva, `Marcado como bloqueado. Desde ahora los textos usan el ${sig.numero}.`);
+      return guardar(nueva, '', sig.numero);
     }
     guardar(nueva);
   });
   document.querySelectorAll('[data-num-free]').forEach(b=>b.onclick = ()=>guardar(lista.map(x=>x.id===b.dataset.numFree ? { ...x, estado:'disponible' } : x)));
   document.querySelectorAll('[data-num-del]').forEach(b=>b.onclick = ()=>{ if(confirm('¿Quitar este número de la lista?')) guardar(lista.filter(x=>x.id!==b.dataset.numDel)); });
+}
+
+// Aviso del número nuevo de atención al cliente: se arma al cambiar el número en uso y se manda
+// SOLO cuando tú tocas un botón (a Gratis 1, 2, 3 o a las tres).
+function winAvisoNumeroTexto(num){
+  const wa = 'https://wa.me/593' + String(num).replace(/^0/, '');
+  return `📲 *NUEVO NÚMERO DE ATENCIÓN AL CLIENTE*\n\nNuestro número anterior se bloqueó. Desde ahora, para recargas, retiros y cualquier consulta escríbenos solo a este:\n\n👉 *${num}*\n${wa}\n\nGuárdalo, que es el único número de atención de PayWin. 🙌`;
+}
+function openWinAvisoNumeroModal(num){
+  const GRATIS = ['Gratis 1','Gratis 2','Gratis 3'];
+  openModal(`
+    <h3>Avisar el número nuevo</h3>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Desde ahora el número en uso es el <b>${num}</b>. Este mensaje no se manda solo: edítalo si quieres y toca a qué comunidad gratis lo envías.</div>
+    <textarea id="winAvisoTxt" rows="9" style="width:100%; box-sizing:border-box; padding:11px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px; line-height:1.4;">${winAvisoNumeroTexto(num).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</textarea>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+      ${GRATIS.map((g,i)=>`<button class="btn secondary" data-aviso-g="${g}" id="winAvisoBtn${i}">Enviar a ${g}</button>`).join('')}
+      <button class="btn" id="winAvisoTodos">Enviar a las 3</button>
+    </div>
+    <div id="winAvisoEstado" style="font-size:12.5px; color:var(--muted); margin-top:10px;"></div>
+    <div class="modal-actions"><button class="btn secondary" id="winAvisoCerrar">Cerrar</button></div>`);
+  const hechos = new Set();
+  const estado = (t)=>{ const e = document.getElementById('winAvisoEstado'); if(e) e.textContent = t; };
+  const enviar = async (nombre)=>{
+    const texto = (document.getElementById('winAvisoTxt').value || '').trim();
+    if(!texto){ estado('El mensaje está vacío.'); return false; }
+    const jid = winGroupJid(nombre);
+    const btn = document.querySelector(`[data-aviso-g="${nombre}"]`);
+    if(!jid){ estado(`No encuentro el grupo ${nombre}.`); return false; }
+    if(btn){ btn.disabled = true; btn.textContent = `Enviando a ${nombre}…`; }
+    try{
+      const r = await withTimeout(fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'directo', grupoId: jid, texto }) }), 60000);
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) throw new Error(d.error || 'falló');
+      hechos.add(nombre);
+      if(btn) btn.textContent = `✅ Enviado a ${nombre}`;
+      return true;
+    }catch(e){
+      if(btn){ btn.disabled = false; btn.textContent = `Reintentar ${nombre}`; }
+      estado(`${nombre}: ${e.message || e}`);
+      return false;
+    }
+  };
+  document.querySelectorAll('[data-aviso-g]').forEach(b=>b.onclick = ()=>{ if(!hechos.has(b.dataset.avisoG)) enviar(b.dataset.avisoG); });
+  document.getElementById('winAvisoTodos').onclick = async ()=>{
+    const t = document.getElementById('winAvisoTodos'); t.disabled = true;
+    for(const g of GRATIS){ if(hechos.has(g)) continue; await enviar(g); await new Promise(r=>setTimeout(r,1200)); }
+    t.disabled = false;
+    estado(hechos.size === GRATIS.length ? '✅ Enviado a las 3 comunidades.' : `Enviado a ${hechos.size} de ${GRATIS.length}. Toca el botón de la que falló para reintentar.`);
+  };
+  document.getElementById('winAvisoCerrar').onclick = ()=>{ openWinNumbersModal(); };
 }
 
 function openWinTemplatesModal(){
@@ -9251,7 +9301,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '8 nov, 05:20';
+const PANEL_VERSION = '8 nov, 06:20';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
