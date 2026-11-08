@@ -565,7 +565,16 @@
       radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0,0,0,.45) 100%);
   }
   .win-fx{ position:absolute; left:50%; top:50%; width:520px; height:520px; margin:-260px 0 0 -260px; z-index:0; pointer-events:none; }
-  @media (min-width:1100px) and (min-height:820px){ .win-aura-wrap{ transform:scale(1.16); margin:44px 0; } }
+  @media (min-width:1100px) and (min-height:901px){ .win-aura-wrap{ transform:scale(1.16); margin:44px 0; } }
+  /* Pantallas de computador bajitas: el reactor se achica según la altura y la vista de Win se puede desplazar,
+     para que la barra de abajo nunca tape los botones (Reporte de rendimiento, protocolo, etc.). */
+  @media (min-width:861px){
+    body.win-locked .win-fullscreen{ overflow-y:auto; overflow-x:hidden; justify-content:flex-start; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+    body.win-locked .win-fullscreen > :first-child{ margin-top:auto; }
+    body.win-locked .win-fullscreen > :last-child{ margin-bottom:auto; }
+  }
+  @media (min-width:861px) and (max-height:900px){ .win-aura-wrap{ transform:scale(.7); margin:-62px 0 -62px; } }
+  @media (min-width:861px) and (max-height:720px){ .win-aura-wrap{ transform:scale(.56); margin:-92px 0 -92px; } }
 
   .win-brand{ font-size:15px; letter-spacing:.7em; padding-left:.7em; margin-bottom:12px; gap:12px; color:var(--accent-light); text-shadow:0 0 18px rgba(212,175,106,.55); }
   .win-brand::before, .win-brand::after{ content:''; width:54px; height:1px; background:linear-gradient(90deg, transparent, rgba(212,175,106,.7)); }
@@ -9386,7 +9395,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '8 nov, 07:40';
+const PANEL_VERSION = '8 nov, 08:00';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
