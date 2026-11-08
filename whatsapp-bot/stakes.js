@@ -298,6 +298,7 @@ async function buscarCliente(cedula) {
   return null;
 }
 
+const EJEMPLO = require('./ejemplo-captura');
 const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Registro Stake de pago</title><style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0b0d12;color:#f3ead6;font-family:Inter,system-ui,sans-serif;display:flex;justify-content:center;padding:20px}
@@ -306,8 +307,9 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:14px 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 select{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.n{font-size:12.5px;color:#D4AF6A;margin-top:6px;min-height:16px}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-</style></head><body><div class="w"><h1>Stake de pago</h1><p id="sub">Cargando…</p><div class="c" id="box"></div></div>
+${EJEMPLO.CSS}</style></head><body><div class="w"><h1>Stake de pago</h1><p id="sub">Cargando…</p><div class="c" id="box"></div></div>
 <script>
+const EJ=${JSON.stringify(EJEMPLO.chat('stake'))};
 const $=s=>document.querySelector(s);let sec=null,timer=null;
 const box=$('#box');
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -321,7 +323,7 @@ function form(){
   box.innerHTML='<label>¿Qué stake compraste?</label><select id="sec">'+sec.secciones.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.titulo)+' · $'+s.precio+'</option>').join('')+'</select><label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off"><div class="n" id="nota"></div>'+
   '<div id="resto" style="display:none"><label>Nombre</label><input id="nom" autocomplete="given-name"><label>Apellido</label><input id="ape" autocomplete="family-name">'+
   '<label>Usuario de Telegram</label><input id="tgu" placeholder="@tuusuario" autocapitalize="none" autocomplete="off"><label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999">'+
-  '<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu pago <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>comprobante de tu pago del stake</b>. Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div><input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>'+
+  '<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu pago <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>comprobante de tu pago del stake</b>. Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div>'+EJ+'<input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>'+
   '<div class="e" id="err"></div><button id="env">Enviar registro</button></div>';
   let t=null;$('#ced').oninput=e=>{const v=e.target.value.replace(/\\D/g,'');e.target.value=v;clearTimeout(t);$('#nota').textContent='';
     if(v.length===10){t=setTimeout(()=>buscar(v),250)}else{$('#resto').style.display='none'}};

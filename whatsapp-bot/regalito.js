@@ -28,6 +28,7 @@ const HORAS_PREGUNTA = 5;
 const idMs = (id) => { const n = parseInt(String(id || '').slice(0, -5), 36); return Number.isFinite(n) ? n : 0; };
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const EJEMPLO = require('./ejemplo-captura');
 const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>Regalito del día</title><style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0b0d12;color:#f3ead6;font-family:Inter,system-ui,sans-serif;display:flex;justify-content:center;padding:20px}
@@ -36,15 +37,16 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:0 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito, tu número de teléfono y sube la captura de tu recarga. Al enviar te mostramos el link del grupo.</p><div class="c" id="box"></div></div>
+${EJEMPLO.CSS}</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito, tu número de teléfono y sube la captura de tu recarga. Al enviar te mostramos el link del grupo.</p><div class="c" id="box"></div></div>
 <script>
+const EJ=${JSON.stringify(EJEMPLO.chat('regalito'))};
 const $=s=>document.querySelector(s);let timer=null;const box=$('#box');
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function guardar(id){try{localStorage.setItem('rgId',id)}catch(e){}}
 function leer(){try{return localStorage.getItem('rgId')||''}catch(e){return ''}}
 function limpiar(){try{localStorage.removeItem('rgId')}catch(e){}}
 function form(){
-  box.innerHTML='<label>Asignar el regalito a nombre de</label><input id="nom" autocomplete="name" placeholder="Nombre y apellido"><label style="margin-top:14px">Tu número de teléfono (WhatsApp)</label><input id="tel" inputmode="tel" autocomplete="tel" maxlength="10" placeholder="0999999999"><div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu recarga <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del chat donde <b>tu agente PayWin te manda el comprobante de recarga</b>. Debe verse la <b>fecha de hoy</b> y el <b>monto</b> (recarga mínima: $20). Sin esta captura no puedes continuar.</div><input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div><div class="e" id="err"></div><button id="env">Pedir mi regalito</button>';
+  box.innerHTML='<label>Asignar el regalito a nombre de</label><input id="nom" autocomplete="name" placeholder="Nombre y apellido"><label style="margin-top:14px">Tu número de teléfono (WhatsApp)</label><input id="tel" inputmode="tel" autocomplete="tel" maxlength="10" placeholder="0999999999"><div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu recarga <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del chat donde <b>tu agente PayWin te manda el comprobante de recarga</b>. Debe verse la <b>fecha de hoy</b> y el <b>monto</b> (recarga mínima: $20). Sin esta captura no puedes continuar.</div>'+EJ+'<input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div><div class="e" id="err"></div><button id="env">Pedir mi regalito</button>';
   $('#env').onclick=enviar;
 }
 async function enviar(){
