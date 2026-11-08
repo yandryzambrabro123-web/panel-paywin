@@ -5366,7 +5366,7 @@ function winDesenfocarArchivo(file){
 }
 
 let winPendingFile = null;
-function wireWinDropzone(){
+function wireWinDropzone(onFile){
   winPendingFile = null;
   const dropzone = document.getElementById('winDropzone');
   const fileInput = document.getElementById('winFileInput');
@@ -5375,6 +5375,7 @@ function wireWinDropzone(){
     const reader = new FileReader();
     reader.onload = ()=>{ document.getElementById('winDropPreview').innerHTML = `<img src="${reader.result}" style="max-width:100%; max-height:140px; border-radius:8px; margin-top:10px;">`; };
     reader.readAsDataURL(file);
+    if(typeof onFile === 'function') onFile(file);
   };
   dropzone.onclick = ()=>fileInput.click();
   dropzone.ondragover = (e)=>{ e.preventDefault(); dropzone.style.borderColor = 'var(--accent)'; };
@@ -5832,7 +5833,10 @@ function openCanalTgModal(clave, pre){
     </div>
     <input id="winFileInput" type="file" accept="image/*" style="display:none;">
     <div class="field"><label>Texto</label><textarea id="f-canalTexto" rows="9" placeholder="Pick, cuota, hora..."></textarea></div>
-    <button class="btn secondary" id="canalGenTexto" type="button" style="width:100%; margin-bottom:8px;">✨ Generar texto con reseña</button>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <button class="btn secondary" id="canalGenTexto" type="button" style="flex:1;" title="Generar otro texto">🔄 Generar otro texto</button>
+      <button class="btn secondary" id="canalMicBtn" type="button" style="flex:1;" title="Dime cómo quieres el texto">🎤 Decirle cómo</button>
+    </div>
     <div id="canalTgMsg" style="font-size:12.5px; color:var(--muted); min-height:18px; margin-bottom:8px;"></div>
     <div class="modal-actions">
       <button class="btn secondary" id="canalVaciarBtn" type="button" style="color:#ff7a7a;">Vaciar canal</button>
@@ -5840,7 +5844,8 @@ function openCanalTgModal(clave, pre){
       <button class="btn" id="canalPublicarBtn">Publicar en el canal</button>
     </div>
   `);
-  wireWinDropzone();
+  let generarTexto = async ()=>{};
+  wireWinDropzone(()=>{ generarTexto(); }); // al cargar la foto, el texto sale solo
   const pickListo = pre && pre.base64 ? { base64:pre.base64, mediaType:pre.mediaType || 'image/jpeg', texto:'' } : winPickCanalGet(clave);
   if(pickListo){
     document.getElementById('f-canalTexto').value = pickListo.texto || '';
@@ -5856,29 +5861,40 @@ function openCanalTgModal(clave, pre){
       const imagenes = winPendingFile ? [await fileToCompressedImage(winPendingFile).then(x=>({ base64:x.base64, mediaType:x.mediaType }))] : (pickListo ? [{ base64:pickListo.base64, mediaType:pickListo.mediaType }] : []);
       for(let i=0;i<imagenes.length;i++){ if(imagenes[i].base64){ const m = await winMarcaAgua(imagenes[i].base64, imagenes[i].mediaType, clave === 'regalito' ? 'regalito' : 'stake'); imagenes[i] = { base64:m.base64, mediaType:m.mediaType }; } }
       await canalTgLlamar({ modo:'canal_publicar', clave, texto, imagenes, titulo: canalTgTitulo(clave) });
-      winPickCanalClear(clave); closeModal(); alert('✅ Publicado en el canal.');
+      // El registro en el panel es ESTA apuesta (texto + foto), no el anuncio del stake/regalito.
+      let registrado = true;
+      try{ registrado = await winRegistrarEnPanel(clave === 'regalito' ? 'gifts' : 'stakes', texto.split(/\n\s*(?:🔴|🛠)/)[0].trim() || (clave === 'regalito' ? 'Regalito del día' : 'Stake de pago'), imagenes[0] ? { base64: imagenes[0].base64, mediaType: imagenes[0].mediaType } : null); }
+      catch(er){ registrado = false; console.error(er); }
+      winPickCanalClear(clave); closeModal();
+      alert(registrado ? '✅ Publicado en el canal y registrado en el panel.' : '✅ Publicado en el canal, pero no pude registrarlo en el panel. Regístralo a mano.');
     }catch(e){ alert('No se pudo publicar: ' + e.message); b.disabled = false; b.textContent = 'Publicar en el canal'; }
   };
   document.getElementById('canalVaciarBtn').onclick = function(){ vaciarGrupoTg(clave, this); };
   // Texto con reseña, armado por Pay a partir de la foto del pick
   let generando = false;
-  const generarTexto = async ()=>{
+  generarTexto = async (ajuste)=>{
+    if(typeof ajuste !== 'string') ajuste = '';
     if(generando) return; generando = true;
     const gb = document.getElementById('canalGenTexto'), ta = document.getElementById('f-canalTexto');
+    if(!gb || !ta){ generando = false; return; }
     gb.disabled = true; gb.textContent = '✨ Pay está escribiendo…';
     try{
       let img = null;
       if(winPendingFile){ const x = await fileToCompressedImage(winPendingFile); img = { base64:x.base64, mediaType:x.mediaType }; }
       else if(pickListo) img = { base64:pickListo.base64, mediaType:pickListo.mediaType };
-      const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'canal_texto', clave, imagenes: img ? [img] : [], nota: (pre && pre.nota) || '' }) }), 58000, 'Pay tardó demasiado. Toca de nuevo.');
+      const r = await withTimeout(fetch('/api/win-redactar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'canal_texto', clave, imagenes: img ? [img] : [], nota: [ (pre && pre.nota) || '', ajuste ? `Cámbialo así: ${ajuste}. Texto anterior: ${ta.value.slice(0, 500)}` : '' ].filter(Boolean).join(' ').slice(0, 300) }) }), 58000, 'Pay tardó demasiado. Toca de nuevo.');
       const d = await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(d.error || 'No pude armar el texto.');
       if(document.getElementById('f-canalTexto')) ta.value = winAsegurarMasparley(d.texto);
       msg('✓ Texto listo. Léelo y cámbialo si quieres antes de publicar.');
     }catch(e){ msg('No se pudo generar el texto: ' + e.message); }
-    generando = false; gb.disabled = false; gb.textContent = '✨ Generar otro texto';
+    generando = false; gb.disabled = false; gb.textContent = '🔄 Generar otro texto';
   };
-  document.getElementById('canalGenTexto').onclick = generarTexto;
+  document.getElementById('canalGenTexto').onclick = ()=>generarTexto();
+  document.getElementById('canalMicBtn').onclick = function(){
+    const btn = this;
+    winToggleMicRecording(btn, async (dicho)=>{ await generarTexto(dicho); });
+  };
   if(pickListo) setTimeout(generarTexto, 300); // con la foto ya cargada, el texto sale solo
 }
 
@@ -5890,18 +5906,6 @@ function winPickCanalGet(kind){
   try{ const p = JSON.parse(localStorage.getItem('winPickCanal_' + kind) || 'null'); return p && p.day === new Date(Date.now() - 5*3600e3).toISOString().slice(0,10) ? p : null; }catch(e){ return null; }
 }
 function winPickCanalClear(kind){ try{ localStorage.removeItem('winPickCanal_' + kind); }catch(e){} }
-// La apuesta REAL del stake de hoy (no la publicidad): es lo que se registra en Stakes para marcarla ganada/perdida.
-let winStakeReal = null;
-function winStakeRealDesde(r, base64, mediaType){
-  r = r || {};
-  const partes = [];
-  if(r.pick) partes.push(`🎯 ${r.pick}`);
-  if(r.cuota) partes.push(`📈 Cuota: ${r.cuota}`);
-  if(r.hora) partes.push(`⏰ Hora: ${r.hora}`);
-  if(r.valor) partes.push(`💵 Valor: ${r.valor}`);
-  const cuota = parseFloat(String(r.cuota||'').replace(',', '.').replace(/[^0-9.]/g,''));
-  return { texto: partes.join(' · ') || 'Stake de pago', seleccion: String(r.pick||''), cuota: isFinite(cuota) ? cuota : 0, base64, mediaType };
-}
 async function winRegistrarPickReal(kind, file){
   if(!file) return null;
   const { base64, mediaType } = await fileToCompressedImage(file);
@@ -5917,8 +5921,7 @@ async function winRegistrarPickReal(kind, file){
   if(r.valor) partes.push(`💵 *Valor:* ${r.valor}`);
   const texto = partes.join('\n');
   try{ localStorage.setItem('winPickCanal_' + kind, JSON.stringify({ day:hoy, texto, base64, mediaType })); }catch(e){ console.error(e); }
-  if(kind === 'stake') winStakeReal = winStakeRealDesde(r, base64, mediaType); // lo que se registra en Stakes es ESTA apuesta, no el anuncio
-  // El registro en el panel (Stakes / Regalitos) se dispara con el envío del anuncio, pero guarda la apuesta real.
+  // El registro en el panel (Stakes / Regalitos) lo hace "Publicar en el canal" con la foto y el texto; aquí solo queda el pick listo.
   return r;
 }
 
@@ -6016,7 +6019,6 @@ async function submitStakePago(){
   const file = winPendingFile;
   const tgLink = '';
   const pickRealFile = ((document.getElementById('f-pickReal')||{}).files || [])[0] || null;
-  winStakeReal = null;
   openModal(`<h3>Leyendo...</h3><div style="text-align:center; padding:30px 0; color:var(--muted); font-size:13.5px;">Esto toma unos segundos.</div>`);
   try{
     const { base64, mediaType, previewUrl } = await fileToCompressedImage(file);
@@ -6032,7 +6034,6 @@ async function submitStakePago(){
       });
       result = await res.json();
       if(!res.ok) throw new Error(result.error || 'No se pudo leer el stake.');
-      winStakeReal = winStakeRealDesde(result, base64, mediaType); // sin foto aparte, la captura subida ES la apuesta
     }
     const cuota = result.cuota || '-';
     const hora = result.hora || '-';
@@ -7173,7 +7174,8 @@ const WIN_REGISTRO_TIPOS = [
   { key:'stakes', label:'Stake del día' }
 ];
 // Botones fijos: lo que se manda se registra solo, sin preguntar
-const WIN_AUTO_REG = { stake_pago:{ key:'stakes', etiqueta:'Stake' }, regalito:{ key:'gifts', etiqueta:'Regalito' } };
+// El anuncio (publicidad) del stake y del regalito NO se registra: el registro lo hace "Enviar al canal" con la apuesta real (foto + texto).
+const WIN_AUTO_REG = {};
 let winPreset = null; // lo que elegiste en el formulario (tipo de apuesta / cuál ganó); el confirm lo preselecciona
 function winRegistroDefault(kind, grupos){
   if(kind === 'nueva_apuesta' && winPreset && winPreset.tipo === 'none') return '';
@@ -7211,12 +7213,12 @@ function flyerExtraerDeTexto(texto){
   if(!cuota){ const m = /(?:cuota|@)\s*[:*]*\s*(\d+[.,]\d+)/i.exec(String(texto||'')); if(m) cuota = parseFloat(m[1].replace(',', '.')); }
   return { evento, seleccion, cuota };
 }
-async function winRegistrarEnPanel(key, texto, sendImage, datos){
+async function winRegistrarEnPanel(key, texto, sendImage){
   if(!key) return false;
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
   const pick = String(texto || '').replace(/\s+/g,' ').trim().slice(0,200) || 'Registrado desde Win';
   let row;
-  const ex = datos ? { evento: datos.evento || '', seleccion: datos.seleccion || '', cuota: datos.cuota || 0 } : flyerExtraerDeTexto(texto);
+  const ex = flyerExtraerDeTexto(texto);
   if(key === 'vipBets' || key === 'freeBets' || key === 'liveBets') row = { id:uid(), sport:'', event:ex.evento, betType:'simple', pick, odds:ex.cuota, stake:0, date:hoy, result:'pending', lines:'[]', seleccion:ex.seleccion };
   else if(key === 'gifts') row = { id:uid(), sport:'', pick, odds:ex.cuota, stake:0, recipient:'', date:hoy, result:'pending', event:ex.evento, seleccion:ex.seleccion };
   else if(key === 'stakes') row = { id:uid(), description:pick, amount:0, date:hoy, result:'pending', event:ex.evento, seleccion:ex.seleccion, odds:ex.cuota };
@@ -7417,12 +7419,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     const auto = WIN_AUTO_REG[kind];
     if(!auto) return;
     winRegistrado = true; // se marca antes del await para que mandar a 3 grupos no lo registre 3 veces
-    try{
-      if(kind === 'stake_pago'){
-        // Nunca se registra la publicidad: se guarda la apuesta real (foto, pick y cuota) para ponerla ganada o perdida.
-        if(!winStakeReal) return;
-        await winRegistrarEnPanel(auto.key, winStakeReal.texto, { base64: winStakeReal.base64, mediaType: winStakeReal.mediaType }, { seleccion: winStakeReal.seleccion, cuota: winStakeReal.cuota });
-      } else await winRegistrarEnPanel(auto.key, texto, sendImage); }catch(e){ winRegistrado = false; console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
+    try{ await winRegistrarEnPanel(auto.key, texto, sendImage); }catch(e){ winRegistrado = false; console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
   };
 
   document.querySelectorAll('[data-win-send-group]').forEach(btn=>{
@@ -9321,7 +9318,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '8 nov, 06:50';
+const PANEL_VERSION = '8 nov, 07:10';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
