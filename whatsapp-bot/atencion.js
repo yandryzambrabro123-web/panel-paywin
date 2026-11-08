@@ -126,7 +126,11 @@ function montarCodigo(app, requireApiKey) {
     if (numero.length < 9 || numero.length > 15) return res.send(pagina('<h2>El número no parece válido.</h2><p>Usa código de país y sin signos, por ejemplo 593991234567.</p>'));
     if (!estado.sock) return res.send(pagina('<h2>El bot todavía está arrancando.</h2><p>Espera 10 segundos y recarga.</p>'));
     try {
-      const codigo = await estado.sock.requestPairingCode(numero);
+      // Código SOLO con números (dígitos 1-9: el 0 no está permitido en los códigos de vinculación). Si esta versión de la librería no deja elegirlo, se usa el normal.
+      const numerico = Array.from({ length: 8 }, () => 1 + Math.floor(Math.random() * 9)).join('');
+      let codigo;
+      try { codigo = await estado.sock.requestPairingCode(numero, numerico); }
+      catch (e1) { console.error('Atención: código numérico no aceptado, uso el normal:', e1.message); codigo = await estado.sock.requestPairingCode(numero); }
       const c = String(codigo).replace(/(.{4})(.{4})/, '$1-$2');
       res.send(pagina(`<h2>Tu código de vinculación</h2><div style="font-size:44px;letter-spacing:6px;font-weight:800;margin:20px 0">${c}</div><ol style="text-align:left;max-width:380px;margin:0 auto;line-height:1.6"><li>En el celular de ese número abre WhatsApp.</li><li>Ajustes → Dispositivos vinculados → Vincular un dispositivo.</li><li>Toca <b>Vincular con el número de teléfono</b> (abajo).</li><li>Escribe este código antes de que caduque (unos 2 minutos).</li></ol>`));
     } catch (e) {
