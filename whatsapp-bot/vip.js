@@ -186,7 +186,7 @@ function form(d,aviso){
   '<label>Número de cédula</label><input id="ced" inputmode="numeric" maxlength="10" placeholder="1700000000" autocomplete="off">'+
   '<label>Ciudad</label><input id="ciu" autocomplete="address-level2"><label>Correo electrónico</label><input id="cor" type="email" inputmode="email" autocapitalize="none" autocomplete="email">'+
   '<label>Número de teléfono</label><input id="tel" inputmode="tel" maxlength="10" placeholder="0999999999"><label>Fecha de ingreso</label><input id="fec" disabled value="'+hoy()+'">'+
-  (regId?'':'<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu pago <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>chat completo</b> donde se ve el comprobante de tu pago de <b>$50</b>. <b>No envíes solo la foto del comprobante</b>: debe verse toda la conversación. Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div>'+EJ+'<input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>')+
+  (regId?'':'<div style="border:2px solid #D4AF6A;border-radius:12px;padding:14px;margin-top:16px;background:rgba(212,175,106,.08)"><div style="font-size:15px;font-weight:800;color:#f2d27a;margin-bottom:6px">📎 Carga aquí la captura de tu pago <span style="color:#ff7a7a">(OBLIGATORIO)</span></div><div style="font-size:13.5px;line-height:1.45;color:#f3ead6;margin-bottom:10px">Sube la captura del <b>chat completo</b> donde se ve el comprobante de tu pago de <b>$50</b> (membresía mensual). <b>No envíes solo la foto del comprobante</b>: debe verse toda la conversación. Debe verse la <b>fecha de hoy</b> y el <b>monto</b>. Sin esta captura no puedes continuar.</div>'+EJ+'<input id="cmp" type="file" accept="image/*"><div style="font-size:12.5px;color:#9aa3b2;margin-top:8px">Cada captura se puede usar una sola vez.</div></div>')+
   '<div class="e" id="err"></div><button id="env">Enviar registro</button>';
   $('#ced').oninput=e=>{e.target.value=e.target.value.replace(/\\D/g,'')};
   $('#env').onclick=enviar;
@@ -593,13 +593,23 @@ function montar(app, stakes, extra) {
         }
       }
       const texto = `${corregido ? '✏️ <b>Registro VIP corregido</b>' : '🆕 <b>Registro VIP</b>'}\n\nNombre: <b>${H.esc(nombre)} ${H.esc(apellido)}</b>\nCédula: ${H.esc(cedula)}\nCiudad: ${H.esc(ciudad)}\nCorreo: ${H.esc(correo)}\nTeléfono: ${H.esc(telefono)}\nIngreso: ${hoy}\n${previo ? '🔁 Esa cédula ya es miembro activo (se renueva)' : '✨ Nuevo'}\n\n${cmp && cmp.atencion ? '\n⚠️ La captura se parece a otra ya usada: revísala.' : ''}\n\nAprueba con el plan que pagó:`;
-      const teclado = { inline_keyboard: [[{ text: '✅ Mensual', callback_data: 'vp:' + reg.id + ':m' }, { text: '✅ Trimestral', callback_data: 'vp:' + reg.id + ':t' }, { text: '✅ Anual', callback_data: 'vp:' + reg.id + ':a' }], [{ text: '✏️ Pedir corrección', callback_data: 'vc:' + reg.id }, { text: '❌ Rechazar', callback_data: 'vr:' + reg.id }]] };
+      const teclado = { inline_keyboard: [[{ text: '✅ Aprobar (mensual)', callback_data: 'vp:' + reg.id + ':m' }], [{ text: '✏️ Pedir corrección', callback_data: 'vc:' + reg.id }, { text: '❌ Rechazar', callback_data: 'vr:' + reg.id }]] };
+      // Captura válida y sin sospecha: entra de una, plan mensual (todo es mensual de $50)
+      let texto2 = texto, teclado2 = teclado, auto = null;
+      if (cmp && !cmp.atencion) {
+        auto = await aprobar(reg.id, 'mensual', reg).catch((e) => ({ error: e.message }));
+        if (auto && auto.ok) {
+          texto2 = texto.split('\n\nAprueba')[0].replace(/^[^\n]*/, '✅ <b>VIP aprobado automático (mensual)</b>') + (auto.link ? `\n\nLink de un solo uso: ${H.esc(auto.link)}` : '');
+          teclado2 = null;
+          try { const C = require('./cuadre'); await C.ofrecer({ tipo: 'vp', regId: reg.id, monto: C.precioVip('mensual'), etiqueta: `Membresía VIP mensual — ${nombre} ${apellido}`.trim() }); } catch (e) { console.error('Cuadre VIP:', e.message); }
+        } else if (auto && auto.error) texto2 = texto + `\n\n⚠️ No pude aprobarlo solo: ${H.esc(auto.error)}`;
+      }
       let enviado = false;
       if (cmp && cmp.buf) {
         try {
           const fd = new FormData();
-          fd.append('chat_id', String(H.TG_ADMIN())); fd.append('caption', texto); fd.append('parse_mode', 'HTML');
-          fd.append('reply_markup', JSON.stringify(teclado));
+          fd.append('chat_id', String(H.TG_ADMIN())); fd.append('caption', texto2.slice(0, 1020)); fd.append('parse_mode', 'HTML');
+          if (teclado2) fd.append('reply_markup', JSON.stringify(teclado2));
           fd.append('photo', new Blob([cmp.buf], { type: 'image/jpeg' }), 'chat.jpg');
           const r = await fetch(`https://api.telegram.org/bot${H.TG_TOKEN()}/sendPhoto`, { method: 'POST', body: fd });
           const j = await r.json().catch(() => ({}));
@@ -607,7 +617,7 @@ function montar(app, stakes, extra) {
           if (!enviado) console.error('VIP sendPhoto:', j.description || r.status);
         } catch (e) { console.error('VIP sendPhoto:', e.message); }
       }
-      if (!enviado) await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: texto, parse_mode: 'HTML', reply_markup: teclado }).catch((e) => console.error('No pude avisar al jefe (VIP):', e.message));
+      if (!enviado) await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: texto2, parse_mode: 'HTML', ...(teclado2 ? { reply_markup: teclado2 } : {}) }).catch((e) => console.error('No pude avisar al jefe (VIP):', e.message));
       res.json({ id: reg.id });
     } catch (e) {
       console.error('Registro VIP:', e);
