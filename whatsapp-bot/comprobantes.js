@@ -4,8 +4,8 @@
 // - La IA (Anthropic, clave ANTHROPIC_API_KEY en Railway) lee la captura: si no es un comprobante, si la fecha NO es de hoy
 //   o si su número de referencia ya se usó, se RECHAZA al instante y solo entonces se le avisa al jefe (con foto, teléfono y
 //   botón de WhatsApp). Las capturas válidas entran directo y no mandan nada. Si no hay clave o la IA no pudo leer la fecha,
-//   entra igual (no es culpa del cliente) pero se le manda la foto al jefe para que la mire.
-//   Si la IA responde pero no logra leer la fecha (o el monto en el regalito), se RECHAZA igual y se le avisa al jefe.
+//   si la IA no está disponible (sin clave, error del servicio) o no logra leer la fecha (o el monto en el regalito),
+//   también se RECHAZA y se le avisa al jefe con el motivo (así una captura vieja nunca pasa por una falla técnica).
 // - Guarda su "huella" (no la foto): una exacta (sha256) y una visual (parecido). Se guarda en la hoja "Comprobantes".
 // - Misma captura exacta  -> se rechaza (no se puede usar dos veces, ni en stake ni en regalito).
 // - Captura MUY parecida   -> se deja pasar pero se le avisa al jefe con una alerta (dos pagos distintos de la misma
@@ -64,7 +64,7 @@ async function revisarYGuardar(h, datos, ia) {
 // Procesa el comprobante que mandó el cliente.
 // Devuelve { buf, rechazo: { motivo, cliente }|null, parecido, atencion }.
 //   rechazo  -> hay que rechazar el registro (motivo = para el jefe, cliente = lo que ve la persona).
-//   atencion -> entró, pero conviene que el jefe vea la foto (no hay IA disponible o se parece a otra).
+//   atencion -> entró, pero conviene que el jefe vea la foto (se parece a otra captura ya usada y no tiene número de referencia).
 // Lanza Error (con .status) solo si ni siquiera es una imagen válida.
 async function procesar(dataUrl, datos) {
   const buf = leerDataUrl(dataUrl);
@@ -75,8 +75,12 @@ async function procesar(dataUrl, datos) {
   // 1) misma imagen exacta: se rechaza sin gastar IA
   if ((await H.leerHoja(HOJA)).some((f) => f.sha === h.sha)) return { buf, rechazo: usada, parecido: null, atencion: false };
   // 2) la IA lee la captura
-  const ia = await leerConIA(buf, datos.tipo);
+  const lectura = await leerConIA(buf, datos.tipo);
   const hoy = H.hoyEC();
+  if (lectura && lectura.error) {
+    return { buf, rechazo: { motivo: `La IA no pudo revisar la captura (${lectura.error}). No dejé pasar el registro.`, cliente: 'No pudimos verificar tu captura en este momento. Inténtalo de nuevo en unos minutos.' }, parecido: null, atencion: false };
+  }
+  const ia = lectura;
   if (ia) {
     if (!ia.esComprobante) return { buf, rechazo: { motivo: 'La imagen no parece un comprobante de pago.', cliente: 'Esa imagen no parece un comprobante de pago. Sube la captura de tu pago.' }, parecido: null, atencion: false };
     if (ia.fecha && ia.fecha !== hoy) {
@@ -98,8 +102,7 @@ async function procesar(dataUrl, datos) {
   // 3) se anota (aquí también se detecta la misma referencia de pago ya usada)
   const r = await revisarYGuardar(h, datos, ia);
   if (r.repetido) return { buf, rechazo: usada, parecido: null, atencion: false };
-  const sinLeer = !ia; // sin clave o la IA falló por un error técnico: entra, pero se le manda la foto al jefe
-  return { buf, rechazo: null, parecido: r.parecido, atencion: sinLeer || !!(r.parecido && !(ia && ia.referencia)), ia };
+  return { buf, rechazo: null, parecido: r.parecido, atencion: !!(r.parecido && !ia.referencia), ia };
 }
 
 const MODELOS = () => [process.env.COMPROBANTE_MODELO, 'claude-haiku-5-5', 'claude-sonnet-5'].filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
@@ -107,7 +110,8 @@ const MODELOS = () => [process.env.COMPROBANTE_MODELO, 'claude-haiku-5-5', 'clau
 // Lee la captura con IA. Devuelve { esComprobante, fecha('YYYY-MM-DD'|null), monto, referencia, emisor } o null si no se pudo leer.
 async function leerConIA(buf, tipo) {
   const key = String(process.env.ANTHROPIC_API_KEY || '').trim();
-  if (!key) return null;
+  if (!key) return { error: 'falta la variable ANTHROPIC_API_KEY en Railway' };
+  let ultimoError = 'no respondió';
   const hoy = H.hoyEC();
   const ayer = new Date(Date.parse(hoy + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
   const sistema = `Eres un verificador de capturas de pago para una agencia de Ecuador. El cliente sube la captura de ${tipo === 'regalito' ? 'una recarga a una casa de apuestas' : 'su pago (transferencia, depósito o recarga)'}.
@@ -126,10 +130,10 @@ Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAA
         signal: AbortSignal.timeout(30000)
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) { console.error('Lector de capturas (' + modelo + '):', r.status, (j.error && j.error.message) || ''); continue; }
+      if (!r.ok) { ultimoError = `${modelo}: error ${r.status} ${((j.error && j.error.message) || '').slice(0, 80)}`; console.error('Lector de capturas (' + modelo + '):', r.status, (j.error && j.error.message) || ''); continue; }
       const txt = ((j.content || []).find((c) => c.type === 'text') || {}).text || '';
       const m = /\{[\s\S]*\}/.exec(txt);
-      if (!m) continue;
+      if (!m) { ultimoError = modelo + ': respuesta sin datos'; continue; }
       const o = JSON.parse(m[0]);
       return {
         esComprobante: o.esComprobante !== false,
@@ -138,9 +142,9 @@ Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAA
         referencia: o.referencia ? String(o.referencia).replace(/\s+/g, '').slice(0, 40) : null,
         emisor: o.emisor ? String(o.emisor).slice(0, 40) : null
       };
-    } catch (e) { console.error('Lector de capturas:', e.message); }
+    } catch (e) { ultimoError = `${modelo}: ${e.message}`.slice(0, 120); console.error('Lector de capturas:', e.message); }
   }
-  return null;
+  return { error: ultimoError };
 }
 
 // Aviso al jefe de un registro RECHAZADO: foto, nombre, teléfono, motivo y botón para abrir su WhatsApp.
@@ -158,8 +162,22 @@ async function avisarRechazo(clave, datos, motivo, buf) {
   } catch (e) { console.error('Aviso de rechazo:', e.message); }
 }
 
-function montar(stakes) {
+function montar(stakes, app) {
   H = stakes;
+  // Diagnóstico (sin secretos): ¿hay clave y responde cada modelo? Ábrelo en el navegador: <url del bot>/comprobante/diag
+  if (app) app.get('/comprobante/diag', async (req, res) => {
+    if (!H.limite(req, res, 20, 10 * 60 * 1000)) return;
+    const key = String(process.env.ANTHROPIC_API_KEY || '').trim();
+    const out = { claveConfigurada: !!key, modelos: [] };
+    if (key) for (const modelo of MODELOS()) {
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: modelo, max_tokens: 5, messages: [{ role: 'user', content: 'Responde: ok' }] }), signal: AbortSignal.timeout(20000) });
+        const j = await r.json().catch(() => ({}));
+        out.modelos.push({ modelo, funciona: r.ok, estado: r.status, error: r.ok ? undefined : ((j.error && j.error.message) || '').slice(0, 120) });
+      } catch (e) { out.modelos.push({ modelo, funciona: false, error: e.message.slice(0, 120) }); }
+    }
+    res.json(out);
+  });
   // 🚫 Revocar el link de un registro (si la captura no era válida): rv:<stake|regalito>:<id>
   H.manejadores.rv = async (cq, [clave, id]) => {
     let txt = '⚠️ No pude revocar el link';

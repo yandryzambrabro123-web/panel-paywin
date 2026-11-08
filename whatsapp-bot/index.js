@@ -159,7 +159,7 @@ stakes.montar(app); // registro público del Stake de pago + aprobación por Tel
 // Registro público del VIP + salida automática de los vencidos (todo por Telegram).
 const vipMod = require('./vip');
 vipMod.montar(app, stakes, { requireApiKey });
-require('./comprobantes').montar(stakes); // capturas de pago de stake y regalito (huella anti-repetidas)
+require('./comprobantes').montar(stakes, app); // capturas de pago de stake y regalito (huella anti-repetidas)
 require('./regalito').montar(app, stakes, { requireApiKey });
 require('./canales').montar(app, stakes, { requireApiKey });
 require('./cuadre').montar(stakes); // cuadre financiero automático al aprobar pagos // canales privados de Telegram (stake y regalito)
