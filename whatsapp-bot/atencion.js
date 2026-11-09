@@ -54,7 +54,7 @@ async function publicidadDe(stakes, nombre) {
   } catch (e) { console.error('Atención: no pude bajar la imagen de la publicidad:', e.message); }
   return { texto: String(f.texto || '').trim(), imagen };
 }
-const ETIQUETA = { recarga: '💰 <b>Pidieron una recarga</b>', vip: '👑 <b>Preguntaron por el VIP</b>', stake: '💸 <b>Preguntaron por el stake</b>', regalito: '🎁 <b>Preguntaron por el regalito</b>', otro: '💬 <b>Escribieron al WhatsApp de atención</b> (otro tema)' };
+const ETIQUETA = { recarga: '💰 <b>Cliente solicita recarga</b>', vip: '👑 <b>Cliente pide información del VIP</b>', stake: '💸 <b>Cliente pide información del stake</b>', regalito: '🎁 <b>Cliente pide información del regalito</b>', otro: '💬 <b>Cliente escribió al WhatsApp de atención</b> (otro tema)' };
 const QUE = { recarga: 'la cuenta', vip: 'la información del VIP', stake: 'la información del stake', regalito: 'la información del regalito', otro: 'el mensaje de atención' };
 
 function textoDe(msg) {
@@ -120,7 +120,7 @@ async function procesarMensaje(stakes, msg) {
     await stakes.tg('sendMessage', {
       chat_id: stakes.TG_ADMIN(), parse_mode: 'HTML', disable_web_page_preview: true,
       text: `${ETIQUETA[tipo]}\nNombre: ${stakes.esc(msg.pushName || 'sin nombre')}\nTeléfono: ${num ? '+' + num : 'no visible'}\nMensaje: «${stakes.esc(texto.slice(0, 300))}»\n${nota}`,
-      reply_markup: num ? { inline_keyboard: [[{ text: '💬 Abrir en WhatsApp', url: 'https://wa.me/' + num }]] } : undefined
+      reply_markup: num ? { inline_keyboard: [[{ text: '💬 Ir al chat del cliente', url: 'https://wa.me/' + num }]] } : undefined
     });
   } catch (e) { console.error('Atención: no pude avisar por Telegram:', e.message); }
 }
