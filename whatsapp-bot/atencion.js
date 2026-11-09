@@ -32,13 +32,27 @@ function detectarTipo(texto) {
   if (PIDE_REGALITO.test(t)) return 'regalito';
   return 'otro';
 }
-// Imagen opcional por tema: assets/atencion/<tema>.(jpg|jpeg|png|webp). Si existe, se manda con el texto como pie.
-function imagenDe(tipo) {
-  for (const ext of ['jpg', 'jpeg', 'png', 'webp']) {
-    const p = path.join(__dirname, 'assets', 'atencion', tipo + '.' + ext);
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
+// Saludo según la hora de Ecuador (UTC-5).
+function saludoHora() {
+  const h = new Date(Date.now() - 5 * 3600e3).getUTCHours();
+  return h < 12 ? 'Muy buenos días' : h < 19 ? 'Muy buenas tardes' : 'Muy buenas noches';
+}
+// Publicidad guardada en el panel ("Imágenes guardadas", hoja WinPlantillas) para un tema. Se busca por nombre
+// (igual que Win: exacto y, si no, que lo contenga). Devuelve { texto, imagen: Buffer|null } o null.
+async function publicidadDe(stakes, nombre) {
+  const q = sinAcentos(nombre).trim();
+  if (!q) return null;
+  let filas = [];
+  try { filas = await stakes.leerHoja('WinPlantillas'); } catch (e) { console.error('Atención: no pude leer las publicidades:', e.message); return null; }
+  const n = (f) => sinAcentos(f.nombre).trim();
+  const f = filas.find((x) => n(x) === q) || filas.find((x) => n(x) && (n(x).includes(q) || q.includes(n(x))));
+  if (!f) return null;
+  let imagen = null;
+  try {
+    if (f.imageUrl) { const r = await fetch(f.imageUrl); if (r.ok) imagen = Buffer.from(await r.arrayBuffer()); }
+    else if (f.base64) imagen = Buffer.from(String(f.base64).replace(/^data:[^,]+,/, ''), 'base64');
+  } catch (e) { console.error('Atención: no pude bajar la imagen de la publicidad:', e.message); }
+  return { texto: String(f.texto || '').trim(), imagen };
 }
 const ETIQUETA = { recarga: '💰 <b>Pidieron una recarga</b>', vip: '👑 <b>Preguntaron por el VIP</b>', stake: '💸 <b>Preguntaron por el stake</b>', regalito: '🎁 <b>Preguntaron por el regalito</b>', otro: '💬 <b>Escribieron al WhatsApp de atención</b> (otro tema)' };
 const QUE = { recarga: 'la cuenta', vip: 'la información del VIP', stake: 'la información del stake', regalito: 'la información del regalito', otro: 'el mensaje de atención' };
@@ -67,19 +81,28 @@ async function procesarMensaje(stakes, msg) {
 
   const tipo = detectarTipo(texto);
   const TEXTOS = require('./atencion-texto');
-  const RESPUESTA = String(TEXTOS[tipo.toUpperCase()] || '').trim();
-  const IMAGEN = RESPUESTA ? imagenDe(tipo) : null;
+  const saludo = String(TEXTOS['SALUDO_' + tipo.toUpperCase()] || '').trim().replace(/\{saludo\}/g, saludoHora());
+  const pub = (TEXTOS.PUBLICIDAD && TEXTOS.PUBLICIDAD[tipo]) ? await publicidadDe(stakes, TEXTOS.PUBLICIDAD[tipo]) : null;
+  const fijo = String(TEXTOS[tipo.toUpperCase()] || '').trim();
+  const RESPUESTA = (pub && (pub.texto || pub.imagen)) ? (pub.texto || ' ') : fijo; // la publicidad guardada manda; si no existe, el texto fijo
+  const IMAGEN = pub && pub.imagen;
+  const HAY = !!(saludo || RESPUESTA.trim());
   const clave = jid + '|' + tipo;
   const hace = Date.now() - (respondidoA.get(clave) || 0);
   let respuesta = 'no';
-  if (!RESPUESTA) respuesta = 'sin_texto';
+  if (!HAY) respuesta = 'sin_texto';
   else if (hace < 3 * 3600e3) respuesta = 'ya_respondido';
   else {
     try {
       await estado.sock.sendPresenceUpdate('composing', jid);
       await new Promise((ok) => setTimeout(ok, 2000 + Math.floor(Math.random() * 2500)));
-      if (IMAGEN) await estado.sock.sendMessage(jid, { image: fs.readFileSync(IMAGEN), caption: RESPUESTA });
-      else await estado.sock.sendMessage(jid, { text: RESPUESTA });
+      // Recarga: saludo y cuentas en UN solo mensaje. Los demás: saludo y luego la publicidad.
+      if (tipo === 'recarga' || tipo === 'otro') await estado.sock.sendMessage(jid, { text: [saludo, RESPUESTA].filter(Boolean).join('\n\n') });
+      else {
+        if (saludo) { await estado.sock.sendMessage(jid, { text: saludo }); await new Promise((ok) => setTimeout(ok, 1500 + Math.floor(Math.random() * 1500))); }
+        if (IMAGEN) await estado.sock.sendMessage(jid, { image: IMAGEN, caption: RESPUESTA.trim() });
+        else if (RESPUESTA.trim()) await estado.sock.sendMessage(jid, { text: RESPUESTA });
+      }
       respondidoA.set(clave, Date.now());
       respuesta = 'ok';
     } catch (e) { console.error('Atención: no pude responder:', e.message); respuesta = 'error:' + e.message; }
