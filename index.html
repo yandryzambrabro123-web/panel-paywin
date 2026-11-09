@@ -3748,7 +3748,16 @@ async function winNumerosLeer(){
   throw new Error('No pude leer la hoja de números.');
 }
 async function winNumerosGuardar(lista){
-  await fetch(SHEETS_API_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet: WIN_NUMEROS_HOJA, data: lista }) });
+  const activo = (l)=>{ const a = (l||[]).find(n=>n.estado==='activo' && winNormTel(n.numero)); return a ? winNormTel(a.numero) : ''; };
+  const quiero = activo(lista);
+  // Se guarda y se vuelve a leer la hoja para comprobar que SÍ quedó (el envío no avisa si falla). Hasta 3 intentos.
+  for(let i=0; i<3; i++){
+    try{ await fetch(SHEETS_API_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ sheet: WIN_NUMEROS_HOJA, data: lista }) }); }catch(e){}
+    await new Promise(r=>setTimeout(r, 1200 + i*800));
+    try{ if(activo(await winNumerosLeer()) === quiero) return true; }catch(e){}
+  }
+  alert('⚠️ No pude confirmar que el número ' + quiero + ' quedó guardado en la hoja. Los textos desde otras computadoras y el protocolo de la mañana podrían seguir usando el anterior. Revisa tu conexión y vuelve a tocar "Usar este".');
+  return false;
 }
 function winNumeroAplicar(lista){
   const act = (lista||[]).find(n=>n.estado==='activo' && winNormTel(n.numero));
@@ -3759,6 +3768,9 @@ function winNumeroAplicar(lista){
 }
 // Al abrir el panel se trae el número activo (sin bloquear nada si falla).
 setTimeout(()=>{ winNumerosLeer().then(winNumeroAplicar).catch(()=>{}); }, 1500);
+// Se vuelve a leer cada minuto y al volver a esta pestaña, así un cambio hecho en otra computadora se nota solo.
+setInterval(()=>{ winNumerosLeer().then(winNumeroAplicar).catch(()=>{}); }, 60000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) winNumerosLeer().then(winNumeroAplicar).catch(()=>{}); });
 
 async function openWinNumbersModal(){
   openModal('<h3>Números de WhatsApp</h3><div class="empty">Cargando…</div>');
@@ -9395,7 +9407,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '8 nov, 08:00';
+const PANEL_VERSION = '9 nov, 11:40';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
