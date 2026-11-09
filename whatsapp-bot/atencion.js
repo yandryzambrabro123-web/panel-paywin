@@ -20,6 +20,28 @@ const sinAcentos = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '
 // Palabras que indican que piden una recarga (específicas, para no mandar la cuenta a cualquier mensaje con "cuenta").
 const PIDE_RECARGA = /recarg|deposit|\bn(umero|ro|°)?\.? de cuenta|cuenta (para|de) (pagar|deposit|transfer|recarg)|(pasame|dame|mandame|enviame|envia|manda|pasa) (la |tu |su )?cuenta|donde (te |les )?(pago|transfiero|deposito|envio)|datos (de|para) (el )?(pago|transferencia|deposito)/;
 const pideRecarga = (texto) => PIDE_RECARGA.test(sinAcentos(texto));
+// Otros temas que el bot sabe contestar (se miran en este orden; lo demás es "otro").
+const PIDE_VIP = /\bvip\b|membresia|grupo (de )?pago|premium/;
+const PIDE_STAKE = /stake|\bstak/;
+const PIDE_REGALITO = /regalito|regalo|apuesta gratis|gratis|bono|promo/;
+function detectarTipo(texto) {
+  const t = sinAcentos(texto);
+  if (PIDE_RECARGA.test(t)) return 'recarga';
+  if (PIDE_VIP.test(t)) return 'vip';
+  if (PIDE_STAKE.test(t)) return 'stake';
+  if (PIDE_REGALITO.test(t)) return 'regalito';
+  return 'otro';
+}
+// Imagen opcional por tema: assets/atencion/<tema>.(jpg|jpeg|png|webp). Si existe, se manda con el texto como pie.
+function imagenDe(tipo) {
+  for (const ext of ['jpg', 'jpeg', 'png', 'webp']) {
+    const p = path.join(__dirname, 'assets', 'atencion', tipo + '.' + ext);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+const ETIQUETA = { recarga: '💰 <b>Pidieron una recarga</b>', vip: '👑 <b>Preguntaron por el VIP</b>', stake: '💸 <b>Preguntaron por el stake</b>', regalito: '🎁 <b>Preguntaron por el regalito</b>', otro: '💬 <b>Escribieron al WhatsApp de atención</b> (otro tema)' };
+const QUE = { recarga: 'la cuenta', vip: 'la información del VIP', stake: 'la información del stake', regalito: 'la información del regalito', otro: 'el mensaje de atención' };
 
 function textoDe(msg) {
   const m = msg.message || {};
@@ -43,9 +65,10 @@ async function procesarMensaje(stakes, msg) {
   const texto = textoDe(msg) || (esMedia ? '[envió una imagen, audio o archivo]' : '');
   if (!texto) return; // reacciones, avisos del sistema, etc.
 
-  const tipo = pideRecarga(texto) ? 'recarga' : 'otro'; // recarga → manda la cuenta; cualquier otra cosa → el otro mensaje
+  const tipo = detectarTipo(texto);
   const TEXTOS = require('./atencion-texto');
-  const RESPUESTA = String((tipo === 'recarga' ? TEXTOS.RECARGA : TEXTOS.OTRO) || '').trim();
+  const RESPUESTA = String(TEXTOS[tipo.toUpperCase()] || '').trim();
+  const IMAGEN = RESPUESTA ? imagenDe(tipo) : null;
   const clave = jid + '|' + tipo;
   const hace = Date.now() - (respondidoA.get(clave) || 0);
   let respuesta = 'no';
@@ -55,7 +78,8 @@ async function procesarMensaje(stakes, msg) {
     try {
       await estado.sock.sendPresenceUpdate('composing', jid);
       await new Promise((ok) => setTimeout(ok, 2000 + Math.floor(Math.random() * 2500)));
-      await estado.sock.sendMessage(jid, { text: RESPUESTA });
+      if (IMAGEN) await estado.sock.sendMessage(jid, { image: fs.readFileSync(IMAGEN), caption: RESPUESTA });
+      else await estado.sock.sendMessage(jid, { text: RESPUESTA });
       respondidoA.set(clave, Date.now());
       respuesta = 'ok';
     } catch (e) { console.error('Atención: no pude responder:', e.message); respuesta = 'error:' + e.message; }
@@ -64,7 +88,7 @@ async function procesarMensaje(stakes, msg) {
   if (Date.now() - (avisadoDe.get(jid) || 0) < 10 * 60000) return;
   avisadoDe.set(jid, Date.now());
   const num = jid.endsWith('@s.whatsapp.net') ? digitos(jid) : '';
-  const que = tipo === 'recarga' ? 'la cuenta' : 'el mensaje de atención';
+  const que = QUE[tipo];
   const nota = respuesta === 'ok' ? `✅ Ya le respondí con ${que}.`
     : respuesta === 'ya_respondido' ? `↩️ Ya le había mandado ${que} hace poco, no se lo repetí.`
     : respuesta === 'sin_texto' ? '⚠️ No le respondí: todavía no hay texto de respuesta configurado.'
@@ -72,7 +96,7 @@ async function procesarMensaje(stakes, msg) {
   try {
     await stakes.tg('sendMessage', {
       chat_id: stakes.TG_ADMIN(), parse_mode: 'HTML', disable_web_page_preview: true,
-      text: `${tipo === 'recarga' ? '💰 <b>Pidieron una recarga</b>' : '💬 <b>Escribieron al WhatsApp de atención</b> (no parece recarga)'}\nNombre: ${stakes.esc(msg.pushName || 'sin nombre')}\nTeléfono: ${num ? '+' + num : 'no visible'}\nMensaje: «${stakes.esc(texto.slice(0, 300))}»\n${nota}`,
+      text: `${ETIQUETA[tipo]}\nNombre: ${stakes.esc(msg.pushName || 'sin nombre')}\nTeléfono: ${num ? '+' + num : 'no visible'}\nMensaje: «${stakes.esc(texto.slice(0, 300))}»\n${nota}`,
       reply_markup: num ? { inline_keyboard: [[{ text: '💬 Abrir en WhatsApp', url: 'https://wa.me/' + num }]] } : undefined
     });
   } catch (e) { console.error('Atención: no pude avisar por Telegram:', e.message); }
