@@ -65,7 +65,7 @@ function parseVariantes(text, cantidad) {
 }
 
 // Modelos a probar en orden: el configurado en Vercel (ANTHROPIC_MODEL) y los nombres vigentes. Si uno ya no existe, se pasa al siguiente.
-const MODELOS_IA = [process.env.ANTHROPIC_MODEL, 'claude-sonnet-5', 'claude-sonnet-5-5'].filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
+const MODELOS_IA = [process.env.ANTHROPIC_MODEL, 'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-haiku-5-5'].filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
 let ultimoErrorIA = '';
 async function llamarAnthropic(apiKey, { system, messages, max_tokens, funcion }) {
   for (const modelo of MODELOS_IA) {
@@ -81,7 +81,8 @@ async function llamarAnthropic(apiKey, { system, messages, max_tokens, funcion }
       const errText = await apiRes.text();
       ultimoErrorIA = `${modelo} -> ${apiRes.status}: ${errText}`.slice(0, 300);
       console.error('Error de Anthropic:', ultimoErrorIA);
-      if (apiRes.status === 404 || (apiRes.status === 400 && /model/i.test(errText))) continue; // ese modelo ya no existe: se prueba el siguiente
+      // ese modelo ya no existe, o está saturado / con límite: se prueba el siguiente
+      if (apiRes.status === 404 || apiRes.status === 429 || apiRes.status === 529 || apiRes.status >= 500 || (apiRes.status === 400 && /model/i.test(errText))) continue;
       return null;
     }
     const data = await apiRes.json();

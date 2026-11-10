@@ -3738,6 +3738,25 @@ function openWinMemoryModal(){
 // ---------- Números de WhatsApp de la agencia (cambiar cuando te bloquean uno) ----------
 // Viven en la hoja "WinNumeros": { id, numero, nota, estado: 'activo' | 'disponible' | 'bloqueado' }.
 // El que está "activo" es el que sale en los textos, flyers y mensajes (panel, Win, protocolo de la mañana, VIP).
+// Si la IA falla al redactar, se muestra el motivo real en pantalla (antes el panel solo dejaba tu nota sin avisar).
+(function(){
+  const f0 = window.fetch;
+  window.fetch = async function(u, o){
+    const r = await f0.apply(this, arguments);
+    try{
+      if(typeof u === 'string' && u.indexOf('/api/win-redactar') === 0 && !r.ok){
+        r.clone().json().then(j=>{
+          if(!j || !(j.detalle || j.error)) return;
+          let t = document.getElementById('winIaAviso');
+          if(!t){ t = document.createElement('div'); t.id = 'winIaAviso'; t.style.cssText = 'position:fixed;left:12px;right:12px;bottom:14px;z-index:99999;background:#3a1010;color:#ffd7d7;border:1px solid #ff7a7a;border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.4;word-break:break-word;'; t.onclick = ()=>t.remove(); document.body.appendChild(t); }
+          t.textContent = '⚠️ La IA no pudo generar: ' + (j.detalle || j.error) + '  (toca para cerrar)';
+          setTimeout(()=>{ try{ t.remove(); }catch(e){} }, 20000);
+        }).catch(()=>{});
+      }
+    }catch(e){}
+    return r;
+  };
+})();
 const WIN_NUMEROS_HOJA = 'WinNumeros';
 const winNormTel = (t)=>{ const d = String(t||'').replace(/\D/g,'').replace(/^593/, '0'); return /^09\d{8}$/.test(d) ? d : ''; };
 async function winNumerosLeer(){
@@ -9407,7 +9426,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '9 nov, 11:40';
+const PANEL_VERSION = '10 nov, 11:20';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
