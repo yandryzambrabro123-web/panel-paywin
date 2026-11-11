@@ -81,8 +81,8 @@ async function procesar(dataUrl, datos) {
   const lectura = await leerConIA(buf, datos.tipo);
   const hoy = H.hoyEC();
   if (lectura && lectura.error) {
-    require('./alertas').avisar('ia', `La IA no pudo revisar la captura de un cliente de ${NOMBRE_TIPO(datos.tipo)} y fue rechazado.\nCausa: ${lectura.error}\nMientras no se arregle, nadie entra. Revisa ANTHROPIC_API_KEY y el saldo en console.anthropic.com → Billing.`, { cooldownMin: 30 }).catch(() => {});
-    return { buf, rechazo: { motivo: `La IA no pudo revisar la captura (${lectura.error}). No dejé pasar el registro.`, cliente: 'No pudimos verificar tu captura en este momento. Inténtalo de nuevo en unos minutos.' }, parecido: null, atencion: false };
+    require('./alertas').avisar('ia', `La IA no pudo revisar la captura de un cliente de ${NOMBRE_TIPO(datos.tipo)} y quedó en espera de tu decisión.\nCausa: ${lectura.error}\nMientras no se arregle, todos quedarán en espera para que tú los apruebes a mano. Revisa ANTHROPIC_API_KEY y el saldo en console.anthropic.com → Billing.`, { cooldownMin: 30 }).catch(() => {});
+    return { buf, rechazo: { motivo: `La IA no pudo revisar la captura (${lectura.error}). Lo dejé en espera para que tú decidas.`, cliente: 'No pudimos verificar tu captura en este momento. Inténtalo de nuevo en unos minutos.' }, parecido: null, atencion: false };
   }
   const ia = lectura;
   if (ia && !ia.error) require('./alertas').resuelto('ia', 'La IA que revisa las capturas volvió a funcionar.').catch(() => {});
@@ -162,6 +162,31 @@ Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAA
   return { error: ultimoError };
 }
 
+// Registro EN ESPERA: la captura no pasó la revisión del bot, así que NO se rechaza a la persona; se le avisa al jefe con la foto,
+// el motivo y botones para dar ingreso o rechazar (usan los mismos botones de cada flujo: vp/vr, ga/gx, ap/re).
+async function avisarEnEspera(clave, datos, motivo, buf, regId) {
+  try {
+    const wa = require('./canales').waLink(datos.telefono);
+    const que = clave === 'stake' ? 'stake de pago' : clave === 'vip' ? 'VIP' : 'regalito';
+    const texto = `⏳ <b>Registro en espera — ${que}</b>\n\nNombre: <b>${H.esc(datos.nombre)}</b>\nTeléfono: <b>${H.esc(datos.telefono || 'sin teléfono')}</b>\nMotivo del bot: ${H.esc(motivo)}\n\nLa persona está esperando en su pantalla. ¿Le das ingreso?`;
+    const aprobar = clave === 'vip' ? `vp:${regId}:m` : clave === 'stake' ? `ap:${regId}` : `ga:${regId}`;
+    const rechazar = clave === 'vip' ? `vr:${regId}` : clave === 'stake' ? `re:${regId}` : `gx:${regId}`;
+    const filas = [[{ text: '✅ Dar ingreso', callback_data: aprobar }, { text: '❌ Rechazar', callback_data: rechazar }]];
+    if (wa) filas.push([{ text: '💬 Abrir su chat de WhatsApp', url: wa }]);
+    const fd = new FormData();
+    fd.append('chat_id', H.TG_ADMIN()); fd.append('caption', texto.slice(0, 1020)); fd.append('parse_mode', 'HTML');
+    fd.append('reply_markup', JSON.stringify({ inline_keyboard: filas }));
+    fd.append('photo', new Blob([buf], { type: 'image/jpeg' }), 'captura.jpg');
+    const r = await fetch(`https://api.telegram.org/bot${H.TG_TOKEN()}/sendPhoto`, { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) throw new Error(j.description || r.status);
+    return true;
+  } catch (e) {
+    console.error('Aviso de registro en espera:', e.message);
+    try { await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), parse_mode: 'HTML', text: `⏳ <b>Registro en espera (${clave})</b>: ${H.esc(datos.nombre)} ${H.esc(datos.telefono || '')}\nMotivo: ${H.esc(motivo)}\n(No pude adjuntar la foto.)`, reply_markup: { inline_keyboard: [[{ text: '✅ Dar ingreso', callback_data: clave === 'vip' ? `vp:${regId}:m` : clave === 'stake' ? `ap:${regId}` : `ga:${regId}` }, { text: '❌ Rechazar', callback_data: clave === 'vip' ? `vr:${regId}` : clave === 'stake' ? `re:${regId}` : `gx:${regId}` }]] } }); return true; } catch (e2) { console.error('Aviso de espera (texto):', e2.message); return false; }
+  }
+}
+
 // Aviso al jefe de un registro RECHAZADO: foto, nombre, teléfono, motivo y botón para abrir su WhatsApp.
 async function avisarRechazo(clave, datos, motivo, buf) {
   try {
@@ -227,4 +252,4 @@ async function probarIA() {
   return ultimo;
 }
 
-module.exports = { probarIA, montar, procesar, avisarRechazo, leerDataUrl, huellas, distancia };
+module.exports = { probarIA, montar, procesar, avisarRechazo, avisarEnEspera, leerDataUrl, huellas, distancia };

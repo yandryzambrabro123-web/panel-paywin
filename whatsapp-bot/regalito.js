@@ -252,9 +252,10 @@ function montar(app, stakes, extra) {
       try { cmp = await require('./comprobantes').procesar((req.body || {}).comprobante, { tipo: 'regalito', registroId: reg.id, nombre, telefono }); }
       catch (e) { await H.cambiarHoja(HOJA_REG, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
       if (cmp.rechazo) {
-        await H.cambiarHoja(HOJA_REG, (filas) => filas.filter((f) => f.id !== reg.id));
-        await require('./comprobantes').avisarRechazo('regalito', { nombre, telefono }, cmp.rechazo.motivo, cmp.buf);
-        return res.status(409).json({ error: cmp.rechazo.cliente.replace('tu pago de hoy', 'tu recarga de hoy') });
+        // No se rechaza: pasa a pendiente y el jefe decide con los botones (dar ingreso o rechazar)
+        await H.cambiarHoja(HOJA_REG, (filas) => filas.map((f) => String(f.id) === String(reg.id) ? { ...f, estado: 'pendiente', resueltoAt: '', avisado: 'si' } : f));
+        await require('./comprobantes').avisarEnEspera('regalito', { nombre, telefono }, cmp.rechazo.motivo, cmp.buf, reg.id);
+        return res.json({ id: reg.id, enEspera: true });
       }
       await require('./canales').avisarLinkAprobado('regalito', HOJA_REG, reg, cmp.atencion ? { foto: cmp.buf, parecido: cmp.parecido } : { silencioso: true });
       res.json({ id: reg.id });

@@ -407,9 +407,9 @@ function montar(app) {
       try { cmp = await require('./comprobantes').procesar(b.comprobante, { tipo: 'stake', registroId: reg.id, nombre: `${nombre} ${apellido}`, telefono }); }
       catch (e) { await cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
       if (cmp.rechazo) {
-        await cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id));
-        await require('./comprobantes').avisarRechazo('stake', { nombre: `${nombre} ${apellido}`.trim(), telefono }, cmp.rechazo.motivo, cmp.buf);
-        return res.status(409).json({ error: cmp.rechazo.cliente });
+        // No se rechaza: queda en espera (pendiente) y el jefe decide con los botones
+        await require('./comprobantes').avisarEnEspera('stake', { nombre: `${nombre} ${apellido}`.trim(), telefono }, cmp.rechazo.motivo, cmp.buf, reg.id);
+        return res.json({ id: reg.id, enEspera: true });
       }
       const ap = await resolverRegistro(reg.id, true);
       if (ap.error && !ap.ok) console.error('Auto-aprobación de stake:', ap.error);

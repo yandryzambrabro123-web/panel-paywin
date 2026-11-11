@@ -587,9 +587,9 @@ function montar(app, stakes, extra) {
         try { cmp = await require('./comprobantes').procesar(b.comprobante, { tipo: 'vip', registroId: reg.id, nombre: `${nombre} ${apellido}`, telefono }); }
         catch (e) { await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
         if (cmp.rechazo) {
-          await H.cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id));
-          await require('./comprobantes').avisarRechazo('vip', { nombre: `${nombre} ${apellido}`.trim(), telefono }, cmp.rechazo.motivo, cmp.buf);
-          return res.status(409).json({ error: cmp.rechazo.cliente });
+          // No se rechaza: queda en espera y el jefe decide (dar ingreso o rechazar)
+          await require('./comprobantes').avisarEnEspera('vip', { nombre: `${nombre} ${apellido}`.trim(), telefono }, cmp.rechazo.motivo, cmp.buf, reg.id);
+          return res.json({ id: reg.id, enEspera: true });
         }
       }
       const texto = `${corregido ? '✏️ <b>Registro VIP corregido</b>' : '🆕 <b>Registro VIP</b>'}\n\nNombre: <b>${H.esc(nombre)} ${H.esc(apellido)}</b>\nCédula: ${H.esc(cedula)}\nCiudad: ${H.esc(ciudad)}\nCorreo: ${H.esc(correo)}\nTeléfono: ${H.esc(telefono)}\nIngreso: ${hoy}\n${previo ? '🔁 Esa cédula ya es miembro activo (se renueva)' : '✨ Nuevo'}\n\n${cmp && cmp.atencion ? '\n⚠️ La captura se parece a otra ya usada: revísala.' : ''}\n\nAprueba con el plan que pagó:`;
