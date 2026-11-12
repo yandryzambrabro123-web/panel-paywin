@@ -406,6 +406,12 @@ function montar(app) {
       let cmp;
       try { cmp = await require('./comprobantes').procesar(b.comprobante, { tipo: 'stake', registroId: reg.id, nombre: `${nombre} ${apellido}`, telefono }); }
       catch (e) { await cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
+      // Mismos datos que otro registro de hoy en esta sección (mismo teléfono con otra cédula): no entra solo, lo decide el jefe
+      if (!cmp.rechazo) {
+        const tel = soloDigitos(telefono);
+        const otro = tel && (await leerHoja(HOJA_REGISTROS)).find((f) => String(f.id) !== String(reg.id) && f.sectionId === sec.id && soloDigitos(f.telefono) === tel && f.estado !== 'rechazado');
+        if (otro) cmp.rechazo = { motivo: `Ese teléfono ya tiene un registro hoy en este stake (${otro.nombre || ''} ${otro.apellido || ''}, cédula ${otro.cedula || ''}).`.replace(/\s+/g, ' '), cliente: '' };
+      }
       if (cmp.rechazo) {
         // No se rechaza: queda en espera (pendiente) y el jefe decide con los botones
         await require('./comprobantes').avisarEnEspera('stake', { nombre: `${nombre} ${apellido}`.trim(), telefono }, cmp.rechazo.motivo, cmp.buf, reg.id);

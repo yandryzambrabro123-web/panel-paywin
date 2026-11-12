@@ -64,6 +64,16 @@ async function revisarYGuardar(h, datos, ia) {
   return { repetido, parecido };
 }
 
+// ¿El destino de la transferencia es una cuenta oficial de PayWin? Se reconoce por el nombre del titular o por los últimos dígitos.
+// Se puede cambiar en Railway con CUENTAS_PAYWIN (separadas por coma; "a+b" = deben salir las dos palabras). Ej: gloria+herrera,yandry+zambrano,3692,5568
+const sinTildes = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function esCuentaPayWin(ia) {
+  const reglas = String(process.env.CUENTAS_PAYWIN || 'gloria+herrera,yandry+zambrano,3692,5568').split(',').map((x) => sinTildes(x).trim()).filter(Boolean);
+  const nombre = sinTildes(ia.destinatario);
+  const cuenta = String(ia.cuentaDestino || '').replace(/\D/g, '');
+  return reglas.some((r) => /^\d+$/.test(r) ? (cuenta && cuenta.endsWith(r)) : r.split('+').every((p) => p && nombre.includes(p)));
+}
+
 // Procesa el comprobante que mandó el cliente.
 // Devuelve { buf, rechazo: { motivo, cliente }|null, parecido, atencion }.
 //   rechazo  -> hay que rechazar el registro (motivo = para el jefe, cliente = lo que ve la persona).
@@ -104,6 +114,14 @@ async function procesar(dataUrl, datos) {
     if ((datos.tipo === 'regalito' || datos.tipo === 'vip') && ia.monto == null) faltan.push('el monto');
     if (faltan.length) return { buf, rechazo: { motivo: `La IA no pudo leer bien ${faltan.join(' ni ')} de la captura.`, cliente: `No pudimos leer bien tu captura. Sube una captura completa y clara de tu ${datos.tipo === 'regalito' ? 'recarga' : 'pago'}, donde se vea ${faltan.join(' y ')}.` }, parecido: null, atencion: false };
   }
+  // Debe ser DE PAYWIN: el recibo de recarga tiene que decir PayWin; la transferencia tiene que ir a una cuenta oficial de PayWin.
+  if (ia && datos.tipo === 'regalito' && !ia.mencionaPaywin) {
+    return { buf, rechazo: { motivo: 'El recibo no dice PayWin.', cliente: 'El recibo debe ser de PayWin.' }, parecido: null, atencion: false };
+  }
+  if (ia && (datos.tipo === 'stake' || datos.tipo === 'vip') && !ia.mencionaPaywin && !esCuentaPayWin(ia)) {
+    const dest = [ia.destinatario, ia.cuentaDestino].filter(Boolean).join(' / ') || 'no se ve a quién va';
+    return { buf, rechazo: { motivo: `El pago no va a una cuenta de PayWin (destino: ${dest}).`, cliente: 'El pago debe ir a una cuenta oficial de PayWin.' }, parecido: null, atencion: false };
+  }
   if (ia && datos.tipo === 'vip' && ia.monto != null && ia.monto < MINIMO_VIP()) {
     const min = MINIMO_VIP();
     return { buf, rechazo: { motivo: `El comprobante es de $${ia.monto}, menos de los $${min} del VIP.`, cliente: `El pago del VIP es de $${min}. Tu captura muestra $${ia.monto}.` }, parecido: null, atencion: false };
@@ -129,10 +147,13 @@ async function leerConIA(buf, tipo) {
   const ayer = new Date(Date.parse(hoy + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
   const sistema = `Eres un verificador de capturas de pago para una agencia de Ecuador. El cliente sube la captura de ${tipo === 'regalito' ? 'una recarga a una casa de apuestas' : tipo === 'vip' ? 'el comprobante de su transferencia de la membresía VIP' : 'su pago (transferencia, depósito o recarga)'}.
 Hoy es ${hoy} (ayer fue ${ayer}). En Ecuador las fechas se escriben día/mes/año. Si la captura dice "hoy" usa ${hoy}; si dice "ayer" usa ${ayer}.
-Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAAA-MM-DD"|null,"monto":numero|null,"referencia":"texto"|null,"emisor":"banco o casa"|null,"tipoDoc":"recibo_recarga"|"transferencia"|"pago_stake"|"otro"}
+Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAAA-MM-DD"|null,"monto":numero|null,"referencia":"texto"|null,"emisor":"banco o casa"|null,"tipoDoc":"recibo_recarga"|"transferencia"|"pago_stake"|"otro","destinatario":"texto"|null,"cuentaDestino":"texto"|null,"mencionaPaywin":true|false}
 - esComprobante: true solo si la imagen muestra un comprobante, notificación o historial de transferencia, depósito, pago o recarga. false para cualquier otra imagen (fotos, memes, capturas sin relación).
 - tipoDoc: "recibo_recarga" si es el recibo/comprobante de una recarga a una cuenta de casa de apuestas (dice recibo de recarga, recarga realizada, valor recarga, punto de venta, cliente); "transferencia" si es una transferencia o depósito bancario; "pago_stake" si es el pago de un stake o pronóstico; "otro" en cualquier otro caso.
 - fecha: la fecha de la transacción que se VE en la imagen. null si no aparece o no estás seguro. No la inventes.
+- destinatario: en una transferencia o depósito, el nombre de la persona o empresa que RECIBE el dinero (la cuenta destino), tal cual se ve. null si no aparece.
+- cuentaDestino: el número de la cuenta destino tal cual se ve (aunque esté enmascarado, ej. "*** *** 3692"). null si no aparece. No uses la cuenta de origen.
+- mencionaPaywin: true solo si en la imagen se lee la palabra "PayWin" o "Pay Win" (sello, texto, encabezado o nombre). false si no.
 - referencia: número de comprobante / documento / transacción / secuencial, tal cual se ve. null si no hay.`;
   for (const modelo of MODELOS()) {
     try {
@@ -155,7 +176,10 @@ Responde SOLO un JSON, sin texto extra: {"esComprobante":true|false,"fecha":"AAA
         monto: Number(o.monto) > 0 ? Number(o.monto) : null,
         referencia: o.referencia ? String(o.referencia).replace(/\s+/g, '').slice(0, 40) : null,
         emisor: o.emisor ? String(o.emisor).slice(0, 40) : null,
-        tipoDoc: ['recibo_recarga', 'transferencia', 'pago_stake', 'otro'].includes(o.tipoDoc) ? o.tipoDoc : null
+        tipoDoc: ['recibo_recarga', 'transferencia', 'pago_stake', 'otro'].includes(o.tipoDoc) ? o.tipoDoc : null,
+        destinatario: o.destinatario ? String(o.destinatario).slice(0, 80) : null,
+        cuentaDestino: o.cuentaDestino ? String(o.cuentaDestino).slice(0, 40) : null,
+        mencionaPaywin: o.mencionaPaywin === true
       };
     } catch (e) { ultimoError = `${modelo}: ${e.message}`.slice(0, 120); console.error('Lector de capturas:', e.message); }
   }

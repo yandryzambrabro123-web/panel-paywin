@@ -2280,6 +2280,7 @@ function renderStakeSales(){
       <div style="display:flex; gap:10px; align-items:center;">
         <button class="btn secondary" id="refreshStakeSalesBtn" title="Actualizar ventas y registros" aria-label="Actualizar" style="width:42px; padding:0; height:42px; display:inline-flex; align-items:center; justify-content:center;"><svg id="refreshStakeIco" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
         ${readOnly ? '' : `<button class="btn secondary" id="vaciarGrupoBtn" style="color:#ff7a7a;">Vaciar grupo</button>
+        <button class="btn secondary" id="abrirStakeHoyBtn" title="Abre la sección de venta de hoy y conecta el link de registro">📂 Abrir stake de hoy</button>
         <button class="btn secondary" id="difusionStakesBtn">Difusión de stakes</button>
         <button class="btn secondary" id="exportStakeSalesBtn">Exportar CSV</button>
         <button class="btn secondary" id="addSectionBtn">+ Nueva sección</button>
@@ -2301,6 +2302,8 @@ function renderStakeSales(){
 
   const vgb = document.getElementById('vaciarGrupoBtn');
   if(vgb) vgb.onclick = function(){ vaciarGrupoTg('stake', this); };
+  const ash = document.getElementById('abrirStakeHoyBtn');
+  if(ash) ash.onclick = function(){ winAbrirStakeHoy(this); };
   document.getElementById('difusionStakesBtn').onclick = openWinDifusionModal;
   document.getElementById('refreshStakeSalesBtn').onclick = refreshStakeSales;
   const regBtn = document.getElementById('copyRegLinkBtn');
@@ -6040,16 +6043,52 @@ async function winCrearSeccionStakePagoHoy(tgLink){
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
   const [y,m,d] = hoy.split('-').map(Number);
   const titulo = `Stake de pago ${d} de ${MESES_ES[m-1]}`;
-  let sec = state.stakeSections.find(x=>x.day===hoy && x.title===titulo);
+  // Por si otra pestaña/celular ya abrió la de hoy: se relee la hoja antes de decidir (si falla, se sigue con lo que hay).
+  try{
+    const rr = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES.stakeSections}`); const jj = await rr.json();
+    if(Array.isArray(jj.data)){
+      // se SUMAN las que ya existían en la hoja y aquí no estaban (no se pisa lo local, por si el guardado anterior aún no llega)
+      const rem = filtrarCorte('stakeSections', jj.data.map(row => coerceRow('stakeSections', row)));
+      state.stakeSections = [...state.stakeSections, ...rem.filter(x=>!state.stakeSections.some(y=>String(y.id)===String(x.id)))];
+    }
+  }catch(e){}
+  // Si ya hay CUALQUIER sección de stake de pago de hoy (abierta a mano o por un anuncio anterior), se usa esa: nunca se abre otra.
+  let sec = state.stakeSections.filter(x=>String(x.day||'').slice(0,10)===hoy && /stake de pago/i.test(x.title||'')).sort((a,b)=>String(b.id).localeCompare(String(a.id)))[0] || null;
+  let creada = false;
   if(sec){
-    if(tgLink) sec.telegramLink = tgLink;
+    if(tgLink && !sec.telegramLink){ sec.telegramLink = tgLink; await persist('stakeSections'); }
   } else {
     sec = { id: uid(), day: hoy, title: titulo, price: STAKE_PAGO_PRECIO, telegramLink: tgLink || '' };
     state.stakeSections.push(sec);
+    creada = true;
+    await persist('stakeSections');
+    winNovedad && winNovedad('stake', `Sección creada: ${titulo}`, `Precio $${STAKE_PAGO_PRECIO}. El link de cada cliente lo genera el bot (Telegram).`);
   }
   state.stakeSectionId = sec.id;
-  await persist('stakeSections');
-  winNovedad && winNovedad('stake', `Sección creada: ${titulo}`, `Precio $${STAKE_PAGO_PRECIO}. El link de cada cliente lo genera el bot (Telegram).`);
+  return { sec, creada };
+}
+// Botón "Abrir stake de hoy": abre la sección de hoy a mano (si la gente ya escribe y todavía no anuncias). El link de registro
+// siempre usa la sección más reciente, así que queda conectado a esta. Si ya existe la de hoy, no crea otra.
+async function winAbrirStakeHoy(btn){
+  const t0 = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Abriendo…'; }
+  try{
+    // se lee la hoja otra vez ANTES de decidir, por si el anuncio o el celular ya la abrieron
+    const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES.stakeSections}`);
+    const json = await res.json();
+    if(!Array.isArray(json.data)) throw new Error('No pude leer las secciones de la hoja (sin conexión).');
+    const r = await winCrearSeccionStakePagoHoy(''); // esta función ya relee la hoja y suma lo que falte
+
+    if(state.view === 'stakeSales') renderStakeSales();
+    alert(r.creada
+      ? `✅ Abrí la sección «${r.sec.title}».\n\nEl link de registro del stake ya apunta a esta sección: todo el que se registre hoy queda aquí.`
+      : `Ya existía la sección de hoy: «${r.sec.title}».\n\nNo abrí otra. El link de registro apunta a esta, y cuando anuncies el stake se seguirá usando esta misma.`);
+  }catch(e){
+    console.error(e);
+    alert('No se pudo abrir la sección: ' + e.message + '\n\nNo se creó nada. Revisa tu conexión e intenta de nuevo.');
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = t0; }
+  }
 }
 
 async function submitStakePago(){
@@ -9426,7 +9465,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '10 nov, 11:20';
+const PANEL_VERSION = '12 nov, 09:40';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
