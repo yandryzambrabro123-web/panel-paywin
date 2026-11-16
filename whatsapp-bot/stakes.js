@@ -451,4 +451,4 @@ function montar(app) {
   escuchar().catch((e) => console.error('No arrancó la escucha de Telegram:', e.message));
 }
 
-module.exports = { montar, recuperarRegistro, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, gancho, TG_ADMIN, TG_TOKEN };
+module.exports = { montar, recuperarRegistro, resolverRegistro, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, gancho, TG_ADMIN, TG_TOKEN };

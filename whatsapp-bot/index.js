@@ -171,6 +171,7 @@ require('./cuadre').montar(stakes); // cuadre financiero automático al aprobar 
 const atencion = require('./atencion');
 atencion.montar(app, stakes, { requireApiKey }); // segundo número de WhatsApp: atención al cliente (recargas)
 require('./alertas').montar(stakes, () => ({ conectado: connected, desde: desconectadoDesde, ultimoCierre }), require('./comprobantes'), atencion.estado); // avisos por Telegram cuando algo falla
+require('./espera').montar(stakes); // /espera y botón "Sacar de espera y dar link"
 require('./pay').montar(app, stakes, { requireApiKey }); // registro VIP (Telegram) + salida automática de vencidos
 
 function requireApiKey(req, res, next) {
