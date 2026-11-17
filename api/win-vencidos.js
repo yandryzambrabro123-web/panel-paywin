@@ -71,7 +71,7 @@ async function diagApuestas(req, res) {
     const d = await hoja(n);
     out[k] = Array.isArray(d) ? { filas: d.length, desdeNov: d.filter(f=>ms(f.id) >= Date.parse('2026-11-09T05:00:00Z')).map(f=>({ id:f.id, fechaCreado:dia(ms(f.id)), date:f.date, result:f.result, pick:String(f.pick||'').slice(0,50), conFoto:!!f.imageUrl })) } : d;
   }
-  const o = await hoja('WinOutbox');
+  const o = await hoja('WinBandeja');
   out.outbox = Array.isArray(o) ? o.filter(f=>f.kind==='nueva_apuesta' && String(f.createdAt||'') >= '2026-11-09').map(f=>({ creado:String(f.createdAt).slice(0,16), destino:f.destino, estado:f.status, texto:String(f.caption||'').replace(/\s+/g,' ').slice(0,70) })) : o;
   res.status(200).json(out);
 }
