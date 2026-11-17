@@ -53,6 +53,28 @@ const idMs = (id) => { const n = parseInt(String(id || '').slice(0, -5), 36); re
 const esVigente = (v) => idMs(v.id) >= CORTE_MS; // creado después del corte del panel
 const removido = (v) => !!v.joinDate && String(v.removidoVip) === String(v.joinDate);
 
+const permitidos = new Map(); // cédula -> hasta cuándo el jefe autorizó que se registre otra vez
+const nombreNorm = (n, a) => `${n || ''} ${a || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+// Fecha (dd/mm/aaaa) en que vence la membresía de ese VIP.
+function venceEl(v) {
+  const meses = PLAN_MESES[String(v.plan || 'mensual').toLowerCase()] || 1;
+  const d = new Date(v.joinDate); if (isNaN(d)) return '';
+  d.setMonth(d.getMonth() + meses);
+  return d.toISOString().slice(0, 10).split('-').reverse().join('/');
+}
+const avisosActivo = new Map();
+async function avisarActivo(v, intento, vence) {
+  const ced = String(intento.cedula);
+  if (Date.now() - (avisosActivo.get(ced) || 0) < 10 * 60 * 1000) return; // sin spam si insiste
+  avisosActivo.set(ced, Date.now());
+  const dias = diasRestantes(v, H.hoyEC());
+  const wa = require('./canales').waLink(intento.telefono || v.contact);
+  const texto = `🚫 <b>Intento de registro VIP con membresía ACTIVA</b>\n\nIntentó registrarse otra vez:\nNombre: <b>${H.esc(intento.nombre)} ${H.esc(intento.apellido)}</b>\nCédula: ${H.esc(intento.cedula)}\nTeléfono: ${H.esc(intento.telefono)}\n\nSu membresía actual: <b>${H.esc(v.name || '')}</b> — vence el <b>${H.esc(vence)}</b> (${dias} día${dias === 1 ? '' : 's'}).\n\nA la persona le dije que su membresía sigue activa y que podrá renovar cuando venza. Si quieres dejarlo registrarse igual, toca el botón (vale 6 horas).`;
+  const filas = [[{ text: '✅ Dejarlo registrarse igual', callback_data: `vo:${ced}` }]];
+  if (wa) filas.push([{ text: '💬 Abrir su chat de WhatsApp', url: wa }]);
+  await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), parse_mode: 'HTML', text: texto, reply_markup: { inline_keyboard: filas } });
+}
+
 function diasRestantes(v, hoy) {
   if (!v.joinDate) return null;
   const meses = PLAN_MESES[String(v.plan || 'mensual').toLowerCase()] || 1;
@@ -203,7 +225,7 @@ async function enviar(){
   if(!regId&&!fl){er.textContent='El comprobante de tu transferencia es obligatorio: sin él no puedes continuar.';return}
   b.disabled=true;b.textContent=fl?'Verificando tu captura…':'Enviando…';
   try{if(fl)body.comprobante=await leerImg(fl);const r=await fetch('/vip/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Error');espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}
+    if(!r.ok)throw new Error(d.error||'Error');if(d.yaActivo){box.innerHTML='<p style="color:#D4AF6A;font-size:17px">⚠️ Tu membresía VIP sigue activa.</p><p>Vence el '+esc(d.hasta||'')+'. Podrás renovarla cuando venza. Si crees que es un error, escríbenos por WhatsApp.</p>';return}espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}
 }
 function leerImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const m=1400,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',0.85))};im.onerror=()=>no(new Error('No pude leer esa imagen.'));im.src=u})}
 function espera(id){
@@ -437,6 +459,10 @@ function montar(app, stakes, extra) {
     await H.tg('answerCallbackQuery', { callback_query_id: cq.id, text: '📣 Publicado en el grupo VIP' }).catch(() => {});
     if (cq.message) await H.tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: '📣 Link de registro publicado', callback_data: 'x' }]] } }).catch(() => {});
   };
+  H.manejadores.vo = async (cq, [ced]) => {
+    permitidos.set(String(ced), Date.now() + 6 * 3600e3);
+    await marcar(cq, '✅ Puede volver a registrarse (6 horas)');
+  };
   H.manejadores.vc = async (cq, [id]) => {
     await H.recuperarRegistro(HOJA_REGISTROS, id, cq, 'vip');
     let hecho = false, previo = null;
@@ -565,8 +591,25 @@ function montar(app, stakes, extra) {
       if (!nombre || !apellido || !ciudad) return res.status(400).json({ error: 'Completa nombre, apellido y ciudad.' });
       if (!/^\S+@\S+\.\S+$/.test(correo)) return res.status(400).json({ error: 'Revisa tu correo electrónico.' });
       if (telefono.length < 9 || telefono.length > 10) return res.status(400).json({ error: 'Revisa tu número de teléfono.' });
-      const previo = (await H.leerHoja(HOJA_VIPS)).some((v) => esVigente(v) && !removido(v) && String(v.cedula || '').replace(/\D/g, '') === cedula);
       const hoy = H.hoyEC();
+      const vipsHoja = await H.leerHoja(HOJA_VIPS);
+      const previo = vipsHoja.some((v) => esVigente(v) && !removido(v) && String(v.cedula || '').replace(/\D/g, '') === cedula);
+      // Si ya tiene una membresía VIP que NO ha vencido, no puede registrarse otra vez (así nadie "renueva" faltando días y evita el reconsumo).
+      // Solo si el jefe lo autoriza con el botón del aviso (vale 6 horas).
+      if (!b.registroId && !(permitidos.get(cedula) > Date.now())) {
+        const nom = nombreNorm(nombre, apellido);
+        const activo = vipsHoja.find((v) => {
+          if (!esVigente(v) || removido(v) || String(v.status || 'active') === 'inactive') return false;
+          const d = diasRestantes(v, hoy);
+          if (d === null || d < 0) return false; // vencido: sí puede volver a registrarse (reconsumo)
+          return String(v.cedula || '').replace(/\D/g, '') === cedula || (nom && nombreNorm(v.name, '') === nom);
+        });
+        if (activo) {
+          const vence = venceEl(activo);
+          avisarActivo(activo, { nombre, apellido, cedula, telefono }, vence).catch((e) => console.error('Aviso VIP ya activo:', e.message));
+          return res.json({ yaActivo: true, hasta: vence });
+        }
+      }
       let reg = null, repetido = null, corregido = false;
       await H.cambiarHoja(HOJA_REGISTROS, (filas) => {
         // reenvío tras "Pedir corrección": se actualiza el mismo registro y vuelve a pendiente
