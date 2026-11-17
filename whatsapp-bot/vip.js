@@ -165,6 +165,7 @@ async function procesarVencidos() {
 // ---------- Registro público ----------
 
 const EJEMPLO = require('./ejemplo-captura');
+const AYUDA_TG = require('./ayuda-telegram');
 const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Registro VIP</title><style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0b0d12;color:#f3ead6;font-family:Inter,system-ui,sans-serif;display:flex;justify-content:center;padding:20px}
@@ -173,10 +174,10 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:14px 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 input:focus{outline:2px solid #D4AF6A;border-color:transparent}input[disabled]{opacity:.7}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.n{font-size:12.5px;color:#D4AF6A;margin-top:6px;min-height:16px}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-${EJEMPLO.CSS}</style></head><body><div class="w"><h1>Registro VIP</h1><p>Completa tus datos para que aprobemos tu ingreso al grupo VIP.</p><div class="c" id="box"></div></div>
+${EJEMPLO.CSS}${AYUDA_TG.CSS}</style></head><body><div class="w"><h1>Registro VIP</h1><p>Completa tus datos para que aprobemos tu ingreso al grupo VIP.</p>${AYUDA_TG.HTML}<div class="c" id="box"></div></div>
 <script>
 const EJ=${JSON.stringify(EJEMPLO.chat('vip'))};
-const $=s=>document.querySelector(s);let timer=null;const box=$('#box');
+const $=s=>document.querySelector(s);let timer=null;const box=$('#box');const TIPTG=${JSON.stringify(AYUDA_TG.TIP_APROBADO)};
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function hoy(){const d=new Date(Date.now()-5*3600e3);return d.toISOString().slice(0,10)}
 let regId='';
@@ -208,7 +209,7 @@ function leerImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f),
 function espera(id){
   box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Registro enviado. Estamos revisando tu pago; no cierres esta pantalla.</p>';
   const tick=async()=>{try{const r=await fetch('/vip/estado/'+id);const d=await r.json();
-    if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado! Bienvenido al VIP.</p><p>1. Entra al grupo con tu link personal (sirve una sola vez, no lo compartas).</p><a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al grupo VIP</a>'+(d.bot?'<p style="margin-top:18px">2. Activa los avisos de tu membresía (te avisamos antes de que termine).</p><a class="b" style="background:#232a38;color:#f3ead6;margin-top:8px" href="https://t.me/'+esc(d.bot)+'?start=vip_'+esc(id)+'" target="_blank" rel="noopener">Activar avisos</a>':'')}
+    if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado! Bienvenido al VIP.</p><p>1. Entra al grupo con tu link personal (sirve una sola vez, no lo compartas).</p><a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al grupo VIP</a>'+TIPTG+(d.bot?'<p style="margin-top:18px">2. Activa los avisos de tu membresía (te avisamos antes de que termine).</p><a class="b" style="background:#232a38;color:#f3ead6;margin-top:8px" href="https://t.me/'+esc(d.bot)+'?start=vip_'+esc(id)+'" target="_blank" rel="noopener">Activar avisos</a>':'')}
     else if(d.estado==='corregir'){clearInterval(timer);regId=id;form(d.datos,'Falta o está mal algún dato. Revísalo y vuelve a enviar.')}
     else if(d.estado==='rechazado'){clearInterval(timer);box.innerHTML='<p style="color:#ff7a7a;font-size:16px">No pudimos aprobar tu registro. Comunícate con la agencia.</p>'}
   }catch(e){}};

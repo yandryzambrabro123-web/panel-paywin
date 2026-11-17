@@ -29,6 +29,7 @@ const idMs = (id) => { const n = parseInt(String(id || '').slice(0, -5), 36); re
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const EJEMPLO = require('./ejemplo-captura');
+const AYUDA_TG = require('./ayuda-telegram');
 const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>Regalito del día</title><style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0b0d12;color:#f3ead6;font-family:Inter,system-ui,sans-serif;display:flex;justify-content:center;padding:20px}
@@ -37,10 +38,10 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:0 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-${EJEMPLO.CSS}</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito, tu número de teléfono y sube la captura de tu recarga. Al enviar te mostramos el link del grupo.</p><div class="c" id="box"></div></div>
+${EJEMPLO.CSS}${AYUDA_TG.CSS}</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito, tu número de teléfono y sube la captura de tu recarga. Al enviar te mostramos el link del grupo.</p>${AYUDA_TG.HTML}<div class="c" id="box"></div></div>
 <script>
 const EJ=${JSON.stringify(EJEMPLO.chat('regalito'))};
-const $=s=>document.querySelector(s);let timer=null;const box=$('#box');
+const $=s=>document.querySelector(s);let timer=null;const box=$('#box');const TIPTG=${JSON.stringify(AYUDA_TG.TIP_APROBADO)};
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function guardar(id){try{localStorage.setItem('rgId',id)}catch(e){}}
 function leer(){try{return localStorage.getItem('rgId')||''}catch(e){return ''}}
@@ -63,7 +64,7 @@ async function enviar(){
 }
 function leerImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const m=1400,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',0.85))};im.onerror=()=>no(new Error('No pude leer esa imagen.'));im.src=u})}
 function pinta(d,id){
-  if(d.estado==='aprobado'){clearInterval(timer);limpiar();box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado! Tu regalito está listo.</p><a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al grupo del regalito</a>';return true}
+  if(d.estado==='aprobado'){clearInterval(timer);limpiar();box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado! Tu regalito está listo.</p><a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al grupo del regalito</a>'+TIPTG;return true}
   if(d.estado==='rechazado'){clearInterval(timer);limpiar();box.innerHTML='<p style="color:#ff7a7a;font-size:16px">No pudimos aprobar tu solicitud. Comunícate con la agencia.</p>';return true}
   if(d.estado==='cola'){box.innerHTML='<p style="color:#D4AF6A;font-size:16px">🕒 El regalito todavía no está disponible, pero ya estás en la cola.</p><p>Cuando salga el siguiente regalito te lo mostramos aquí. Puedes cerrar esta pantalla y volver a abrir este mismo link.</p>';return false}
   box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Solicitud enviada. Preparando tu acceso…</p>';return false;

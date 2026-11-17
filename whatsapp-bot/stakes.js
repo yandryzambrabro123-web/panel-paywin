@@ -310,6 +310,7 @@ async function buscarCliente(cedula) {
 }
 
 const EJEMPLO = require('./ejemplo-captura');
+const AYUDA_TG = require('./ayuda-telegram');
 const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Registro Stake de pago</title><style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0b0d12;color:#f3ead6;font-family:Inter,system-ui,sans-serif;display:flex;justify-content:center;padding:20px}
@@ -318,10 +319,10 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:14px 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 select{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.n{font-size:12.5px;color:#D4AF6A;margin-top:6px;min-height:16px}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-${EJEMPLO.CSS}</style></head><body><div class="w"><h1>Stake de pago</h1><p id="sub">Cargando…</p><div class="c" id="box"></div></div>
+${EJEMPLO.CSS}${AYUDA_TG.CSS}</style></head><body><div class="w"><h1>Stake de pago</h1><p id="sub">Cargando…</p>${AYUDA_TG.HTML}<div class="c" id="box"></div></div>
 <script>
 const EJ=${JSON.stringify(EJEMPLO.chat('stake'))};
-const $=s=>document.querySelector(s);let sec=null,timer=null;
+const $=s=>document.querySelector(s);let sec=null,timer=null;const TIPTG=${JSON.stringify(AYUDA_TG.TIP_APROBADO)};
 const box=$('#box');
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 async function init(){
@@ -362,7 +363,7 @@ function leerImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f),
 function espera(id){
   box.innerHTML='<p style="color:#f3ead6;font-size:16px">⏳ Registro enviado. Preparando tu acceso…</p>';
   const tick=async()=>{try{const r=await fetch('/stake/estado/'+id);const d=await r.json();
-    if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado!</p><p>Entra al canal con el botón. Si te pide unirte, solicítalo con tu usuario de Telegram registrado.</p>'+(d.link?'<a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al canal de Telegram</a>':'<p>En un momento te pasamos el link por mensaje.</p>')}
+    if(d.estado==='aprobado'){clearInterval(timer);box.innerHTML='<p style="color:#7ee2a8;font-size:17px">✅ ¡Aprobado!</p><p>Entra al canal con el botón. Si te pide unirte, solicítalo con tu usuario de Telegram registrado.</p>'+TIPTG+(d.link?'<a class="b" href="'+esc(d.link)+'" target="_blank" rel="noopener">Entrar al canal de Telegram</a>':'<p>En un momento te pasamos el link por mensaje.</p>')}
     else if(d.estado==='cola'){box.innerHTML='<p style="color:#D4AF6A;font-size:16px">🕒 Tu pago está confirmado. Este stake ya terminó; en cuanto salga el siguiente te mostramos aquí el link del canal.</p><p>No cierres esta pantalla.</p>'}
     else if(d.estado==='rechazado'){clearInterval(timer);box.innerHTML='<p style="color:#ff7a7a;font-size:16px">No pudimos aprobar tu registro. Comunícate con la agencia.</p>'}
   }catch(e){}};
