@@ -7382,14 +7382,35 @@ async function winRegistrarEnPanel(key, texto, sendImage){
   const dup = (state[key]||[]).some(b=>b.date === hoy && String(b.pick||'').replace(/\s+/g,' ').trim().slice(0,200) === pick && (Date.now() - (parseInt(String(b.id).slice(0,-5), 36) || 0)) < 20*1000);
   if(dup) return true;
   state[key].push(row);
+  winPendRegAgregar(key, row); // queda anotada en este navegador hasta confirmar que está en el Excel
   await persist(key);
-  // Confirmar en el Excel que quedó guardada (el guardado no avisa si Google falla). Si no aparece, se reintenta y se avisa.
-  if(!(await winConfirmarGuardado(key, row.id))){
-    await persist(key);
-    if(!(await winConfirmarGuardado(key, row.id))) alert('⚠️ OJO: la apuesta se mandó pero NO pude confirmar que quedó guardada en el Excel. Revisa el panel y, si no está, regístrala a mano.');
-  }
+  // Confirmar en el Excel que quedó guardada (el guardado no avisa si Google falla). Se reintenta hasta 3 veces.
+  let ok = await winConfirmarGuardado(key, row.id);
+  for(let i=0; i<2 && !ok; i++){ await persist(key); ok = await winConfirmarGuardado(key, row.id); }
+  if(ok) winPendRegQuitar(row.id);
+  else alert('⚠️ OJO: la apuesta se mandó pero Google no confirmó el guardado. La dejé anotada y el panel la va a reintentar solo cada 2 minutos mientras tengas el panel abierto. Si no aparece, avísame.');
   return true;
 }
+// Cola local de registros pendientes: si algo falla, el panel los reintenta solo (y al volver a abrir el panel).
+function winPendRegLeer(){ try{ return JSON.parse(localStorage.getItem('winPendReg') || '[]'); }catch(e){ return []; } }
+function winPendRegEscribir(a){ try{ localStorage.setItem('winPendReg', JSON.stringify(a)); }catch(e){} }
+function winPendRegAgregar(key, row){ const a = winPendRegLeer().filter(x=>x.row.id !== row.id); a.push({ key, row }); winPendRegEscribir(a); }
+function winPendRegQuitar(id){ winPendRegEscribir(winPendRegLeer().filter(x=>x.row.id !== id)); }
+let winReintentando = false;
+async function winReintentarPendientes(){
+  if(winReintentando) return; winReintentando = true;
+  try{
+    for(const it of winPendRegLeer()){
+      if(!state[it.key]) continue;
+      if(!state[it.key].some(b=>b.id === it.row.id)) state[it.key].push(it.row);
+      await persist(it.key);
+      if(await winConfirmarGuardado(it.key, it.row.id)){ winPendRegQuitar(it.row.id); if(typeof winNovedad === 'function') winNovedad('info', 'Apuesta recuperada', 'Una apuesta que no se había guardado quedó registrada en el panel.').catch(()=>{}); }
+    }
+  }catch(e){ console.error('Reintento de registros pendientes:', e); }
+  winReintentando = false;
+}
+setInterval(()=>{ if(state && state.loaded) winReintentarPendientes(); }, 120000);
+setTimeout(()=>{ if(state && state.loaded) winReintentarPendientes(); }, 20000);
 async function winConfirmarGuardado(key, id){
   for(let i=0;i<4;i++){
     await new Promise(r=>setTimeout(r, i===0 ? 1500 : 2500));
@@ -7457,13 +7478,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     ${thumb ? `<img src="${thumb}" style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; margin-bottom:14px;">` : ''}
     <div class="field"><label>Revísalo (puedes editarlo antes de mandarlo)</label><textarea id="f-winCaptionConfirm" style="min-height:130px;">${escapeForTextarea(caption)}</textarea></div>
     ${redactCtx ? winCaptionToolsHTML() : ''}
-    ${kind === 'ganada' ? `<div class="field"><label>Marcar como ganada la apuesta</label>
-      <select id="f-winGanadaBet"><option value="">(no marcar ninguna)</option>${winApuestasPendientes().map(b=>`<option value="${b._key}|${b.id}" ${winPreset && winPreset.ganada === (b._key + '|' + b.id) ? 'selected' : ''}>[${b._tag}] ${String(b.pick||'').slice(0,60)} · ${fmtDate(b.date)}</option>`).join('')}</select>
-      <div style="display:flex; gap:8px; margin-top:8px;">
-        <input type="number" step="0.01" id="f-winGanadaInv" placeholder="Invertido $" style="flex:1;">
-        <input type="number" step="0.01" id="f-winGanadaCob" placeholder="Cobrado $ (total)" style="flex:1;">
-      </div>
-      <div id="winGanadaLeyendo" style="font-size:11.5px; color:var(--muted); margin-top:4px;">${sendImage && sendImage.base64 ? 'Leyendo la captura para sugerir la apuesta y los montos…' : 'Sube captura para que Win lea los montos, o escríbelos.'}</div>
+    ${kind === 'ganada' ? `<div class="field">
       <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-top:10px; cursor:pointer;"><input type="checkbox" id="f-winGuardarGanada"> 📌 Guardarla también para publicarla mañana (ganadas de ayer)</label>
       <button class="btn secondary" type="button" id="winGuardarGanadaBtn" style="width:100%; margin-top:8px; font-size:12.5px;">📌 Solo guardar para mañana (sin mandar hoy)</button>
     </div>` : (kind === 'nueva_apuesta' ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel según el grupo al que la mandes (VIP → Apuesta VIP, Gratis → Apuesta gratis), con la foto y el texto.</div>` : (WIN_AUTO_REG[kind] ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel (${WIN_AUTO_REG[kind].etiqueta}) al mandarla, con la foto y el texto.</div>` : ''))}
@@ -7490,31 +7505,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     return winMayusculas(key ? winTituloGanadaTexto(texto, key) : texto);
   };
   wireWinCaptionTools(redactCtx);
-  if(kind === 'ganada' && sendImage && sendImage.base64){
-    (async ()=>{
-      const nota = document.getElementById('winGanadaLeyendo');
-      try{
-        const r = await withTimeout(fetch('/api/leer-apuesta', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ imageBase64: sendImage.base64, mediaType: sendImage.mediaType }) }), 40000);
-        const d = await r.json().catch(()=>({}));
-        if(!r.ok) throw new Error(d.error || 'No se pudo leer.');
-        const inv = document.getElementById('f-winGanadaInv'), cob = document.getElementById('f-winGanadaCob'), sel = document.getElementById('f-winGanadaBet');
-        if(!inv) return;
-        if(d.invested) inv.value = d.invested;
-        if(d.returned) cob.value = d.returned;
-        // sugiere la apuesta pendiente que más se parezca al pick leído; si no hay parecida, la más reciente
-        const palabras = String(d.pick||'').toLowerCase().split(/[^a-záéíóúñ0-9]+/).filter(w=>w.length>3);
-        let mejor = null, puntos = 0;
-        winApuestasPendientes().forEach(b=>{
-          const t = String(b.pick||'').toLowerCase();
-          const sc = palabras.filter(w=>t.includes(w)).length;
-          if(sc > puntos){ puntos = sc; mejor = b; }
-        });
-        if(mejor && !(winPreset && winPreset.ganada)) sel.value = `${mejor._key}|${mejor.id}`;
-        winPonerTituloGanada();
-        if(nota) nota.textContent = mejor ? 'Win sugirió la apuesta y los montos: revísalos antes de mandar.' : 'Leí los montos, pero no encontré cuál apuesta es: elígela tú.';
-      }catch(e){ if(nota) nota.textContent = 'No pude leer la captura: elige la apuesta y escribe los montos.'; }
-    })();
-  }
+  // (Ganadas: ya no se lee la captura ni se marca ninguna apuesta como ganada automáticamente; las ganadas las pones tú a mano.)
   let winGanadaGuardada = false;
   const winGuardarGanadaSiToca = async (texto)=>{
     const chk = document.getElementById('f-winGuardarGanada');
@@ -7562,12 +7553,14 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
       else if(/vip/i.test(grupoEnviado||'')) tipo = 'vipBets';
       else if(/gratis/i.test(grupoEnviado||'')) tipo = 'freeBets';
       else if(winPreset && winPreset.tipo) tipo = winPreset.tipo;
+      if(!tipo && !(winPreset && winPreset.tipo === 'none')){ alert(`⚠️ Esta apuesta se mandó a "${grupoEnviado}" pero NO se registró: no sé si es VIP o Gratis. Regístrala a mano en el panel.`); return; }
       if(!tipo || winRegistradoTipos.has(tipo)) return;
       winRegistradoTipos.add(tipo);
       try{ await winRegistrarEnPanel(tipo, texto, sendImage); }
       catch(e){ winRegistradoTipos.delete(tipo); console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
       return;
     }
+    if(kind === 'ganada') return; // las ganadas NO se marcan solas: las pones tú a mano en el panel
     if(winRegistrado) return;
     const gan = document.getElementById('f-winGanadaBet');
     if(gan){
@@ -9481,13 +9474,13 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '17 nov, 08:45';
+const PANEL_VERSION = '17 nov, 09:05';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
     try{
       const r = await fetch('/index.html?chk=' + Date.now(), { cache:'no-store' });
-      const m = /const PANEL_VERSION = '17 nov, 08:45']+)'/.exec(await r.text());
+      const m = /const PANEL_VERSION = '([^']+)'/.exec(await r.text());
       if(!m || m[1] === PANEL_VERSION) return;
       let ya = ''; try{ ya = sessionStorage.getItem('panelRecarga') || ''; }catch(e){}
       if(ya !== m[1]){ try{ sessionStorage.setItem('panelRecarga', m[1]); }catch(e){} location.replace(location.pathname + '?v=' + Date.now()); return; }
