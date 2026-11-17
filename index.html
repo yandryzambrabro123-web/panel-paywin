@@ -7370,19 +7370,35 @@ async function winRegistrarEnPanel(key, texto, sendImage){
   else if(key === 'gifts') row = { id:uid(), sport:'', pick, odds:ex.cuota, stake:0, recipient:'', date:hoy, result:'pending', event:ex.evento, seleccion:ex.seleccion };
   else if(key === 'stakes') row = { id:uid(), description:pick, amount:0, date:hoy, result:'pending', event:ex.evento, seleccion:ex.seleccion, odds:ex.cuota };
   else return false;
-  if((state[key]||[]).some(b=>b.date === hoy && String(b.pick||'').replace(/\s+/g,' ').trim().slice(0,200) === pick && (Date.now() - (parseInt(String(b.id).slice(0,-5), 36) || 0)) < 30*60*1000)) return true;
   // La foto se guarda en Vercel Blob (en su calidad real) y en la hoja solo queda el link.
   if(sendImage){
     const url = await winSubirFotoReintento(sendImage, key);
     if(url) row.imageUrl = url;
     else alert('Se registró, pero la foto no se pudo guardar. Súbela a mano en el registro.');
   }
-  // no registrar dos veces la misma apuesta (mismo texto, mismo tipo, en los últimos 30 min)
-  const dup = (state[key]||[]).some(b=>b.date === hoy && String(b.pick||'').replace(/\s+/g,' ').trim().slice(0,200) === pick && (Date.now() - (parseInt(String(b.id).slice(0,-5), 36) || 0)) < 30*60*1000);
+  // Antes se descartaba como "repetida" toda apuesta con el mismo texto en 30 min: eso hacía perder apuestas distintas
+  // (las de imagen casi no cambian de texto). Ahora solo se frena un doble toque (20 segundos). Mandar a varios grupos
+  // desde una misma pantalla ya se registra una sola vez (winRegistradoTipos).
+  const dup = (state[key]||[]).some(b=>b.date === hoy && String(b.pick||'').replace(/\s+/g,' ').trim().slice(0,200) === pick && (Date.now() - (parseInt(String(b.id).slice(0,-5), 36) || 0)) < 20*1000);
   if(dup) return true;
   state[key].push(row);
   await persist(key);
+  // Confirmar en el Excel que quedó guardada (el guardado no avisa si Google falla). Si no aparece, se reintenta y se avisa.
+  if(!(await winConfirmarGuardado(key, row.id))){
+    await persist(key);
+    if(!(await winConfirmarGuardado(key, row.id))) alert('⚠️ OJO: la apuesta se mandó pero NO pude confirmar que quedó guardada en el Excel. Revisa el panel y, si no está, regístrala a mano.');
+  }
   return true;
+}
+async function winConfirmarGuardado(key, id){
+  for(let i=0;i<4;i++){
+    await new Promise(r=>setTimeout(r, i===0 ? 1500 : 2500));
+    try{
+      const j = await (await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}&t=${Date.now()}`)).json();
+      if((j.data||[]).some(f=>String(f.id)===String(id))) return true;
+    }catch(e){}
+  }
+  return false;
 }
 
 // Apuestas pendientes (VIP, gratis y live) a las que se les puede marcar "ganada" desde Win.
@@ -9465,13 +9481,13 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '12 nov, 09:40';
+const PANEL_VERSION = '17 nov, 08:45';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
     try{
       const r = await fetch('/index.html?chk=' + Date.now(), { cache:'no-store' });
-      const m = /const PANEL_VERSION = '([^']+)'/.exec(await r.text());
+      const m = /const PANEL_VERSION = '17 nov, 08:45']+)'/.exec(await r.text());
       if(!m || m[1] === PANEL_VERSION) return;
       let ya = ''; try{ ya = sessionStorage.getItem('panelRecarga') || ''; }catch(e){}
       if(ya !== m[1]){ try{ sessionStorage.setItem('panelRecarga', m[1]); }catch(e){} location.replace(location.pathname + '?v=' + Date.now()); return; }
