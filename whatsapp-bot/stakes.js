@@ -273,15 +273,39 @@ function limite(req, res, max, ventanaMs) {
 }
 
 // ---- Buscar un cliente por cédula (registros anteriores + compras) ----
+const nombreNorm = (n, a) => `${n || ''} ${a || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+// Verificación oficial de la cédula ecuatoriana (provincia, tercer dígito y dígito verificador módulo 10).
+function cedulaValida(c) {
+  c = String(c || '');
+  if (!/^\d{10}$/.test(c)) return false;
+  const prov = Number(c.slice(0, 2));
+  if (!((prov >= 1 && prov <= 24) || prov === 30) || Number(c[2]) > 5) return false;
+  let suma = 0;
+  for (let i = 0; i < 9; i++) { let d = Number(c[i]) * (i % 2 === 0 ? 2 : 1); if (d > 9) d -= 9; suma += d; }
+  return (10 - (suma % 10)) % 10 === Number(c[9]);
+}
+const avisosRepetido = new Map();
+// Alguien intentó registrarse otra vez (misma cédula o mismo nombre en el mismo stake): se le avisa al jefe con botones.
+async function avisarRepetido(orig, intento) {
+  const clave = soloDigitos(intento.cedula);
+  if (Date.now() - (avisosRepetido.get(clave) || 0) < 10 * 60 * 1000) return; // sin spam si insiste
+  avisosRepetido.set(clave, Date.now());
+  const waNuevo = require('./canales').waLink(intento.telefono), waOrig = require('./canales').waLink(orig.telefono);
+  const texto = `🚫 <b>Intento de registro repetido — stake de pago</b>\n\nIntentó registrarse otra vez:\nNombre: <b>${esc(intento.nombre)} ${esc(intento.apellido)}</b>\nCédula: ${esc(intento.cedula)}\nTeléfono: ${esc(intento.telefono)}\n\nYa estaba registrado:\nNombre: <b>${esc(orig.nombre)} ${esc(orig.apellido)}</b>\nCédula: ${esc(orig.cedula)}\nTeléfono: ${esc(orig.telefono)}\nEstado: ${esc(orig.estado)}\n\nA la persona le dije "usuario ya registrado". Si fue un error, toca el botón y te mando su link para que se lo pases por WhatsApp.`;
+  const filas = [[{ text: '🔓 Sacar de espera y dar link', callback_data: `lb:s:${orig.id}` }]];
+  if (waNuevo) filas.push([{ text: '💬 Chat de quien intentó ahora', url: waNuevo }]);
+  if (waOrig && waOrig !== waNuevo) filas.push([{ text: '💬 Chat del registro original', url: waOrig }]);
+  await tg('sendMessage', { chat_id: TG_ADMIN(), parse_mode: 'HTML', text: texto, reply_markup: { inline_keyboard: filas } });
+}
 async function buscarCliente(cedula) {
   const ced = soloDigitos(cedula);
   if (ced.length < 8) return null;
   const regs = (await leerHoja(HOJA_REGISTROS)).filter((f) => soloDigitos(f.cedula) === ced && f.estado === 'aprobado');
   regs.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  if (regs[0]) return { nombre: regs[0].nombre, apellido: regs[0].apellido, telegram: regs[0].telegram, telefono: regs[0].telefono };
+  if (regs[0]) return { nombre: regs[0].nombre, apellido: regs[0].apellido };
   const ventas = (await leerHoja(HOJA_VENTAS)).filter((v) => soloDigitos(v.cedula) === ced);
   const v = ventas[ventas.length - 1];
-  if (v) return { nombre: v.name || '', apellido: v.apellido || '', telegram: v.telegram || '', telefono: v.phone || '' };
+  if (v) return { nombre: v.name || '', apellido: v.apellido || '' };
   return null;
 }
 
@@ -319,7 +343,7 @@ function form(){
 async function buscar(c){
   $('#nota').textContent='Buscando…';
   try{const r=await fetch('/stake/cedula/'+c);const d=await r.json();
-    if(d.found){$('#nom').value=d.nombre||'';$('#ape').value=d.apellido||'';$('#tel').value=d.telefono||'';$('#nota').textContent='Ya estás registrado. Revisa tus datos y envía.'}
+    if(d.found){$('#nom').value=d.nombre||'';$('#ape').value=d.apellido||'';$('#tel').value=d.telefono||'';$('#nota').textContent='Ya habías comprado antes. Escribe tu teléfono y envía.'}
     else{$('#nom').value=$('#ape').value=$('#tel').value='';$('#nota').textContent='Primera vez: completa tus datos.'}
     $('#resto').style.display='block';
   }catch(e){$('#nota').textContent='No pude buscar. Completa tus datos.';$('#resto').style.display='block'}
@@ -332,7 +356,7 @@ async function enviar(){
   if(!fl){er.textContent='La captura de tu pago es obligatoria: sin ella no puedes continuar.';return}
   b.disabled=true;b.textContent='Verificando tu captura…';
   try{body.comprobante=await leerImg(fl);const r=await fetch('/stake/registro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Error');espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}
+    if(!r.ok)throw new Error(d.error||'Error');if(d.yaRegistrado){box.innerHTML='<p style="color:#D4AF6A;font-size:17px">⚠️ Este usuario ya está registrado en este stake.</p><p>Ya avisamos a la agencia. Si fue un error, te escribimos por WhatsApp para darte tu acceso.</p>';return}espera(d.id)}catch(e){er.textContent=e.message;b.disabled=false;b.textContent='Enviar registro'}
 }
 function leerImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const m=1400,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',0.85))};im.onerror=()=>no(new Error('No pude leer esa imagen.'));im.src=u})}
 function espera(id){
@@ -396,16 +420,18 @@ function montar(app) {
       const previo = !!(await buscarCliente(cedula));
       let reg = null, repetido = null;
       await cambiarHoja(HOJA_REGISTROS, (filas) => {
-        repetido = filas.find((f) => f.sectionId === sec.id && soloDigitos(f.cedula) === cedula && f.estado !== 'rechazado');
+        const mismoStake = (f) => f.sectionId === sec.id || String(f.day || '') === hoy;
+        repetido = filas.find((f) => mismoStake(f) && f.estado !== 'rechazado' && (soloDigitos(f.cedula) === cedula || (nombreNorm(f.nombre, f.apellido) && nombreNorm(f.nombre, f.apellido) === nombreNorm(nombre, apellido))));
         if (repetido) return filas;
         reg = { id: nuevoId(), createdAt: new Date().toISOString(), day: hoy, sectionId: sec.id, price: Number(sec.price) || 0, cedula, nombre, apellido, telegram, telefono, estado: 'pendiente', recurrente: previo, resueltoAt: '' };
         return [...filas, reg];
       });
-      if (repetido) return res.json({ id: repetido.id, repetido: true });
+      if (repetido) { avisarRepetido(repetido, { nombre, apellido, cedula, telefono }).catch((e) => console.error('Aviso de registro repetido:', e.message)); return res.json({ yaRegistrado: true }); }
       // Captura de pago obligatoria y que no se repita; con eso entra directo (sin aprobación del jefe)
       let cmp;
       try { cmp = await require('./comprobantes').procesar(b.comprobante, { tipo: 'stake', registroId: reg.id, nombre: `${nombre} ${apellido}`, telefono }); }
       catch (e) { await cambiarHoja(HOJA_REGISTROS, (filas) => filas.filter((f) => f.id !== reg.id)); return res.status(e.status || 400).json({ error: e.message }); }
+      if (!cmp.rechazo && !cedulaValida(cedula)) cmp.rechazo = { motivo: `La cédula ${cedula} no pasa la verificación (puede estar mal escrita o inventada).`, cliente: '' };
       // Mismos datos que otro registro de hoy en esta sección (mismo teléfono con otra cédula): no entra solo, lo decide el jefe
       if (!cmp.rechazo) {
         const tel = soloDigitos(telefono);
@@ -420,8 +446,8 @@ function montar(app) {
       const ap = await resolverRegistro(reg.id, true);
       if (ap.error && !ap.ok) console.error('Auto-aprobación de stake:', ap.error);
       await require('./canales').avisarLinkAprobado('stake', HOJA_REGISTROS, reg, cmp.atencion ? { foto: cmp.buf, parecido: cmp.parecido } : { silencioso: true });
-      await require('./cuadre').ofrecer({ tipo: 'st', regId: reg.id, monto: 20, etiqueta: `Stake de pago — ${nombre} ${apellido}`.trim() }).catch(() => {});
-      res.json({ id: reg.id });
+      res.json({ id: reg.id }); // el cliente ya puede entrar; el cuadre se ofrece después, en segundo plano
+      require('./cuadre').ofrecer({ tipo: 'st', regId: reg.id, monto: 20, etiqueta: `Stake de pago — ${nombre} ${apellido}`.trim() }).catch(() => {});
     } catch (e) {
       console.error('Registro de stake:', e);
       res.status(500).json({ error: 'No se pudo enviar el registro. Intenta de nuevo.' });
@@ -451,4 +477,4 @@ function montar(app) {
   escuchar().catch((e) => console.error('No arrancó la escucha de Telegram:', e.message));
 }
 
-module.exports = { montar, recuperarRegistro, resolverRegistro, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, gancho, TG_ADMIN, TG_TOKEN };
+module.exports = { montar, recuperarRegistro, resolverRegistro, cedulaValida, leerHoja, guardarHoja, cambiarHoja, tg, esc, hoyEC, nuevoId, soloDigitos, limpio, limite, manejadores, hooks, gancho, TG_ADMIN, TG_TOKEN };

@@ -7498,6 +7498,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   { const selG = document.getElementById('f-winGanadaBet'); if(selG) selG.addEventListener('change', winPonerTituloGanada); }
   // El título de la ganada sigue al grupo al que se manda (VIP, gratis, stake de pago, regalito); si el grupo no lo define, usa el de la apuesta marcada.
   const winCaptionDestino = (texto, grupo)=>{
+    texto = winCorregirTel(texto); // justo al mandar: siempre con el número en uso AHORA (aunque el texto se armó antes)
     if(kind === 'nueva_apuesta') return winMayusculas(winTituloNuevaTexto(texto, winKeyGanadaDeGrupos([grupo]) || ((winPreset && WIN_TITULO_NUEVA[winPreset.tipo]) ? winPreset.tipo : '')));
     if(kind !== 'ganada') return texto;
     const sel = document.getElementById('f-winGanadaBet');
@@ -9474,7 +9475,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '17 nov, 09:05';
+const PANEL_VERSION = '17 nov, 09:40';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){

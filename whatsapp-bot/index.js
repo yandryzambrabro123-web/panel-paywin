@@ -171,6 +171,7 @@ require('./cuadre').montar(stakes); // cuadre financiero automático al aprobar 
 const atencion = require('./atencion');
 atencion.montar(app, stakes, { requireApiKey }); // segundo número de WhatsApp: atención al cliente (recargas)
 require('./alertas').montar(stakes, () => ({ conectado: connected, desde: desconectadoDesde, ultimoCierre }), require('./comprobantes'), atencion.estado); // avisos por Telegram cuando algo falla
+require('./numero').montar(stakes); // seguro del número del CTA en cada envío a grupos
 require('./espera').montar(stakes); // /espera y botón "Sacar de espera y dar link"
 require('./pay').montar(app, stakes, { requireApiKey }); // registro VIP (Telegram) + salida automática de vencidos
 
@@ -323,11 +324,14 @@ app.post('/enviar', requireApiKey, async (req, res) => {
   if (!connected) {
     return res.status(503).json({ error: 'El bot no está conectado a WhatsApp ahora mismo. Revisa /qr.' });
   }
-  const { grupoId, texto, imagenBase64, imagenUrl, mediaType, sinSeparador, banner, tipo } = req.body || {};
+  const { grupoId, imagenBase64, imagenUrl, mediaType, sinSeparador, banner, tipo } = req.body || {};
+  let texto = (req.body || {}).texto;
   if (!grupoId || !texto) {
     return res.status(400).json({ error: 'Falta grupoId o texto.' });
   }
   try {
+    // Seguro del CTA: a grupos y canales siempre sale el número ACTIVO de la hoja (aunque el texto viniera con uno viejo).
+    if (/@(g\.us|newsletter)$/.test(String(grupoId))) texto = await require('./numero').alVigente(texto);
     await pausaHumana();
     if (banner) await mandarBannerGratis(grupoId);
     if (imagenUrl) {
