@@ -38,7 +38,7 @@ const PAGINA = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta
 label{display:block;font-size:12.5px;color:#9aa3b2;margin:0 0 6px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#fff;font-size:16px}
 input:focus{outline:2px solid #D4AF6A;border-color:transparent}button,a.b{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:12px;background:linear-gradient(180deg,#e6c47e,#c79d4f);color:#1a1405;font-weight:700;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}
 button:disabled{opacity:.5}.e{color:#ff7a7a;font-size:13.5px;margin-top:12px}
-${EJEMPLO.CSS}${AYUDA_TG.CSS}</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito, tu número de teléfono y sube la captura de tu recarga. Al enviar te mostramos el link del grupo.</p>${AYUDA_TG.HTML}<div class="c" id="box"></div></div>
+${EJEMPLO.CSS}${AYUDA_TG.CSS}</style></head><body><div class="w"><h1>Regalito del día 🎁</h1><p>Escribe a nombre de quién va el regalito, tu número de teléfono y sube la captura de tu recarga. Al enviar te mostramos el link del grupo.</p><div class="c" id="box"></div>${AYUDA_TG.HTML}</div>
 <script>
 const EJ=${JSON.stringify(EJEMPLO.chat('regalito'))};
 const $=s=>document.querySelector(s);let timer=null;const box=$('#box');const TIPTG=${JSON.stringify(AYUDA_TG.TIP_APROBADO)};
