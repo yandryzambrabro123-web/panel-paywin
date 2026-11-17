@@ -1051,7 +1051,7 @@
   <nav id="sidebar" aria-label="Secciones">
     <div class="nav-item active" data-view="dashboard" title="Inicio"><span class="nav-icon" data-ico="dashboard"></span><span class="nav-label">Inicio</span></div>
     <div class="nav-item" data-view="win" title="Win"><span class="nav-icon" data-ico="win"></span><span class="nav-label">Win</span></div>
-    <div class="nav-item" data-view="inbox" title="Bandeja de novedades"><span class="nav-icon" data-ico="bandeja"></span><span class="nav-label">Bandeja</span><span class="nav-alert" id="navAlert-inbox" style="display:none;"></span></div>
+    <div class="nav-item" data-view="inbox" title="Mensajes por mandar a mano" style="display:none;"><span class="nav-icon" data-ico="bandeja"></span><span class="nav-label">Por mandar</span><span class="nav-alert" id="navAlert-inbox" style="display:none;"></span></div>
     <div class="nav-item" data-view="reminders" title="Citas y recordatorios"><span class="nav-icon" data-ico="agenda"></span><span class="nav-label">Agenda</span><span class="nav-alert" id="navAlert-reminders" style="display:none;"></span></div>
     <div class="nav-item" data-view="vips" title="Miembros"><span class="nav-icon" data-ico="miembros"></span><span class="nav-label">Miembros</span><span class="nav-alert" id="navAlert-vips" style="display:none;"></span></div>
     <div class="nav-item" data-view="freeBets" title="Gratis"><span class="nav-icon" data-ico="gratis"></span><span class="nav-label">Gratis</span></div>
@@ -1088,7 +1088,7 @@ function maskPhone(phone){
   if(digits.length <= 2) return '*'.repeat(digits.length);
   return '*'.repeat(digits.length-2) + digits.slice(-2);
 }
-const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', novedades: 'Novedades', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas', winDifusion: 'WinDifusion', winGanadas: 'WinGanadasGuardadas', payReservadas: 'PayReservadas' };
+const SHEET_NAMES = { vips: 'VIPs', freeBets: 'ApuestasGratis', vipBets: 'ApuestasVIP', liveBets: 'ApuestasLive', stakes: 'Stakes', stakeSales: 'VentaStakes', stakeSections: 'SeccionesStakes', gifts: 'Regalitos', financeMovements: 'CuadreMovimientos', winOutbox: 'WinBandeja', winReminders: 'WinRecordatorios', winMemory: 'WinMemoria', winTemplates: 'WinPlantillas', winDifusion: 'WinDifusion', winGanadas: 'WinGanadasGuardadas', payReservadas: 'PayReservadas' };
 
 // ---------- Corte del panel (25-oct-2026, 7:20am Ecuador) ----------
 // El panel NO muestra lo que se registró antes de este momento en estas listas (miembros VIP,
@@ -1654,9 +1654,10 @@ function updateNavBadges(){
     else{ el.style.display = 'none'; }
   });
   const pend = (state.winOutbox||[]).filter(o=>o.status==='pendiente').length;
-  const sinLeer = (state.novedades||[]).filter(n=>!n.leido).length + pend;
+  const navInbox = document.querySelector('.nav-item[data-view="inbox"]'); // la Bandeja ya no existe: solo aparece "Por mandar" si hay algo pendiente
+  if(navInbox) navInbox.style.display = pend > 0 ? '' : 'none';
   const inboxEl = document.getElementById('navAlert-inbox');
-  if(inboxEl){ if(sinLeer > 0){ inboxEl.textContent = sinLeer; inboxEl.style.display = 'inline-block'; } else inboxEl.style.display = 'none'; }
+  if(inboxEl){ if(pend > 0){ inboxEl.textContent = pend; inboxEl.style.display = 'inline-block'; } else inboxEl.style.display = 'none'; }
   const hoy = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);
   const porHacer = (state.winReminders||[]).filter(r=>!r.done && r.dueDate && r.dueDate <= hoy).length;
   const remEl = document.getElementById('navAlert-reminders');
@@ -7849,11 +7850,10 @@ async function pushToOutbox(kind, destino, caption, image, skipPersist, status){
 // ---------- Bandeja de novedades (solo situaciones, no cada envío) ----------
 const esc = (t)=>String(t == null ? '' : t).replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 const NOV_ICONOS = { protocolo:'sol', ganadas:'trofeo', vencidos:'campana', alerta:'alerta', info:'info' };
+// Ya no hay Bandeja en el panel: los avisos rutinarios se descartan y solo las ALERTAS (algo falló) llegan por Telegram.
 async function winNovedad(tipo, titulo, detalle){
-  state.novedades.unshift({ id: uid(), tipo, titulo, detalle: detalle || '', createdAt: new Date().toISOString(), leido: false });
-  updateNavBadges();
-  if(state.view === 'inbox') render();
-  await persist('novedades');
+  if(tipo !== 'alerta') return;
+  try{ await fetch('/api/win-enviar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modo:'aviso', texto: '⚠️ ' + titulo + (detalle ? '\n' + detalle : '') }) }); }catch(e){ console.error('Aviso a Telegram:', e); }
 }
 function novTiempo(iso){
   const d = new Date(iso); if(isNaN(d)) return '';
@@ -7862,43 +7862,17 @@ function novTiempo(iso){
   return mismo ? 'Hoy ' + hora : d.toLocaleDateString('es-EC', { day:'numeric', month:'short' }) + ' ' + hora;
 }
 function renderInbox(){
-  const filtro = state.inboxFilter || 'unread';
-  const todas = [...state.novedades].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
-  const sinLeer = todas.filter(n=>!n.leido);
-  const filas = filtro === 'unread' ? sinLeer : todas;
   const pend = (state.winOutbox||[]).filter(o=>o.status==='pendiente').length;
   document.getElementById('main').innerHTML = `
     <div class="toolbar">
       <div>
-        <div class="page-title">Bandeja</div>
-        <div class="page-sub">Novedades de Win y del sistema · ${sinLeer.length ? sinLeer.length + ' sin leer' : 'todo al día'}</div>
+        <div class="page-title">Por mandar</div>
+        <div class="page-sub">${pend ? pend + ' mensaje' + (pend>1?'s':'') + ' por mandar a mano' : 'No hay nada pendiente'}</div>
       </div>
-      <div style="display:flex; gap:10px;">
-        <button class="btn secondary" id="novFiltroBtn">${filtro === 'unread' ? 'Ver todas' : 'Ver solo sin leer'}</button>
-        ${sinLeer.length ? '<button class="btn" id="novLeerTodoBtn">Marcar todo como leído</button>' : ''}
-      </div>
+      ${pend ? '<button class="btn" id="novPendBtn">Abrir</button>' : ''}
     </div>
-    ${pend ? `<div class="alert-banner" style="justify-content:space-between;"><span><strong>${pend}</strong> mensaje${pend>1?'s':''} por mandar a mano (regalitos).</span><button class="btn secondary small" id="novPendBtn">Abrir</button></div>` : ''}
-    <div class="nov-list">
-      ${filas.length ? filas.map(n=>`
-        <div class="nov-item ${n.leido ? '' : 'unread'}" data-nov="${esc(n.id)}" title="${n.leido ? 'Marcar como no leída' : 'Marcar como leída'}">
-          <div class="nov-ico nov-${esc(n.tipo)}">${winIcon(NOV_ICONOS[n.tipo] || 'info')}</div>
-          <div class="nov-body">
-            <div class="nov-title">${esc(n.titulo)}</div>
-            ${n.detalle ? `<div class="nov-detail">${esc(n.detalle)}</div>` : ''}
-          </div>
-          <div class="nov-time">${esc(novTiempo(n.createdAt))}</div>
-        </div>`).join('') : `<div class="empty">${filtro === 'unread' ? 'No hay novedades sin leer. Aquí te avisa Win cuando pasa algo: el protocolo de la mañana, las ganadas publicadas, miembros por renovar.' : 'Todavía no hay novedades.'}</div>`}
-    </div>
-  `;
-  document.getElementById('novFiltroBtn').onclick = ()=>{ state.inboxFilter = filtro === 'unread' ? 'all' : 'unread'; renderInbox(); };
-  const todo = document.getElementById('novLeerTodoBtn');
-  if(todo) todo.onclick = async ()=>{ state.novedades.forEach(n=>{ n.leido = true; }); renderInbox(); updateNavBadges(); await persist('novedades'); };
+    <div class="empty">Los avisos del sistema ya no llegan aquí: si pasa algo importante te lo manda el bot por Telegram.</div>`;
   const pb = document.getElementById('novPendBtn'); if(pb) pb.onclick = openWinOutboxModal;
-  document.querySelectorAll('[data-nov]').forEach(el=>el.onclick = async ()=>{
-    const n = state.novedades.find(x=>x.id === el.dataset.nov); if(!n) return;
-    n.leido = !n.leido; renderInbox(); updateNavBadges(); await persist('novedades');
-  });
 }
 
 // ---------- Agenda: citas y recordatorios ----------
@@ -9475,7 +9449,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '17 nov, 09:40';
+const PANEL_VERSION = '17 nov, 10:05';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){

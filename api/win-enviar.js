@@ -46,6 +46,19 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  // Aviso corto al Telegram del jefe (lo usa el panel cuando algo falla). Sin bot de WhatsApp de por medio.
+  if (req.body && req.body.modo === 'aviso') {
+    const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim(), chatId = String(process.env.TELEGRAM_CHAT_ID || '').trim();
+    const texto = String(req.body.texto || '').slice(0, 1500);
+    if (!token || !chatId || !texto) { res.status(400).json({ ok: false, error: 'Falta el texto o TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en Vercel.' }); return; }
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: texto }) });
+      const j = await r.json().catch(() => ({}));
+      res.status(j.ok ? 200 : 502).json({ ok: !!j.ok });
+    } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+    return;
+  }
+
   const botUrl = process.env.WA_BOT_URL;
   const botKey = process.env.WA_BOT_API_KEY;
   if (!botUrl || !botKey) {

@@ -51,15 +51,13 @@ const norm = s => (s || '').toLowerCase().trim();
 // "Novedades"; el panel las muestra y marca cuáles faltan por leer. Mejor esfuerzo: si falla, no
 // tumba el envío.
 async function agregarNovedad(tipo, titulo, detalle) {
+  // Ya no hay Bandeja: solo las alertas (algo falló) se mandan al Telegram; lo rutinario no avisa.
+  if (tipo !== 'alerta') return;
   try {
-    const sheet = 'Novedades';
-    let previas = [];
-    try { previas = (await (await fetch(`${SHEETS_API_URL}?sheet=${sheet}`)).json()).data || []; } catch (e) { return; }
-    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    const nueva = { id, tipo, titulo, detalle: detalle || '', createdAt: new Date().toISOString(), leido: false };
-    const todas = [nueva, ...previas].slice(0, 300);
-    await fetch(SHEETS_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ sheet, data: todas }) });
-  } catch (e) { console.error('No se pudo guardar la novedad:', e); }
+    const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim(), chatId = String(process.env.TELEGRAM_CHAT_ID || '').trim();
+    if (!token || !chatId) return;
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: `⚠️ ${titulo}${detalle ? '\n' + detalle : ''}` }) });
+  } catch (e) { console.error('No se pudo avisar por Telegram:', e.message); }
 }
 
 

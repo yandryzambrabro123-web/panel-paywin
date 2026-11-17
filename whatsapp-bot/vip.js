@@ -62,9 +62,9 @@ function diasRestantes(v, hoy) {
   return Math.ceil((new Date(d.toISOString().slice(0, 10)) - new Date(hoy)) / 86400000);
 }
 async function novedad(tipo, titulo, detalle) {
-  try {
-    await cambiarHojaSafe('Novedades', (filas) => [{ id: H.nuevoId(), tipo, titulo, detalle: detalle || '', createdAt: new Date().toISOString(), leido: false }, ...filas].slice(0, 300));
-  } catch (e) { console.error('No se pudo guardar la novedad VIP:', e.message); }
+  if (tipo !== 'alerta') return; // ya no hay Bandeja en el panel: solo las alertas llegan, por Telegram
+  try { await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: `⚠️ ${titulo}${detalle ? '\n' + detalle : ''}` }); }
+  catch (e) { console.error('No se pudo avisar la alerta VIP:', e.message); }
 }
 const cambiarHojaSafe = (hoja, fn) => H.cambiarHoja(hoja, fn);
 
