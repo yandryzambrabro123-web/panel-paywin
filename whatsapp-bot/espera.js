@@ -60,6 +60,29 @@ async function liberar(cq, tipo, id) {
   return marcar(cq, '🔓 Salió de espera: ya puede entrar');
 }
 
+
+// 🔄 Link nuevo: anula el link anterior del registro (si lo hay), crea otro de un solo uso y te lo manda.
+async function linkNuevo(cq, tipo, id) {
+  const clave = tipo === 's' ? 'stake' : tipo === 'r' ? 'regalito' : '';
+  if (!clave) return marcar(cq, '⚠️ Solo para stake y regalito');
+  const hoja = HOJAS[tipo];
+  const canales = require('./canales');
+  const reg = (await H.leerHoja(hoja)).find((f) => String(f.id) === String(id));
+  if (!reg) return marcar(cq, '⚠️ No encontré ese registro');
+  const c = await canales.canalDe(clave);
+  if (!c) return marcar(cq, '⚠️ Canal no configurado');
+  if (reg.linkUnico) await H.tg('revokeChatInviteLink', { chat_id: c.chatId, invite_link: reg.linkUnico }).catch(() => {});
+  const nombre = `${clave === 'stake' ? 'Stake' : 'Regalito'} nuevo ${reg.nombre || ''}`.trim();
+  const nuevo = await canales.linkUnico(clave, nombre);
+  if (!nuevo) return marcar(cq, '⚠️ No pude crear el link');
+  await H.cambiarHoja(hoja, (filas) => filas.map((f) => String(f.id) === String(id) ? { ...f, linkUnico: nuevo } : f));
+  const wa = canales.waLink(reg.telefono);
+  await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), parse_mode: 'HTML', disable_web_page_preview: true,
+    text: `🔄 <b>Link nuevo</b> para ${H.esc(`${reg.nombre || ''} ${reg.apellido || ''}`.trim() || 'cliente')} (${clave === 'stake' ? 'stake de pago' : 'regalito'})\nTeléfono: ${H.esc(reg.telefono || 'sin teléfono')}\n\nEl anterior quedó anulado. Este sirve a 1 sola persona:\n${nuevo}\n\nSi le sigue saliendo "expirado": en el canal revisa Administradores → Usuarios eliminados/bloqueados y desbloquéalo.`,
+    ...(wa ? { reply_markup: { inline_keyboard: [[{ text: '💬 Abrir su chat de WhatsApp', url: wa }]] } } : {}) });
+  return marcar(cq, '🔄 Link nuevo enviado');
+}
+
 function hace(iso) {
   const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
   if (!iso || isNaN(min)) return '';
@@ -92,6 +115,7 @@ async function mandarLista() {
     const texto = `${estado} — <b>${NOMBRE[tipo]}</b>\nNombre: <b>${H.esc(`${f.nombre || ''} ${f.apellido || ''}`.trim() || 'sin nombre')}</b>\nTeléfono: ${H.esc(f.telefono || 'sin teléfono')}\nHace: ${hace(f.createdAt) || '—'}`;
     const filas = [[{ text: '🔓 Sacar de espera y dar link', callback_data: `lb:${tipo}:${f.id}` }]];
     if (wa) filas.push([{ text: '💬 Abrir su chat de WhatsApp', url: wa }]);
+    if (tipo !== 'v') filas.push([{ text: '🔄 Link nuevo', callback_data: `nl:${tipo}:${f.id}` }]);
     await H.tg('sendMessage', { chat_id: H.TG_ADMIN(), parse_mode: 'HTML', text: texto, reply_markup: { inline_keyboard: filas } }).catch((e) => console.error('Lista de espera:', e.message));
     await new Promise((ok) => setTimeout(ok, 350));
   }
@@ -103,6 +127,10 @@ function montar(stakes) {
   H.manejadores.lb = async (cq, [tipo, id]) => {
     try { await liberar(cq, tipo, id); }
     catch (e) { console.error('Sacar de espera:', e.message); await marcar(cq, '⚠️ ' + e.message.slice(0, 120)); }
+  };
+  H.manejadores.nl = async (cq, [tipo, id]) => {
+    try { await linkNuevo(cq, tipo, id); }
+    catch (e) { console.error('Link nuevo:', e.message); await marcar(cq, '⚠️ ' + e.message.slice(0, 120)); }
   };
   H.hooks.push(async (u) => {
     const m = u.message;

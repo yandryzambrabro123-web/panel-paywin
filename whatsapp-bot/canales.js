@@ -114,6 +114,7 @@ async function avisarLinkAprobado(clave, hoja, reg, extra) {
     texto += `\nLink de un solo uso. Si no lo ve en pantalla, mándaselo tú:\n${unico}`;
     const teclado = [];
     if (wa) teclado.push([{ text: '💬 Abrir su chat de WhatsApp', url: wa }]);
+    teclado.push([{ text: '🔄 Link nuevo (si le sale expirado)', callback_data: `nl:${clave === 'stake' ? 's' : 'r'}:${fila.id}` }]);
     if (extra.foto) teclado.push([{ text: '🚫 Captura falsa: revocar su link', callback_data: `rv:${clave}:${fila.id}` }]);
     if (extra.foto) {
       const fd = new FormData();
