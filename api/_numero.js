@@ -2,7 +2,7 @@
 // Se cambia desde el panel (Win > Números) y vive en la hoja "WinNumeros" (una fila con estado "activo").
 // Si la hoja no se puede leer o no tiene ninguno activo, se usa el de siempre.
 const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbx63BsywQP0fTOhbzMCcoJ5jDjp1lgsaGjLMkGI47SVAfemVMuMnggWd_k-ubqzmBEMlA/exec';
-const NUMERO_POR_DEFECTO = '0987264212';
+const NUMERO_POR_DEFECTO = '0963966434';
 
 let cache = { at: 0, valor: NUMERO_POR_DEFECTO };
 async function numeroVigente() {

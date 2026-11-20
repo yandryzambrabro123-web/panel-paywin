@@ -36,9 +36,9 @@ const HOJA_CONFIG = 'ConfigVip';
 const CORTE_MS = 1792930800000; // mismo corte que el panel (PANEL_CORTE_MS en index.html)
 const PLAN_MESES = { mensual: 1, trimestral: 3, anual: 12 };
 // Mensaje de bienvenida que recibe por Telegram quien entra al grupo VIP (cámbialo aquí si quieres otro texto).
-const MENSAJE_VIP = (nombre) => `Hola${nombre ? ' ' + nombre : ''} 👋 ¡Bienvenido al grupo VIP!\n\nDesde hoy recibes aquí nuestras apuestas. Te pedimos apostar siempre con responsabilidad y solo lo que puedas permitirte perder.\n\nCualquier duda, escríbenos al 0987264212.`;
+const MENSAJE_VIP = (nombre) => `Hola${nombre ? ' ' + nombre : ''} 👋 ¡Bienvenido al grupo VIP!\n\nDesde hoy recibes aquí nuestras apuestas. Te pedimos apostar siempre con responsabilidad y solo lo que puedas permitirte perder.\n\nCualquier duda, escríbenos al 0963966434.`;
 // Número activo de la agencia: se cambia desde el panel (Win > Números) y se lee de la hoja WinNumeros cada 2 minutos.
-let TELEFONO_AGENCIA = '0987264212';
+let TELEFONO_AGENCIA = '0963966434';
 async function refrescarTelefonoAgencia() {
   try {
     const f = (await H.leerHoja('WinNumeros')).find((x) => String(x.estado) === 'activo');
