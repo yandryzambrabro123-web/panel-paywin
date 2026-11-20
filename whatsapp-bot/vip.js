@@ -314,7 +314,7 @@ async function enviarAlGrupoVip({ texto, imagenes, sinSeparador, tipo }) {
     if (!j.ok) throw new Error('Telegram sendPhoto: ' + (j.description || r.status));
     return j.result;
   };
-  const t = String(texto || '');
+  const t = await require('./numero').alVigente(String(texto || '')); // seguro del número: nunca sale uno bloqueado
   if (fotos.length === 1 && t.length <= 1000) { await subir(fotos[0], t); if (!sinSeparador) await mandarSeparadorVip(chat_id, tipo); return; }
   for (const f of fotos) await subir(f, '');
   if (t) await H.tg('sendMessage', { chat_id, text: aHtmlTelegram(t), parse_mode: 'HTML' });
@@ -362,7 +362,7 @@ async function enviarAvisosFaltantes() {
 
 function montar(app, stakes, extra) {
   H = stakes;
-  refrescarTelefonoAgencia(); setInterval(refrescarTelefonoAgencia, 2 * 60 * 1000);
+  refrescarTelefonoAgencia(); setInterval(refrescarTelefonoAgencia, 20 * 1000);
   const requireApiKey = (extra && extra.requireApiKey) || ((req, res) => res.status(500).json({ error: 'Sin clave configurada.' }));
 
   // El panel (a través de Vercel) llama a este endpoint con la clave del bot.

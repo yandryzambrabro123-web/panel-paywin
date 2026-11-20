@@ -382,7 +382,8 @@ app.post('/enviar-multiple', requireApiKey, async (req, res) => {
     }
     if (texto) {
       await pausaHumana();
-      await sock.sendMessage(grupoId, { text: texto });
+      const textoFinal = /@(g\.us|newsletter)$/.test(String(grupoId)) ? await require('./numero').alVigente(texto) : texto; // mismo seguro del número que /enviar
+      await sock.sendMessage(grupoId, { text: textoFinal });
     }
     await mandarSeparador(grupoId);
     res.json({ ok: true });
