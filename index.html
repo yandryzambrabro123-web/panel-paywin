@@ -1059,7 +1059,6 @@
     <div class="nav-item active" data-view="dashboard" title="Inicio"><span class="nav-icon" data-ico="dashboard"></span><span class="nav-label">Inicio</span></div>
     <div class="nav-item" data-view="win" title="Win"><span class="nav-icon" data-ico="win"></span><span class="nav-label">Win</span></div>
     <div class="nav-item" data-view="inbox" title="Mensajes por mandar a mano" style="display:none;"><span class="nav-icon" data-ico="bandeja"></span><span class="nav-label">Por mandar</span><span class="nav-alert" id="navAlert-inbox" style="display:none;"></span></div>
-    <div class="nav-item" data-view="reminders" title="Citas y recordatorios"><span class="nav-icon" data-ico="agenda"></span><span class="nav-label">Agenda</span><span class="nav-alert" id="navAlert-reminders" style="display:none;"></span></div>
     <div class="nav-item" data-view="vips" title="Miembros"><span class="nav-icon" data-ico="miembros"></span><span class="nav-label">Miembros</span><span class="nav-alert" id="navAlert-vips" style="display:none;"></span></div>
     <div class="nav-item" data-view="freeBets" title="Gratis"><span class="nav-icon" data-ico="gratis"></span><span class="nav-label">Gratis</span></div>
     <div class="nav-item" data-view="vipBets" title="VIP"><span class="nav-icon" data-ico="vip"></span><span class="nav-label">VIP</span></div>
@@ -9547,7 +9546,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#b2aa99; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '22 nov, 15:40';
+const PANEL_VERSION = '22 nov, 15:55';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
