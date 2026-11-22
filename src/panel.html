@@ -5440,9 +5440,9 @@ function getCheckedWinGroups(idPrefix){
 
 // Destinos fijos: el botón que aprietas ya decide a dónde va y cómo se registra (no se pregunta).
 const WIN_FIJO = {
-  vip:    { titulo:'Apuesta VIP',    grupos:['VIP'], tipo:'vipBets', nota:'Va al grupo VIP (Telegram) y se registra como Apuesta VIP.' },
-  gratis: { titulo:'Apuesta gratis', grupos:['Gratis 1','Gratis 2','Gratis 3'], tipo:'freeBets', nota:'Va a los grupos Gratis 1, 2 y 3 y se registra como Apuesta gratis.' },
-  live:   { titulo:'Apuesta live',   grupos:['Gratis 1','Gratis 2','Gratis 3'], tipo:'liveBets', blur:true, nota:'La captura se difumina por completo. Va a los grupos Gratis 1, 2 y 3 y se registra como Apuesta Live.' }
+  vip:    { titulo:'Apuesta VIP',    grupos:['VIP'], tipo:'vipBets', nota:'Va al grupo VIP (Telegram) (la registras tú con el botón).' },
+  gratis: { titulo:'Apuesta gratis', grupos:['Gratis 1','Gratis 2','Gratis 3'], tipo:'freeBets', nota:'Va a los grupos Gratis 1, 2 y 3 (la registras tú con el botón).' },
+  live:   { titulo:'Apuesta live',   grupos:['Gratis 1','Gratis 2','Gratis 3'], tipo:'liveBets', blur:true, nota:'La captura se difumina por completo. Va a los grupos Gratis 1, 2 y 3 (la registras tú con el botón).' }
 };
 function openWinBetForm(kind, destinoGuess, fijo){
   const isGanada = kind === 'ganada';
@@ -7562,6 +7562,12 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   const canalHoy = (kind === 'stake_pago' || kind === 'regalito') ? winCanalHoyGet(kind) : null;
   const canalHoyOk = canalHoy && canalHoy.day === new Date(Date.now() - 5*3600e3).toISOString().slice(0,10);
   const canalBtnHTML = canalHoyOk ? `<button class="btn secondary" id="winMandarCanalBtn" style="width:100%; margin-bottom:8px;">Mandar al canal de hoy ("${esc(canalHoy.nombre)}")</button>` : '';
+  const regTipoDef = (kind === 'nueva_apuesta') ? winRegistroDefault(kind, grupos) : '';
+  const regManualOn = kind === 'nueva_apuesta' && !(winPreset && winPreset.tipo === 'none');
+  const regManualHTML = regManualOn ? `<div style="border:1px solid var(--accent); border-radius:14px; padding:12px; margin:6px 0 12px;">
+      ${regTipoDef ? '' : `<select id="f-winRegTipo" style="width:100%; margin-bottom:8px;"><option value="vipBets">Apuesta VIP</option><option value="freeBets">Apuesta gratis</option><option value="liveBets">Apuesta live</option></select>`}
+      <button class="btn" type="button" id="winRegManualBtn" style="width:100%;">📋 Registrar apuesta en el panel${regTipoDef ? ' (' + ({ vipBets:'VIP', freeBets:'Gratis', liveBets:'Live' }[regTipoDef] || '') + ')' : ''}</button>
+    </div>` : '';
   if(kind === 'ganada'){
     const kp = (winPreset && winPreset.ganada) ? String(winPreset.ganada).split('|')[0] : winKeyGanadaDeGrupos(grupos);
     caption = winTituloGanadaTexto(caption, kp);
@@ -7574,15 +7580,38 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
     ${kind === 'ganada' ? `<div class="field">
       <label style="display:flex; gap:8px; align-items:center; font-size:13px; margin-top:10px; cursor:pointer;"><input type="checkbox" id="f-winGuardarGanada"> 📌 Guardarla también para publicarla mañana (ganadas de ayer)</label>
       <button class="btn secondary" type="button" id="winGuardarGanadaBtn" style="width:100%; margin-top:8px; font-size:12.5px;">📌 Solo guardar para mañana (sin mandar hoy)</button>
-    </div>` : (kind === 'nueva_apuesta' ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel según el grupo al que la mandes (VIP → Apuesta VIP, Gratis → Apuesta gratis), con la foto y el texto.</div>` : (WIN_AUTO_REG[kind] ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel (${WIN_AUTO_REG[kind].etiqueta}) al mandarla, con la foto y el texto.</div>` : ''))}
+    </div>` : (kind === 'nueva_apuesta' ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Esta apuesta NO se registra sola: cuando termines de mandarla, toca «Registrar apuesta en el panel» (abajo).</div>` : (WIN_AUTO_REG[kind] ? `<div style="font-size:12px; color:var(--muted); margin:0 0 12px;">📋 Se registra sola en el panel (${WIN_AUTO_REG[kind].etiqueta}) al mandarla, con la foto y el texto.</div>` : ''))}
     <div style="font-size:12px; color:var(--muted); margin:2px 0 14px;">Los grupos con bot conectado se mandan solos en un toque. Los demás copian el texto y abren el chat para pegar y enviar.</div>
     ${groupButtonsHTML}
     ${canalBtnHTML}
+    ${regManualHTML}
     <div class="modal-actions">
       <button class="btn secondary" id="winCaptionDoneBtn">Listo, cerrar</button>
     </div>
   `);
-  document.getElementById('winCaptionDoneBtn').onclick = ()=>{ closeModal(); renderWin(); };
+  let winRegManualHecho = false, winMandoAlgo = false;
+  document.getElementById('winCaptionDoneBtn').onclick = ()=>{
+    if(regManualOn && winMandoAlgo && !winRegManualHecho && !confirm('Mandaste la apuesta pero NO la has registrado en el panel. ¿Cerrar sin registrarla?')) return;
+    closeModal(); renderWin();
+  };
+  const regBtn = document.getElementById('winRegManualBtn');
+  if(regBtn) regBtn.onclick = async ()=>{
+    if(winRegManualHecho) return;
+    const selT = document.getElementById('f-winRegTipo');
+    const tipo = regTipoDef || (selT && selT.value) || '';
+    if(!tipo) return alert('Elige si es VIP, gratis o live.');
+    const box = document.getElementById('f-winCaptionConfirm');
+    const texto = winCaptionDestino((box && box.value.trim()) || caption, (grupos && grupos[0]) || '');
+    regBtn.disabled = true; regBtn.textContent = 'Registrando…';
+    try{
+      await winRegistrarEnPanel(tipo, texto, sendImage);
+      winRegManualHecho = true;
+      regBtn.textContent = 'Registrada en el panel ✓'; regBtn.classList.add('secondary');
+    }catch(e){
+      console.error(e); regBtn.disabled = false; regBtn.textContent = '📋 Registrar apuesta en el panel';
+      alert('No se pudo registrar: ' + e.message);
+    }
+  };
   const winPonerTituloGanada = ()=>{
     const sel = document.getElementById('f-winGanadaBet'), box = document.getElementById('f-winCaptionConfirm');
     if(!sel || !box || !sel.value) return;
@@ -7640,20 +7669,7 @@ function openWinCaptionConfirm(kind, grupos, caption, thumb, sendImage, redactCt
   const winRegistrarSiToca = async (texto, grupoEnviado)=>{
     await winGuardarGanadaSiToca(texto);
     await winAutoGuardarGanada(texto, grupoEnviado);
-    if(kind === 'nueva_apuesta'){ // automático: el grupo al que la mandas decide dónde se registra
-      let tipo = '';
-      if(winPreset && winPreset.tipo === 'none') tipo = '';
-      else if(winPreset && winPreset.tipo === 'liveBets') tipo = 'liveBets';
-      else if(/vip/i.test(grupoEnviado||'')) tipo = 'vipBets';
-      else if(/gratis/i.test(grupoEnviado||'')) tipo = 'freeBets';
-      else if(winPreset && winPreset.tipo) tipo = winPreset.tipo;
-      if(!tipo && !(winPreset && winPreset.tipo === 'none')){ alert(`⚠️ Esta apuesta se mandó a "${grupoEnviado}" pero NO se registró: no sé si es VIP o Gratis. Regístrala a mano en el panel.`); return; }
-      if(!tipo || winRegistradoTipos.has(tipo)) return;
-      winRegistradoTipos.add(tipo);
-      try{ await winRegistrarEnPanel(tipo, texto, sendImage); }
-      catch(e){ winRegistradoTipos.delete(tipo); console.error(e); alert('Se mandó, pero no pude registrarlo en el panel. Regístralo a mano.'); }
-      return;
-    }
+    if(kind === 'nueva_apuesta'){ winMandoAlgo = true; return; } // las apuestas ya NO se registran solas: las registras tú con el botón «Registrar apuesta en el panel»
     if(kind === 'ganada') return; // las ganadas NO se marcan solas: las pones tú a mano en el panel
     if(winRegistrado) return;
     const gan = document.getElementById('f-winGanadaBet');
@@ -9542,7 +9558,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '22 nov, 16:05';
+const PANEL_VERSION = '22 nov, 16:35';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
