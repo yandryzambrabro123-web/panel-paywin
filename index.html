@@ -9547,7 +9547,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#b2aa99; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '22 nov, 15:10';
+const PANEL_VERSION = '22 nov, 15:40';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
@@ -9639,6 +9639,20 @@ const PANEL_VERSION = '22 nov, 15:10';
     const G = grupos.reduce((s, g)=>s + g.gan, 0), P = grupos.reduce((s, g)=>s + g.per, 0), pct = (G + P) ? Math.round(G * 100 / (G + P)) : null;
     const circ = 2 * Math.PI * 52, dash = pct == null ? 0 : (pct / 100) * circ;
 
+  // El "pick" a veces trae el mensaje completo de WhatsApp: se resume a una línea corta (boleto + cuota) para que el resultado siempre se vea.
+  const limpiar = (t)=>String(t || '').replace(/[*_~`]/g, '').replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').replace(/\s+/g, ' ').trim();
+  const resumen = (pick, odds)=>{
+    const t = limpiar(pick);
+    const bol = /BOLETO:?\s*([A-Z0-9]{4,8})/i.exec(t);
+    const cu = /CUOTA TOTAL:?\s*([0-9]+(?:[.,][0-9]+)?)/i.exec(t);
+    const o = Number(odds) > 0 ? Number(odds) : (cu ? Number(cu[1].replace(',', '.')) : 0);
+    let titulo = t;
+    if(/NUEVA APUESTA/i.test(t) || t.length > 60){
+      const tipo = /REGALITO/i.test(t) ? 'Regalito' : /VIP/i.test(t) ? 'Apuesta VIP' : /LIVE/i.test(t) ? 'Apuesta live' : /GRATIS/i.test(t) ? 'Apuesta gratis' : 'Apuesta';
+      titulo = tipo + (bol ? ' · boleto ' + bol[1].toUpperCase() : '');
+    }
+    return { titulo: titulo.length > 46 ? titulo.slice(0, 45) + '…' : titulo, odds: o };
+  };
     const recientes = [].concat(
       (state.vipBets || []).map((b)=>({ ...b, _t:'VIP' })), (state.freeBets || []).map((b)=>({ ...b, _t:'Gratis' })), (state.liveBets || []).map((b)=>({ ...b, _t:'Live' }))
     ).sort((a, b)=>new Date(b.date) - new Date(a.date)).slice(0, 6);
@@ -9692,11 +9706,11 @@ const PANEL_VERSION = '22 nov, 15:10';
       <div class="pm-row">
         <div class="card">
           <div class="card-title">Últimas apuestas</div>
-          ${recientes.length ? `<div class="pm-list">${recientes.map((b)=>`<div class="pm-li"><div class="pm-av" style="font-size:11px;">${E(b._t)}</div><div style="min-width:0;"><div class="n" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${E(b.pick || '-')}</div><div class="m">${E(b.event || '')} · cuota <span class="pm-num">${Number(b.odds || 0).toFixed(2)}</span> · ${E(fmtDate(b.date))}</div></div><div class="r"><span class="badge ${E(b.result)}">${E(resultLabel(b.result))}</span></div></div>`).join('')}</div>` : '<div class="pm-empty">Aún no hay apuestas registradas.</div>'}
+          ${recientes.length ? `<div class="pm-list">${recientes.map((b)=>{ const rs = resumen(b.pick, b.odds); return `<div class="pm-li"><div class="pm-av" style="font-size:11px;">${E(b._t)}</div><div class="pm-mid"><div class="n">${E(rs.titulo || '-')}</div><div class="m">${b.event && limpiar(b.event).length < 60 ? E(limpiar(b.event)) + ' · ' : ''}${rs.odds ? 'cuota <span class="pm-num">' + rs.odds.toFixed(2) + '</span> · ' : ''}${E(fmtDate(b.date))}</div></div><div class="r"><span class="badge ${E(b.result)}">${E(resultLabel(b.result))}</span></div></div>`; }).join('')}</div>` : '<div class="pm-empty">Aún no hay apuestas registradas.</div>'}
         </div>
         <div class="card">
           <div class="card-title">Últimos regalitos</div>
-          ${regRec.length ? `<div class="pm-list">${regRec.map((g)=>`<div class="pm-li"><div class="pm-av">🎁</div><div style="min-width:0;"><div class="n" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${E(g.pick)}</div><div class="m">${E(g.recipient || 'Grupo general')} · cuota <span class="pm-num">${Number(g.odds || 0).toFixed(2)}</span> · ${E(fmtDate(g.date))}</div></div></div>`).join('')}</div>` : '<div class="pm-empty">Aún no has registrado regalitos.</div>'}
+          ${regRec.length ? `<div class="pm-list">${regRec.map((g)=>{ const rs = resumen(g.pick, g.odds); return `<div class="pm-li"><div class="pm-av">🎁</div><div class="pm-mid"><div class="n">${E(rs.titulo)}</div><div class="m">${E(g.recipient || 'Grupo general')} · ${rs.odds ? 'cuota <span class="pm-num">' + rs.odds.toFixed(2) + '</span> · ' : ''}${E(fmtDate(g.date))}</div></div>${g.result ? `<div class="r"><span class="badge ${E(g.result)}">${E(resultLabel(g.result))}</span></div>` : ''}</div>`; }).join('')}</div>` : '<div class="pm-empty">Aún no has registrado regalitos.</div>'}
         </div>
       </div>`;
     etiquetar(document.getElementById('main'));
@@ -9852,6 +9866,13 @@ tr{ transition:background .15s; } tbody tr:hover{ background:rgba(255,255,255,.0
 .ftab-panel{ border-top:1px solid var(--pm-line) !important; }
 .fstep span{ background:var(--gold) !important; }
 @media (max-width:640px){ .win-quick-btn{ font-size:12.5px !important; padding:8px 12px !important; } .win-qgrid{ gap:10px !important; } }
+
+/* filas de resumen: el texto se recorta y el resultado siempre queda a la vista */
+.pm-li{ min-width:0; }
+.pm-li .pm-mid{ flex:1 1 auto; min-width:0; }
+.pm-li .pm-mid .n,.pm-li .pm-mid .m{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pm-li .r{ flex:none; }
+.pm-av{ flex:none; }
 
 </style>
 </body>

@@ -140,3 +140,10 @@ tr{ transition:background .15s; } tbody tr:hover{ background:rgba(255,255,255,.0
 .ftab-panel{ border-top:1px solid var(--pm-line) !important; }
 .fstep span{ background:var(--gold) !important; }
 @media (max-width:640px){ .win-quick-btn{ font-size:12.5px !important; padding:8px 12px !important; } .win-qgrid{ gap:10px !important; } }
+
+/* filas de resumen: el texto se recorta y el resultado siempre queda a la vista */
+.pm-li{ min-width:0; }
+.pm-li .pm-mid{ flex:1 1 auto; min-width:0; }
+.pm-li .pm-mid .n,.pm-li .pm-mid .m{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pm-li .r{ flex:none; }
+.pm-av{ flex:none; }
