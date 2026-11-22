@@ -145,7 +145,9 @@
           <div class="card-title">Últimos regalitos</div>
           ${regRec.length ? `<div class="pm-list">${regRec.map((g)=>{ const rs = resumen(g.pick, g.odds); return `<div class="pm-li"><div class="pm-av">🎁</div><div class="pm-mid"><div class="n">${E(rs.titulo)}</div><div class="m">${E(g.recipient || 'Grupo general')} · ${rs.odds ? 'cuota <span class="pm-num">' + rs.odds.toFixed(2) + '</span> · ' : ''}${E(fmtDate(g.date))}</div></div>${g.result ? `<div class="r"><span class="badge ${E(g.result)}">${E(resultLabel(g.result))}</span></div>` : ''}</div>`; }).join('')}</div>` : '<div class="pm-empty">Aún no has registrado regalitos.</div>'}
         </div>
-      </div>`;
+      </div>
+      <div style="text-align:center; margin:26px 0 90px;"><button type="button" class="btn secondary" id="pmBorrarHist" style="font-size:12px; opacity:.7;">🗑 Borrar historial de apuestas</button></div>`;
+    const bb = document.getElementById('pmBorrarHist'); if(bb) bb.onclick = ()=>borrarHistorialApuestas();
     etiquetar(document.getElementById('main'));
   };
 

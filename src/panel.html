@@ -1407,6 +1407,50 @@ async function persist(key, options = {}){
   }
 }
 
+// Borrar el historial de apuestas (VIP, gratis, live y ganadas guardadas): primero baja una copia CSV de todo, pide escribir BORRAR y luego vacía las hojas.
+async function borrarHistorialApuestas(){
+  const claves = ['vipBets','freeBets','liveBets','winGanadas'];
+  const nombres = { vipBets:'Apuestas VIP', freeBets:'Apuestas gratis', liveBets:'Apuestas live', winGanadas:'Ganadas guardadas' };
+  if(!confirm('Vas a BORRAR TODO el historial de apuestas (VIP, gratis, live y ganadas guardadas), incluido lo que ya no se ve por el corte.\n\nPrimero se descarga una copia en CSV. ¿Continuar?')) return;
+  const datos = {};
+  try{
+    for(const k of claves){
+      const r = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[k]}`);
+      datos[k] = (await r.json()).data || [];
+    }
+  }catch(e){ return alert('No pude leer el Excel para hacer la copia, así que NO borré nada. Intenta otra vez.'); }
+  const total = claves.reduce((n, k)=>n + datos[k].length, 0);
+  if(!total) return alert('No hay apuestas guardadas: ya está vacío.');
+  // copia de seguridad en un solo CSV
+  const cab = Array.from(new Set(['hoja'].concat(...claves.map(k=>datos[k].flatMap(x=>Object.keys(x))))));
+  const filas = claves.flatMap(k=>datos[k].map(x=>Object.assign({ hoja: nombres[k] }, x)));
+  const csv = [cab.join(',')].concat(filas.map(r=>cab.map(h=>`"${String(r[h] ?? '').replace(/"/g,'""')}"`).join(','))).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type:'text/csv;charset=utf-8;' }));
+  a.download = `copia_apuestas_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  const txt = prompt(`Se descargó la copia (${total} registros: ${claves.map(k=>nombres[k] + ' ' + datos[k].length).join(', ')}).\n\nPara borrar todo escribe BORRAR:`);
+  if(!txt || txt.trim().toUpperCase() !== 'BORRAR') return alert('Cancelado: no se borró nada.');
+  const quedan = [];
+  for(const k of claves){
+    try{
+      await fetch(SHEETS_API_URL, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify({ sheet: SHEET_NAMES[k], data: [] }) });
+    }catch(e){ quedan.push(nombres[k]); }
+  }
+  await new Promise(r=>setTimeout(r, 2500));
+  for(const k of claves){
+    try{
+      const r = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[k]}`);
+      const n = ((await r.json()).data || []).length;
+      if(n > 0 && !quedan.includes(nombres[k])) quedan.push(`${nombres[k]} (${n})`);
+      else if(n === 0) state[k] = [];
+      cacheGuardar(k);
+    }catch(e){}
+  }
+  try{ localStorage.removeItem('winPendReg'); }catch(e){}
+  render();
+  alert(quedan.length ? `Se borró casi todo, pero estas hojas todavía tienen datos: ${quedan.join(', ')}.\nAvísame y las vacío de otra forma. La copia CSV ya está descargada.` : 'Listo: historial de apuestas borrado. La copia CSV quedó en tus descargas.');
+}
+
 function exportCSV(key){
   const rows = state[key];
   if(!rows.length){ alert('No hay datos para exportar todavía.'); return; }
@@ -9558,7 +9602,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '22 nov, 16:45';
+const PANEL_VERSION = '22 nov, 17:00';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
