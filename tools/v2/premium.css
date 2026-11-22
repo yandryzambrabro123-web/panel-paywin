@@ -113,3 +113,30 @@ tr{ transition:background .15s; } tbody tr:hover{ background:rgba(255,255,255,.0
   #main table:not(.keep-table) td:not([data-l])::before, #main table:not(.keep-table) td[data-l='']::before{ display:none; }
 }
 @media (prefers-reduced-motion: reduce){ .loading,#main.view-enter{ animation:none !important; } }
+
+/* ===== Un solo dorado en todo el panel ===== */
+.day-tab{ border-radius:999px !important; border:1px solid var(--pm-line) !important; background:rgba(255,255,255,.035) !important; color:var(--muted) !important; padding:8px 14px !important; font-weight:600; white-space:nowrap; }
+.day-tab:hover{ border-color:rgba(217,178,107,.45) !important; color:var(--text) !important; }
+.day-tab.active{ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo)) !important; color:#1A1306 !important; border-color:transparent !important; box-shadow:0 8px 20px -10px rgba(217,178,107,.7); }
+.day-tab .day-tab-sub{ margin-left:6px; opacity:.75; font-weight:500; font-size:.92em; }
+/* secciones del stake: pocas a la vista, el resto en un menú */
+.sec-tabs{ align-items:center; gap:8px; flex-wrap:nowrap !important; overflow-x:auto; padding-bottom:6px; scrollbar-width:none; }
+.sec-tabs::-webkit-scrollbar{ display:none; }
+.sec-tabs .day-tab{ flex:none; }
+.sec-more{ flex:none; width:auto !important; max-width:230px; padding:8px 14px !important; border-radius:999px !important; background:rgba(217,178,107,.12) !important; border:1px solid rgba(217,178,107,.45) !important; color:var(--gold-hi) !important; font-weight:700; cursor:pointer; }
+.sec-more option,.sec-more optgroup{ background:#10151D; color:#EEF1F6; }
+
+/* ===== Win con el mismo look premium ===== */
+.win-qg{ --c:#D9B26B !important; background:linear-gradient(180deg, rgba(27,34,47,.7), rgba(14,18,26,.7)) !important; border:1px solid var(--pm-line) !important; border-radius:20px !important; padding:14px 14px 16px !important; box-shadow:0 18px 40px -24px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.04) inset; -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); }
+.win-qg-t{ font-family:var(--display); font-size:13px !important; font-weight:600 !important; color:var(--gold-hi) !important; letter-spacing:0; }
+.win-quick-btn{ border-radius:999px !important; border:1px solid var(--pm-line) !important; background:rgba(255,255,255,.04) !important; color:var(--text) !important; font:600 13px var(--body) !important; padding:9px 15px !important; }
+.win-quick-btn svg,.win-qg .win-quick-btn svg{ color:var(--gold) !important; }
+.win-quick-btn:hover{ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo)) !important; color:#1A1306 !important; border-color:transparent !important; box-shadow:0 10px 22px -12px rgba(217,178,107,.8) !important; transform:translateY(-1px); }
+.win-quick-btn:hover svg{ color:#1A1306 !important; }
+.win-power-btn{ border-radius:999px !important; font-family:var(--body) !important; font-weight:700 !important; }
+.win-status,.win-live-transcript{ font-family:var(--body) !important; }
+.win-type-toggle{ border-radius:999px !important; font-family:var(--body) !important; }
+.ftab{ --c:#D9B26B !important; border-radius:999px !important; }
+.ftab-panel{ border-top:1px solid var(--pm-line) !important; }
+.fstep span{ background:var(--gold) !important; }
+@media (max-width:640px){ .win-quick-btn{ font-size:12.5px !important; padding:8px 12px !important; } .win-qgrid{ gap:10px !important; } }

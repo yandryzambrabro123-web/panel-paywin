@@ -6,11 +6,14 @@
 <title>Panel Administración Pay Win</title>
 <!-- Permite instalarlo en el celular (Agregar a pantalla de inicio) y que abra como app, sin barra de Safari -->
 <link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin>
-<meta name="theme-color" content="#0D1117">
+<meta name="theme-color" content="#06080C">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Win">
@@ -2294,6 +2297,40 @@ async function migrateStakeSales(){
   if(ok){ await persist('stakeSections'); await persist('stakeSales'); }
 }
 
+// Pestañas de secciones de stakes: solo las más recientes como botones y el resto en un menú agrupado por mes (así no se amontonan).
+const SEC_RECIENTES = 6;
+function secFechaCorta(d){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d||''));
+  const dt = m ? new Date(Number(m[1]), Number(m[2])-1, Number(m[3])) : new Date(d);
+  return isNaN(dt) ? '-' : dt.toLocaleDateString('es-EC', { day:'numeric', month:'short' });
+}
+function secEtiqueta(sec){
+  const t = String(sec.title||'').trim();
+  return (!t || /^stake( de pago)?\b/i.test(t)) ? secFechaCorta(sec.day) : (t.length > 22 ? t.slice(0,21) + '…' : t) + ' · ' + secFechaCorta(sec.day);
+}
+function stakeTabsHTML(sections, cur){
+  const rec = sections.slice(0, SEC_RECIENTES);
+  const viejas = sections.slice(SEC_RECIENTES);
+  if(cur && !rec.includes(cur)) rec.push(cur);
+  const chips = rec.map(sec=>`<div class="day-tab ${cur && sec.id===cur.id?'active':''}" data-section="${sec.id}" title="${String(sec.title||'').replace(/"/g,'&quot;')}">${secEtiqueta(sec)}<span class="day-tab-sub">· ${fmtMoney(sectionTotal(sec.id))}</span></div>`).join('');
+  let mas = '';
+  const resto = viejas.filter(sec=>!rec.includes(sec));
+  if(resto.length){
+    const meses = {};
+    resto.forEach(sec=>{ const m = String(sec.day||'').slice(0,7) || 'sin fecha'; (meses[m] = meses[m] || []).push(sec); });
+    const nombreMes = (m)=>{ const [a, mm] = m.split('-'); const d = new Date(Number(a), Number(mm)-1, 1); return isNaN(d) ? m : d.toLocaleDateString('es-EC', { month:'long', year:'numeric' }); };
+    mas = `<select class="sec-more" aria-label="Secciones anteriores"><option value="">Anteriores (${resto.length})</option>${Object.keys(meses).sort().reverse().map(m=>{
+      const tot = meses[m].reduce((x, sec)=>x + sectionTotal(sec.id), 0);
+      return `<optgroup label="${nombreMes(m)} · ${fmtMoney(tot)}">${meses[m].map(sec=>`<option value="${sec.id}">${secEtiqueta(sec)} · ${fmtMoney(sectionTotal(sec.id))}</option>`).join('')}</optgroup>`;
+    }).join('')}</select>`;
+  }
+  return `<div class="day-tabs sec-tabs">${chips}${mas}</div>`;
+}
+document.addEventListener('change', (e)=>{
+  const t = e.target;
+  if(t && t.classList && t.classList.contains('sec-more') && t.value){ state.stakeSectionId = t.value; renderStakeSales(); }
+});
+
 function renderStakeSales(){
   const readOnly = false; // el acceso de "socio" (Ayrton), que era el único en modo solo-lectura, ya no existe
   const sections = [...state.stakeSections].sort((a,b)=> new Date(b.day||0) - new Date(a.day||0));
@@ -2354,9 +2391,7 @@ function renderStakeSales(){
         ${cur ? '<button class="btn" id="addStakeSaleBtn">+ Registrar comprador</button>' : ''}`}
       </div>
     </div>
-    <div class="day-tabs">
-      ${sections.map(sec=>`<div class="day-tab ${cur && sec.id===cur.id?'active':''}" data-section="${sec.id}">${sec.title}<span class="day-tab-sub">· ${fmtDate(sec.day)} · ${fmtMoney(sectionTotal(sec.id))}</span></div>`).join('')}
-    </div>
+    ${stakeTabsHTML(sections, cur)}
     ${body}
   `;
 
@@ -3512,7 +3547,7 @@ function renderWin(){
             <button class="win-quick-btn" id="winQuickGanadaBtn" type="button">${winIcon('trofeo')}<span>Apuesta ganada</span></button>
           </div>
         </div>
-        <div class="win-qg" style="--c:#5aa9ff;">
+        <div class="win-qg" style="--c:#E6C068;">
           <div class="win-qg-t">Stakes y regalitos</div>
           <div class="win-qrow">
             <button class="win-quick-btn" id="winQuickStakeBtn" type="button">${winIcon('testimonio')}<span>Anuncio stake de pago</span></button>
@@ -3521,7 +3556,7 @@ function renderWin(){
             <button class="win-quick-btn" id="winQuickCanalRegBtn" type="button">${winIcon('regalo')}<span>Enviar pick del regalito al canal</span></button>
           </div>
         </div>
-        <div class="win-qg" style="--c:#b48cff;">
+        <div class="win-qg" style="--c:#E6C068;">
           <div class="win-qg-t">Comunidad</div>
           <div class="win-qrow">
             <button class="win-quick-btn" id="winQuickPartidosBtn" type="button">${winIcon('difusion')}<span>Publicidad del día</span></button>
@@ -8039,7 +8074,7 @@ function renderFactory(){
     </div>
     <div class="ftabs" id="ftabs" role="tablist">
       <button type="button" class="ftab" data-ftab-btn="armar" style="--c:#E6C068;"><span class="fi">⚡</span><span class="ft">Armar</span></button>
-      <button type="button" class="ftab" data-ftab-btn="reservadas" style="--c:#5aa9ff;"><span class="fi">📌</span><span class="ft">Reservadas</span><span class="fb" id="fbReservadas"></span></button>
+      <button type="button" class="ftab" data-ftab-btn="reservadas" style="--c:#E6C068;"><span class="fi">📌</span><span class="ft">Reservadas</span><span class="fb" id="fbReservadas"></span></button>
       <button type="button" class="ftab" data-ftab-btn="enviadas" style="--c:#4fd18b;"><span class="fi">✅</span><span class="ft">Enviadas</span><span class="fb" id="fbEnviadas"></span></button>
       <button type="button" class="ftab" data-ftab-btn="ganadas" style="--c:#ff9a4d;"><span class="fi">🏆</span><span class="ft">Ganadas</span><span class="fb" id="fbGanadas">${ganadas || ''}</span></button>
     </div>
@@ -8108,7 +8143,7 @@ function renderFactory(){
         <div id="payBandeja"></div>
         <div id="payOut" style="margin-top:14px;"></div>
       </div>
-      <div class="card ftab-panel" data-ftab="reservadas" style="grid-column:1/-1; --c:#5aa9ff;">
+      <div class="card ftab-panel" data-ftab="reservadas" style="grid-column:1/-1; --c:#E6C068;">
         <div class="card-title">📌 Reservadas para enviar</div>
         <div class="meta" style="color:var(--muted); font-size:13px; margin-bottom:12px;">Boletos que dejaste listos para más tarde. No se borran por nada: solo salen de aquí cuando tocas "Ya la utilicé".</div>
         <div id="payReservadas"></div>
@@ -9512,7 +9547,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '22 nov, 13:20';
+const PANEL_VERSION = '22 nov, 14:45';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
@@ -9529,5 +9564,295 @@ const PANEL_VERSION = '22 nov, 13:20';
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) revisar(); });
 })();
 </script>
+<script>
+/* ===== Pay Win Premium (/v2): dashboard nuevo, tablas en tarjetas para celular y app instalable ===== */
+(function(){
+  const E = (s)=>String(s == null ? '' : s).replace(/[&<>"']/g, (c)=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const DIA = 86400000;
+
+  // --- Tablas: cada celda lleva el nombre de su columna para verse como tarjeta en el celular ---
+  function etiquetar(root){
+    (root || document).querySelectorAll('#main table').forEach((t)=>{
+      const ths = Array.from(t.querySelectorAll('thead th')).map((h)=>h.textContent.trim());
+      if(!ths.length) return;
+      t.querySelectorAll('tbody tr').forEach((tr)=>{
+        Array.from(tr.children).forEach((td, i)=>{ if(td.tagName === 'TD' && !td.hasAttribute('data-l')) td.setAttribute('data-l', ths[i] || ''); });
+      });
+    });
+  }
+  const main = document.getElementById('main');
+  if(main){ new MutationObserver(()=>etiquetar(main)).observe(main, { childList:true, subtree:true }); }
+
+  // --- Dashboard ---
+  const semana = ()=>{ const r = getWeekRange(); return { ini:r.start.getTime(), fin:r.end.getTime() }; };
+  const enRango = (d, a, b)=>{ const t = new Date(d).getTime(); return t >= a && t <= b; };
+  function diasUltimos7(lista){
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const out = [0,0,0,0,0,0,0];
+    (lista || []).forEach((x)=>{ const d = new Date(x.date); if(isNaN(d)) return; d.setHours(0,0,0,0); const k = Math.round((hoy - d) / DIA); if(k >= 0 && k < 7) out[6 - k]++; });
+    return out;
+  }
+  function spark(vals, id){
+    const max = Math.max(1, ...vals), w = 120, h = 36, pad = 3;
+    const pts = vals.map((v, i)=>[ (i / (vals.length - 1)) * w, h - pad - (v / max) * (h - pad * 2) ]);
+    const linea = pts.map((p, i)=>(i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    return `<svg class="pm-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="g${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#D9B26B" stop-opacity=".35"/><stop offset="1" stop-color="#D9B26B" stop-opacity="0"/></linearGradient></defs>
+      <path d="${linea} L ${w} ${h} L 0 ${h} Z" fill="url(#g${id})"/><path d="${linea}" fill="none" stroke="#E7C98A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+  }
+  const delta = (act, prev)=>{
+    if(!act && !prev) return '<span class="pm-delta flat">sin cambios</span>';
+    if(prev === 0) return '<span class="pm-delta up">nuevo</span>';
+    const p = Math.round(((act - prev) / prev) * 100);
+    return `<span class="pm-delta ${p > 0 ? 'up' : p < 0 ? 'down' : 'flat'}">${p > 0 ? '+' : ''}${p}%</span>`;
+  };
+  function saludo(){
+    const h = new Date().getHours();
+    return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
+  }
+  const ir = (v)=>{ const el = document.querySelector(`.nav-item[data-view="${v}"]`); if(el) el.click(); };
+  window.pmIr = ir;
+
+  window.renderDashboard = function(){
+    const { ini, fin } = semana(), ini0 = ini - 7 * DIA;
+    const cuenta = (arr)=>({ act:arr.filter((x)=>enRango(x.date, ini, fin)).length, prev:arr.filter((x)=>enRango(x.date, ini0, ini - 1)).length });
+
+    // VIPs
+    let activos = 0, inactivos = 0; const porVencer = [];
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    (state.vips || []).forEach((v)=>{
+      if(effectiveStatus(v, 'vips') === 'active'){
+        activos++;
+        const exp = computeExpiration(v, 'vips');
+        if(exp){ const d = Math.ceil((new Date(exp) - new Date(hoyISO)) / DIA); if(d >= 0 && d <= 7) porVencer.push({ v, d }); }
+      } else inactivos++;
+    });
+    porVencer.sort((a, b)=>a.d - b.d);
+
+    const gratis = cuenta(state.freeBets), stakes = cuenta(state.stakes), regalos = cuenta(state.gifts);
+    const grupos = [
+      { n:'Gratis', a:state.freeBets }, { n:'VIP', a:state.vipBets }, { n:'Live', a:state.liveBets }, { n:'Stakes', a:state.stakes }
+    ].map((g)=>{
+      const sem = g.a.filter((x)=>enRango(x.date, ini, fin)), gan = sem.filter((x)=>x.result === 'won').length, per = sem.filter((x)=>x.result === 'lost').length;
+      return { n:g.n, gan, per, tot:sem.length, pct: (gan + per) ? Math.round(gan * 100 / (gan + per)) : null };
+    });
+    const G = grupos.reduce((s, g)=>s + g.gan, 0), P = grupos.reduce((s, g)=>s + g.per, 0), pct = (G + P) ? Math.round(G * 100 / (G + P)) : null;
+    const circ = 2 * Math.PI * 52, dash = pct == null ? 0 : (pct / 100) * circ;
+
+    const recientes = [].concat(
+      (state.vipBets || []).map((b)=>({ ...b, _t:'VIP' })), (state.freeBets || []).map((b)=>({ ...b, _t:'Gratis' })), (state.liveBets || []).map((b)=>({ ...b, _t:'Live' }))
+    ).sort((a, b)=>new Date(b.date) - new Date(a.date)).slice(0, 6);
+    const regRec = [...(state.gifts || [])].sort((a, b)=>new Date(b.date) - new Date(a.date)).slice(0, 4);
+
+    const kpi = (etq, val, sub, cls, id, vals)=>`<div class="card pm-kpi"><div class="l">${etq}</div><div class="v score-value ${cls || ''}">${val}</div><div class="s">${sub}</div>${vals ? spark(vals, id) : ''}</div>`;
+
+    document.getElementById('main').innerHTML = `
+      <div class="pm-head">
+        <div>
+          <div class="pm-hello">${saludo()}, <em>Yandry</em></div>
+          <div class="pm-date">${new Date().toLocaleDateString('es-EC', { weekday:'long', day:'numeric', month:'long' })} · resumen de la semana</div>
+        </div>
+        <div class="pm-actions">
+          <span class="pm-chip" onclick="pmIr('win')">✦ Win</span>
+          <span class="pm-chip" onclick="pmIr('freeBets')">Apuesta gratis</span>
+          <span class="pm-chip" onclick="pmIr('vipBets')">Apuesta VIP</span>
+          <span class="pm-chip" onclick="pmIr('vips')">Miembros</span>
+          <span class="pm-chip" onclick="pmIr('gifts')">Regalitos</span>
+        </div>
+      </div>
+
+      <div class="pm-kpis">
+        ${kpi('VIPs activos', activos, inactivos > 0 ? `<span class="pm-pill bad">${inactivos} vencido${inactivos > 1 ? 's' : ''}</span>` : '<span class="pm-delta up">todos al día</span>' + (porVencer.length ? `<span class="pm-pill warn">${porVencer.length} por vencer</span>` : ''), 'gold', 0, diasUltimos7((state.vips || []).map((v)=>({ date:v.joinDate }))))}
+        ${kpi('Apuestas gratis', gratis.act, delta(gratis.act, gratis.prev) + '<span>vs semana pasada</span>', '', 1, diasUltimos7(state.freeBets))}
+        ${kpi('Stakes', stakes.act, delta(stakes.act, stakes.prev) + '<span>vs semana pasada</span>', '', 2, diasUltimos7(state.stakes))}
+        ${kpi('Regalitos', regalos.act, delta(regalos.act, regalos.prev) + '<span>vs semana pasada</span>', 'gold', 3, diasUltimos7(state.gifts))}
+      </div>
+
+      <div class="pm-row">
+        <div class="card">
+          <div class="card-title">Rendimiento de la semana</div>
+          <div class="pm-perf">
+            <div class="pm-ring">
+              <svg viewBox="0 0 120 120"><defs><linearGradient id="pmr" x1="0" x2="1"><stop offset="0" stop-color="#B98A3E"/><stop offset="1" stop-color="#43D9A0"/></linearGradient></defs>
+                <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="9"/>
+                <circle cx="60" cy="60" r="52" fill="none" stroke="url(#pmr)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" ${pct == null ? 'opacity="0"' : ''}/></svg>
+              <div class="c"><b class="pm-num">${pct == null ? '—' : pct + '%'}</b><span>${G} ganadas · ${P} perdidas</span></div>
+            </div>
+            <div class="pm-bars">
+              ${grupos.map((g)=>`<div class="pm-bar"><div class="t"><span>${g.n}</span><b class="pm-num">${g.pct == null ? 'sin resultados' : g.pct + '% · ' + g.gan + '/' + (g.gan + g.per)}</b></div><div class="k"><i style="width:${g.pct == null ? 0 : g.pct}%"></i></div></div>`).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">VIP por vencer <span class="pm-pill ${porVencer.length ? 'warn' : ''}" style="margin-left:6px;">próximos 7 días</span></div>
+          ${porVencer.length ? `<div class="pm-list">${porVencer.slice(0, 6).map(({ v, d })=>`<div class="pm-li"><div class="pm-av">${E((v.name || '?').trim().charAt(0).toUpperCase())}</div><div><div class="n">${E(v.name || 'Sin nombre')}</div><div class="m">${E(v.contact || '')}</div></div><div class="r"><span class="pm-pill ${d <= 2 ? 'bad' : 'warn'}">${d === 0 ? 'vence hoy' : 'en ' + d + ' d'}</span></div></div>`).join('')}</div>` : '<div class="pm-empty">Nadie vence en los próximos 7 días.</div>'}
+        </div>
+      </div>
+
+      <div class="pm-row">
+        <div class="card">
+          <div class="card-title">Últimas apuestas</div>
+          ${recientes.length ? `<div class="pm-list">${recientes.map((b)=>`<div class="pm-li"><div class="pm-av" style="font-size:11px;">${E(b._t)}</div><div style="min-width:0;"><div class="n" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${E(b.pick || '-')}</div><div class="m">${E(b.event || '')} · cuota <span class="pm-num">${Number(b.odds || 0).toFixed(2)}</span> · ${E(fmtDate(b.date))}</div></div><div class="r"><span class="badge ${E(b.result)}">${E(resultLabel(b.result))}</span></div></div>`).join('')}</div>` : '<div class="pm-empty">Aún no hay apuestas registradas.</div>'}
+        </div>
+        <div class="card">
+          <div class="card-title">Últimos regalitos</div>
+          ${regRec.length ? `<div class="pm-list">${regRec.map((g)=>`<div class="pm-li"><div class="pm-av">🎁</div><div style="min-width:0;"><div class="n" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${E(g.pick)}</div><div class="m">${E(g.recipient || 'Grupo general')} · cuota <span class="pm-num">${Number(g.odds || 0).toFixed(2)}</span> · ${E(fmtDate(g.date))}</div></div></div>`).join('')}</div>` : '<div class="pm-empty">Aún no has registrado regalitos.</div>'}
+        </div>
+      </div>`;
+    etiquetar(document.getElementById('main'));
+  };
+
+  // --- App instalable: guarda el panel en el aparato para abrirlo al instante y sin conexión (solo lo visual) ---
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{ navigator.serviceWorker.register('/sw.js', { scope:'/' }).catch(()=>{}); });
+  }
+})();
+
+</script>
+<style id="premium">
+/* ===== Pay Win Premium (/v2): capa visual + dashboard nuevo. No cambia ninguna función del panel. ===== */
+:root{
+  --bg:#06080C; --surface:rgba(18,23,32,.72); --surface-2:rgba(26,33,45,.78); --border:rgba(255,255,255,.075);
+  --text:#EEF1F6; --muted:#8793A7;
+  --gold:#D9B26B; --gold-hi:#F4E1B0; --gold-lo:#B98A3E;
+  --accent:var(--gold); --accent-light:var(--gold-hi); --accent-dim:rgba(217,178,107,.16);
+  --win:#43D9A0; --win-dim:rgba(67,217,160,.14); --loss:#FF6B72; --loss-dim:rgba(255,107,114,.14); --pending:#F0BE4D;
+  --display:'Sora','Montserrat',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif;
+  --pm-line:rgba(255,255,255,.07); --pm-r:20px;
+}
+body{
+  background:
+    radial-gradient(900px 520px at 8% -8%, rgba(217,178,107,.17), transparent 62%),
+    radial-gradient(700px 480px at 104% 4%, rgba(70,110,200,.10), transparent 60%),
+    radial-gradient(800px 520px at 60% 112%, rgba(217,178,107,.09), transparent 62%),
+    var(--bg) !important;
+  background-attachment:fixed !important;
+  font-feature-settings:'cv11','ss01'; -webkit-font-smoothing:antialiased;
+}
+.mono,.score-value,td.mono,.pm-num{ font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+.page-title{ font-family:var(--display); text-transform:none !important; font-size:30px !important; font-weight:700 !important; letter-spacing:-.02em !important; }
+.page-sub{ font-size:13.5px !important; }
+
+/* tarjetas de cristal con filo dorado */
+.card,.finance-acc-card,.score-cell{
+  background:linear-gradient(180deg, rgba(27,34,47,.74), rgba(15,19,27,.74)) !important;
+  border:1px solid var(--pm-line) !important; border-radius:var(--pm-r) !important;
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 18px 40px -22px rgba(0,0,0,.75);
+  -webkit-backdrop-filter:blur(14px) saturate(1.3); backdrop-filter:blur(14px) saturate(1.3);
+  position:relative;
+}
+.card::before{ content:''; position:absolute; left:18px; right:18px; top:0; height:1px; background:linear-gradient(90deg, transparent, rgba(244,225,176,.38), transparent); pointer-events:none; }
+.card-title{ font-family:var(--display); text-transform:none !important; letter-spacing:0 !important; font-size:15px !important; color:var(--text) !important; font-weight:600 !important; }
+
+/* botones */
+.btn:not(.secondary):not(.danger){ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)) !important; color:#1A1306 !important; border:0 !important; font-weight:700; box-shadow:0 8px 22px -10px rgba(217,178,107,.7), 0 1px 0 rgba(255,255,255,.5) inset; transition:transform .15s, box-shadow .15s, filter .15s; }
+.btn:not(.secondary):not(.danger):hover{ transform:translateY(-1px); filter:brightness(1.05); }
+.btn:active{ transform:scale(.98); }
+.btn.secondary{ background:rgba(255,255,255,.04) !important; border:1px solid var(--pm-line) !important; color:var(--text) !important; }
+:focus-visible{ outline:2px solid var(--gold-hi); outline-offset:2px; border-radius:8px; }
+input,select,textarea{ border-radius:12px !important; }
+input:focus,select:focus,textarea:focus{ border-color:rgba(217,178,107,.55) !important; box-shadow:0 0 0 3px rgba(217,178,107,.14) !important; outline:none; }
+
+/* etiquetas de estado: verde para ganadas */
+.badge{ border-radius:999px; letter-spacing:.2px; }
+.badge.won,.badge.active{ background:var(--win-dim) !important; color:var(--win) !important; }
+.badge.lost{ background:var(--loss-dim) !important; color:var(--loss) !important; }
+.badge.pending{ background:rgba(240,190,77,.14) !important; color:var(--pending) !important; }
+table th{ font-size:10.5px !important; letter-spacing:.9px !important; }
+tr{ transition:background .15s; } tbody tr:hover{ background:rgba(255,255,255,.025); }
+
+/* dock */
+#sidebar{ -webkit-backdrop-filter:blur(26px) saturate(1.5); backdrop-filter:blur(26px) saturate(1.5); }
+.nav-item.active .nav-icon,.nav-item.active .nav-label{ text-shadow:0 0 18px rgba(244,225,176,.35); }
+
+/* carga con esqueleto */
+.loading{ color:transparent !important; position:relative; min-height:220px; border-radius:var(--pm-r); overflow:hidden; background:linear-gradient(100deg, rgba(255,255,255,.03) 20%, rgba(255,255,255,.08) 40%, rgba(255,255,255,.03) 60%) 0 0/220% 100%; animation:pmShimmer 1.3s linear infinite; }
+@keyframes pmShimmer{ to{ background-position:-220% 0; } }
+#main.view-enter{ animation:pmIn .28s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes pmIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+
+/* ===== Dashboard premium ===== */
+.pm-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+.pm-hello{ font-family:var(--display); font-size:30px; font-weight:700; letter-spacing:-.025em; line-height:1.1; }
+.pm-hello em{ font-style:normal; background:linear-gradient(90deg, var(--gold-hi), var(--gold)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.pm-date{ color:var(--muted); font-size:13.5px; margin-top:6px; } .pm-date::first-letter{ text-transform:uppercase; }
+.pm-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+.pm-chip{ display:inline-flex; align-items:center; gap:7px; padding:9px 14px; border-radius:999px; background:rgba(255,255,255,.045); border:1px solid var(--pm-line); color:var(--text); font-size:13px; font-weight:600; cursor:pointer; transition:background .15s, border-color .15s, transform .15s; }
+.pm-chip:hover{ background:rgba(217,178,107,.12); border-color:rgba(217,178,107,.4); transform:translateY(-1px); }
+.pm-kpis{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:16px; }
+.pm-kpi{ padding:18px 18px 14px; overflow:hidden; display:flex; flex-direction:column; min-height:168px; }
+.pm-kpi .l{ color:var(--muted); font-size:12.5px; font-weight:600; }
+.pm-kpi .v{ font-family:var(--display); font-size:34px; font-weight:700; letter-spacing:-.03em; margin:6px 0 2px; line-height:1.05; }
+.pm-kpi .v.gold{ background:linear-gradient(180deg, var(--gold-hi), var(--gold)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.pm-kpi .s{ color:var(--muted); font-size:12.5px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.pm-delta{ font-weight:700; font-size:12px; padding:2px 7px; border-radius:999px; }
+.pm-delta.up{ color:var(--win); background:var(--win-dim); } .pm-delta.down{ color:var(--loss); background:var(--loss-dim); } .pm-delta.flat{ color:var(--muted); background:rgba(255,255,255,.06); }
+.pm-spark{ display:block; width:100%; height:38px; margin-top:auto; padding-top:10px; box-sizing:content-box; }
+.pm-row{ display:grid; grid-template-columns:1.15fr 1fr; gap:14px; margin-bottom:16px; }
+.pm-perf{ display:flex; gap:22px; align-items:center; flex-wrap:wrap; }
+.pm-ring{ position:relative; width:132px; height:132px; flex:0 0 auto; }
+.pm-ring svg{ width:100%; height:100%; transform:rotate(-90deg); }
+.pm-ring .c{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.pm-ring .c b{ font-family:var(--display); font-size:28px; letter-spacing:-.03em; }
+.pm-ring .c span{ color:var(--muted); font-size:11.5px; }
+.pm-bars{ flex:1; min-width:200px; display:grid; gap:12px; }
+.pm-bar .t{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; color:var(--muted); } .pm-bar .t b{ color:var(--text); font-weight:600; }
+.pm-bar .k{ height:7px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.pm-bar .k i{ display:block; height:100%; border-radius:99px; background:linear-gradient(90deg, var(--gold-lo), var(--gold-hi)); }
+.pm-list{ display:grid; gap:2px; }
+.pm-li{ display:flex; align-items:center; gap:12px; padding:10px 8px; border-radius:12px; transition:background .15s; }
+.pm-li:hover{ background:rgba(255,255,255,.03); }
+.pm-av{ width:34px; height:34px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; font-weight:700; font-size:13px; color:#1A1306; background:linear-gradient(160deg, var(--gold-hi), var(--gold-lo)); }
+.pm-li .n{ font-weight:600; font-size:14px; } .pm-li .m{ color:var(--muted); font-size:12.5px; margin-top:1px; }
+.pm-li .r{ margin-left:auto; text-align:right; font-size:12.5px; white-space:nowrap; }
+.pm-empty{ color:var(--muted); font-size:13.5px; padding:18px 6px; text-align:center; border:1px dashed var(--pm-line); border-radius:14px; }
+.pm-pill{ font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:999px; }
+.pm-pill.warn{ color:var(--pending); background:rgba(240,190,77,.14); } .pm-pill.bad{ color:var(--loss); background:var(--loss-dim); }
+
+@media (max-width:980px){ .pm-kpis{ grid-template-columns:repeat(2,1fr); } .pm-row{ grid-template-columns:1fr; } }
+@media (max-width:640px){
+  .pm-hello,.page-title{ font-size:25px !important; }
+  .pm-kpi .v{ font-size:28px; }
+  .pm-ring{ width:124px; height:124px; } .pm-perf{ justify-content:center; } .pm-bars{ min-width:100%; } .pm-ring .c span{ font-size:10px; }
+  #main{ padding-bottom:140px !important; }
+  .pm-actions{ width:100%; overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; } .pm-actions::-webkit-scrollbar{ display:none; } .pm-chip{ flex:0 0 auto; }
+  /* tablas -> tarjetas (nada se sale de la pantalla) */
+  #main table:not(.keep-table), #main table:not(.keep-table) tbody, #main table:not(.keep-table) tr, #main table:not(.keep-table) td{ display:block; width:100%; }
+  #main table:not(.keep-table) thead{ display:none; }
+  #main table:not(.keep-table) tr{ padding:10px 14px; margin-bottom:10px; border:1px solid var(--pm-line); border-radius:14px; background:rgba(255,255,255,.025); }
+  #main table:not(.keep-table) td{ display:flex; justify-content:space-between; align-items:center; gap:14px; border:0 !important; padding:5px 0 !important; text-align:right; }
+  #main table:not(.keep-table) td::before{ content:attr(data-l); color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; text-align:left; flex:0 0 34%; }
+  #main table:not(.keep-table) td:not([data-l])::before, #main table:not(.keep-table) td[data-l='']::before{ display:none; }
+}
+@media (prefers-reduced-motion: reduce){ .loading,#main.view-enter{ animation:none !important; } }
+
+/* ===== Un solo dorado en todo el panel ===== */
+.day-tab{ border-radius:999px !important; border:1px solid var(--pm-line) !important; background:rgba(255,255,255,.035) !important; color:var(--muted) !important; padding:8px 14px !important; font-weight:600; white-space:nowrap; }
+.day-tab:hover{ border-color:rgba(217,178,107,.45) !important; color:var(--text) !important; }
+.day-tab.active{ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo)) !important; color:#1A1306 !important; border-color:transparent !important; box-shadow:0 8px 20px -10px rgba(217,178,107,.7); }
+.day-tab .day-tab-sub{ margin-left:6px; opacity:.75; font-weight:500; font-size:.92em; }
+/* secciones del stake: pocas a la vista, el resto en un menú */
+.sec-tabs{ align-items:center; gap:8px; flex-wrap:nowrap !important; overflow-x:auto; padding-bottom:6px; scrollbar-width:none; }
+.sec-tabs::-webkit-scrollbar{ display:none; }
+.sec-tabs .day-tab{ flex:none; }
+.sec-more{ flex:none; width:auto !important; max-width:230px; padding:8px 14px !important; border-radius:999px !important; background:rgba(217,178,107,.12) !important; border:1px solid rgba(217,178,107,.45) !important; color:var(--gold-hi) !important; font-weight:700; cursor:pointer; }
+.sec-more option,.sec-more optgroup{ background:#10151D; color:#EEF1F6; }
+
+/* ===== Win con el mismo look premium ===== */
+.win-qg{ --c:#D9B26B !important; background:linear-gradient(180deg, rgba(27,34,47,.7), rgba(14,18,26,.7)) !important; border:1px solid var(--pm-line) !important; border-radius:20px !important; padding:14px 14px 16px !important; box-shadow:0 18px 40px -24px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.04) inset; -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); }
+.win-qg-t{ font-family:var(--display); font-size:13px !important; font-weight:600 !important; color:var(--gold-hi) !important; letter-spacing:0; }
+.win-quick-btn{ border-radius:999px !important; border:1px solid var(--pm-line) !important; background:rgba(255,255,255,.04) !important; color:var(--text) !important; font:600 13px var(--body) !important; padding:9px 15px !important; }
+.win-quick-btn svg,.win-qg .win-quick-btn svg{ color:var(--gold) !important; }
+.win-quick-btn:hover{ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo)) !important; color:#1A1306 !important; border-color:transparent !important; box-shadow:0 10px 22px -12px rgba(217,178,107,.8) !important; transform:translateY(-1px); }
+.win-quick-btn:hover svg{ color:#1A1306 !important; }
+.win-power-btn{ border-radius:999px !important; font-family:var(--body) !important; font-weight:700 !important; }
+.win-status,.win-live-transcript{ font-family:var(--body) !important; }
+.win-type-toggle{ border-radius:999px !important; font-family:var(--body) !important; }
+.ftab{ --c:#D9B26B !important; border-radius:999px !important; }
+.ftab-panel{ border-top:1px solid var(--pm-line) !important; }
+.fstep span{ background:var(--gold) !important; }
+@media (max-width:640px){ .win-quick-btn{ font-size:12.5px !important; padding:8px 12px !important; } .win-qgrid{ gap:10px !important; } }
+
+</style>
 </body>
 </html>

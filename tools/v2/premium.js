@@ -137,6 +137,6 @@
 
   // --- App instalable: guarda el panel en el aparato para abrirlo al instante y sin conexión (solo lo visual) ---
   if('serviceWorker' in navigator){
-    window.addEventListener('load', ()=>{ navigator.serviceWorker.register('/v2/sw.js', { scope:'/v2/' }).catch(()=>{}); });
+    window.addEventListener('load', ()=>{ navigator.serviceWorker.register('/sw.js', { scope:'/' }).catch(()=>{}); });
   }
 })();
