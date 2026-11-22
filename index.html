@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin>
-<meta name="theme-color" content="#06080C">
+<meta name="theme-color" content="#0b0906">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Win">
@@ -24,12 +24,12 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap');
   :root{
-    --bg:#0D1117;
-    --surface:#161B22;
-    --surface-2:#1C2330;
-    --border:#2A3140;
-    --text:#E7ECF2;
-    --muted:#7C8798;
+    --bg:#16130d;
+    --surface:#221d15;
+    --surface-2:#2e281d;
+    --border:#413828;
+    --text:#efede9;
+    --muted:#988e7b;
     --accent:#D4AF6A;
     --accent-dim:#4A3A1F;
     --accent-light:#E8D4B0;
@@ -126,9 +126,9 @@
   .badge.won{background:var(--accent-dim); color:var(--accent);}
   .badge.lost{background:var(--loss-dim); color:#FF8A8E;}
   .badge.pending{background:#4A3B14; color:var(--pending);}
-  .badge.flag{background:#3A1F4A; color:#D9A6FF;}
-  .badge.combo{background:#1C2E4A; color:#8FC1FF;}
-  .badge.banco{background:#1C2E4A; color:#8FC1FF;}
+  .badge.flag{background:#3A1F4A; color:#eedeb6;}
+  .badge.combo{background:#524013; color:#e9d6a4;}
+  .badge.banco{background:#524013; color:#e9d6a4;}
   .badge.caja{background:#3A2E12; color:#E8B339;}
   .finance-acc-card{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; min-width:160px;}
   .finance-acc-card .acc-name{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; font-weight:700; margin-bottom:6px;}
@@ -587,13 +587,13 @@
   .win-brand::before, .win-brand::after{ content:''; width:54px; height:1px; background:linear-gradient(90deg, transparent, rgba(212,175,106,.7)); }
   .win-brand::after{ background:linear-gradient(270deg, transparent, rgba(212,175,106,.7)); }
   .win-brand-dot{ order:-1; margin-right:-4px; }
-  .win-status{ font-size:16px; color:rgba(231,236,242,.8); letter-spacing:.01em; margin-top:18px; }
+  .win-status{ font-size:16px; color:rgba(239,237,233,.8); letter-spacing:.01em; margin-top:18px; }
   .win-live-transcript{ font-family:var(--mono); font-size:12.5px; }
 
   /* Dock de cristal con iconos de línea (reemplaza los emojis) */
   .win-corner-icons{
     top:16px; right:18px; gap:2px; padding:6px; border-radius:18px; z-index:30;
-    background:linear-gradient(180deg, rgba(30,37,50,.74), rgba(14,18,26,.74));
+    background:linear-gradient(180deg, rgba(49,42,30,.74), rgba(24,21,15,.74));
     border:1px solid rgba(212,175,106,.24);
     -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
     box-shadow:0 14px 34px -14px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.06);
@@ -608,7 +608,7 @@
   .win-icon-btn::after{
     content:attr(data-label); position:absolute; top:calc(100% + 10px); left:50%; transform:translate(-50%,-4px);
     white-space:nowrap; font:500 12px var(--body); color:var(--text); padding:6px 10px; border-radius:8px;
-    background:rgba(10,13,19,.94); border:1px solid rgba(212,175,106,.3); opacity:0; pointer-events:none;
+    background:rgba(18,15,10,.94); border:1px solid rgba(212,175,106,.3); opacity:0; pointer-events:none;
     transition:opacity .15s ease, transform .15s ease;
   }
   .win-icon-btn:hover::after{ opacity:1; transform:translate(-50%,0); }
@@ -641,7 +641,7 @@
   .vip-act.danger:hover{ border-color:#ff8d8d; box-shadow:0 8px 18px -12px rgba(255,100,100,.9); }
   .vip-act:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .win-qgrid{ display:grid; grid-template-columns:repeat(3,auto); gap:12px; justify-content:center; margin-top:12px; width:100%; max-width:1040px; }
-  .win-qg{ --c:#E6C068; border:1px solid color-mix(in srgb, var(--c) 40%, transparent); background:color-mix(in srgb, var(--c) 8%, rgba(10,12,18,.65)); border-radius:16px; padding:10px 12px; text-align:left; }
+  .win-qg{ --c:#E6C068; border:1px solid color-mix(in srgb, var(--c) 40%, transparent); background:color-mix(in srgb, var(--c) 8%, rgba(17,14,10,.65)); border-radius:16px; padding:10px 12px; text-align:left; }
   .win-qg-t{ font-size:12.5px; font-weight:800; color:var(--c); margin:0 0 8px 2px; }
   .win-qrow{ display:flex; flex-wrap:wrap; gap:8px; }
   .win-qg .win-quick-btn{ padding:9px 14px; border-color:color-mix(in srgb, var(--c) 40%, transparent); }
@@ -688,11 +688,11 @@
      técnica y menos animaciones permanentes. Solo es capa visual: no cambia ninguna función.
      ===================================================================== */
   :root{
-    --bg:#080B10; --surface:#10151D; --surface-2:#171E29; --border:rgba(255,255,255,.09);
-    --text:#E9EDF3; --muted:#8B97AA;
+    --bg:#0e0c09; --surface:#1b1711; --surface-2:#272218; --border:rgba(255,255,255,.09);
+    --text:#f0eeeb; --muted:#aa9f8b;
     --display:'Chakra Petch','Montserrat',sans-serif;
     --mono:'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
-    --glass:linear-gradient(180deg, rgba(27,34,46,.78), rgba(14,18,26,.78));
+    --glass:linear-gradient(180deg, rgba(45,38,27,.78), rgba(24,21,15,.78));
     --edge:rgba(212,175,106,.24);
   }
   body{
@@ -824,9 +824,9 @@
   }
 
   /* Ventanas */
-  .modal-overlay{ background:rgba(4,6,10,.72); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  .modal-overlay{ background:rgba(8,7,5,.72); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
   .modal{
-    background:linear-gradient(180deg,#161d28,#0e131b); border:1px solid var(--edge); border-radius:24px; padding:28px;
+    background:linear-gradient(180deg,#262017,#19150f); border:1px solid var(--edge); border-radius:24px; padding:28px;
     width:min(440px, calc(100vw - 24px)); box-shadow:0 44px 90px -34px #000, inset 0 1px 0 rgba(255,255,255,.06);
     animation:modalIn .22s ease-out;
   }
@@ -940,51 +940,51 @@
   }
 
   /* ===== Boleto de apuestas de Pay (estilo casa de apuestas: línea de puntos por evento) ===== */
-  .slip{ background:#171a22; border:1px solid #2a2f3c; border-radius:16px; overflow:hidden; margin-bottom:14px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
-  .slip-head{ display:flex; align-items:center; gap:8px; padding:12px 14px; background:linear-gradient(135deg,#232838 0%,#1a1d27 70%); border-bottom:1px solid #2a2f3c; flex-wrap:wrap; }
-  .slip-badge{ background:#FFD54A; color:#14161d; font-weight:800; font-size:12px; letter-spacing:.3px; padding:3px 8px; border-radius:7px; }
-  .slip-badge.simple{ background:#3a4156; color:#e9ecf5; } .slip-badge.combi{ background:#2fbf71; color:#08140d; }
-  .slip-chip{ background:#252a38; color:#cfd5e6; font-weight:700; font-size:12px; padding:3px 8px; border-radius:7px; }
+  .slip{ background:#231e15; border:1px solid #3e3627; border-radius:16px; overflow:hidden; margin-bottom:14px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+  .slip-head{ display:flex; align-items:center; gap:8px; padding:12px 14px; background:linear-gradient(135deg,#383022 0%,#282218 70%); border-bottom:1px solid #3e3627; flex-wrap:wrap; }
+  .slip-badge{ background:#FFD54A; color:#1e1a12; font-weight:800; font-size:12px; letter-spacing:.3px; padding:3px 8px; border-radius:7px; }
+  .slip-badge.simple{ background:#574c38; color:#f1efec; } .slip-badge.combi{ background:#2fbf71; color:#08140d; }
+  .slip-chip{ background:#393123; color:#e0dcd4; font-weight:700; font-size:12px; padding:3px 8px; border-radius:7px; }
   .slip-chip.alta{ background:rgba(47,191,113,.18); color:#5fe39c; } .slip-chip.media{ background:rgba(255,213,74,.16); color:#ffd54a; } .slip-chip.baja{ background:rgba(255,107,107,.16); color:#ff8f8f; }
   .slip-total{ margin-left:auto; text-align:right; line-height:1.05; }
-  .slip-total small{ display:block; font-size:10.5px; color:#8e96ad; font-weight:600; } .slip-total b{ font-size:24px; font-weight:800; color:#FFD54A; font-variant-numeric:tabular-nums; }
-  .slip-ev{ padding:12px 14px 10px; border-top:1px solid #232834; }
+  .slip-total small{ display:block; font-size:10.5px; color:#ada28e; font-weight:600; } .slip-total b{ font-size:24px; font-weight:800; color:#FFD54A; font-variant-numeric:tabular-nums; }
+  .slip-ev{ padding:12px 14px 10px; border-top:1px solid #352e21; }
   .slip-ev:first-of-type{ border-top:0; }
-  .slip-meta{ font-size:12px; color:#8e96ad; margin-bottom:6px; display:flex; gap:6px; align-items:center; }
+  .slip-meta{ font-size:12px; color:#ada28e; margin-bottom:6px; display:flex; gap:6px; align-items:center; }
   .slip-teams{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:15px; }
-  .slip-teams .vs{ color:#8e96ad; font-weight:600; font-size:13px; }
-  .slip-odd{ margin-left:auto; font-weight:800; font-size:17px; color:#e9ecf5; font-variant-numeric:tabular-nums; }
-  .slip-logo{ width:30px; height:30px; border-radius:50%; background:#2a2f3c; color:#cfd5e6; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; flex:none; overflow:hidden; }
+  .slip-teams .vs{ color:#ada28e; font-weight:600; font-size:13px; }
+  .slip-odd{ margin-left:auto; font-weight:800; font-size:17px; color:#f1efec; font-variant-numeric:tabular-nums; }
+  .slip-logo{ width:30px; height:30px; border-radius:50%; background:#3e3627; color:#e0dcd4; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; flex:none; overflow:hidden; }
   .slip-logo img{ width:100%; height:100%; object-fit:contain; background:#fff; }
-  .slip-logo.jug{ width:38px; height:38px; } .slip-logo.jug img{ object-fit:cover; background:#2a2f3c; }
+  .slip-logo.jug{ width:38px; height:38px; } .slip-logo.jug img{ object-fit:cover; background:#3e3627; }
   .slip-tl{ margin:10px 0 2px 8px; }
   .slip-leg{ position:relative; padding:0 0 12px 24px; }
   .slip-leg::before{ content:''; position:absolute; left:0; top:5px; width:11px; height:11px; border-radius:50%; background:#FFD54A; box-shadow:0 0 0 3px rgba(255,213,74,.18); }
   .slip-leg:not(:last-child)::after{ content:''; position:absolute; left:4.5px; top:17px; bottom:-4px; width:2px; background:#FFD54A; opacity:.85; }
   .slip-leg:last-child{ padding-bottom:4px; }
-  .slip-mkt{ font-size:12.5px; color:#9aa2b8; font-weight:600; }
+  .slip-mkt{ font-size:12.5px; color:#b6ad9b; font-weight:600; }
   .slip-sel{ display:flex; align-items:center; gap:8px; font-weight:800; font-size:15.5px; margin-top:1px; }
   .slip-acts{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
   .slip-acts .btn{ padding:5px 9px; font-size:11.5px; border-radius:8px; }
 
-  .ftabs{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; margin-bottom:6px; position:sticky; top:0; z-index:20; background:linear-gradient(var(--bg, #0b0d12) 70%, transparent); -webkit-overflow-scrolling:touch; }
-  .ftab{ --c:#E6C068; display:flex; align-items:center; gap:8px; padding:10px 16px; border-radius:14px; border:1px solid color-mix(in srgb, var(--c) 35%, transparent); background:color-mix(in srgb, var(--c) 8%, #12151c); color:#cfd5e6; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; flex:none; transition:background .15s, transform .15s; }
-  .ftab:hover{ background:color-mix(in srgb, var(--c) 16%, #12151c); }
+  .ftabs{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; margin-bottom:6px; position:sticky; top:0; z-index:20; background:linear-gradient(var(--bg, #120f0a) 70%, transparent); -webkit-overflow-scrolling:touch; }
+  .ftab{ --c:#E6C068; display:flex; align-items:center; gap:8px; padding:10px 16px; border-radius:14px; border:1px solid color-mix(in srgb, var(--c) 35%, transparent); background:color-mix(in srgb, var(--c) 8%, #1c1811); color:#e0dcd4; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; flex:none; transition:background .15s, transform .15s; }
+  .ftab:hover{ background:color-mix(in srgb, var(--c) 16%, #1c1811); }
   .ftab.on{ background:var(--c); color:#14110a; border-color:var(--c); box-shadow:0 6px 18px color-mix(in srgb, var(--c) 35%, transparent); }
   .ftab .fi{ font-size:16px; }
   .ftab .fb{ display:none; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; border-radius:10px; font-size:12px; font-weight:800; background:var(--c); color:#14110a; }
   .ftab.on .fb{ background:#14110a; color:var(--c); }
   .ftab-panel{ display:none; border-top:3px solid var(--c, #E6C068) !important; }
   .ftab-panel.on{ display:block; }
-  #winGanFechaNueva,#winGanTextoNuevo,#winGanDesde,#winGanHasta{ background:var(--surface-2, #171E29); color:var(--text, #e9ecf5); border:1px solid var(--border); border-radius:10px; font:inherit; }
-  .fstep{ display:flex; align-items:center; gap:9px; font-weight:800; font-size:13.5px; color:#e9ecf5; margin:2px 0 9px; }
+  #winGanFechaNueva,#winGanTextoNuevo,#winGanDesde,#winGanHasta{ background:var(--surface-2, #272218); color:var(--text, #f1efec); border:1px solid var(--border); border-radius:10px; font:inherit; }
+  .fstep{ display:flex; align-items:center; gap:9px; font-weight:800; font-size:13.5px; color:#f1efec; margin:2px 0 9px; }
   .fstep span{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#E6C068; color:#14110a; font-size:12px; font-weight:900; }
   .diabox{ border:1px solid var(--border); border-radius:14px; padding:14px; margin:0 0 14px; background:rgba(230,192,104,.06); }
   .fdet{ margin:0 0 14px; border:1px dashed var(--border); border-radius:12px; padding:8px 12px; }
   .fdet summary{ cursor:pointer; font-size:13px; color:var(--muted); font-weight:700; }
-  .fdet[open] summary{ margin-bottom:10px; color:#e9ecf5; }
-  .slip-foot{ padding:10px 14px 14px; border-top:1px solid #232834; background:#14171e; }
-  .slip-why{ font-size:12.5px; color:#9aa2b8; line-height:1.45; margin-bottom:10px; }
+  .fdet[open] summary{ margin-bottom:10px; color:#f1efec; }
+  .slip-foot{ padding:10px 14px 14px; border-top:1px solid #352e21; background:#1f1a12; }
+  .slip-why{ font-size:12.5px; color:#b6ad9b; line-height:1.45; margin-bottom:10px; }
   .slip-foot-btns{ display:flex; gap:8px; flex-wrap:wrap; }
   @keyframes slipNuevo{ 0%{ background:rgba(255,213,74,.28); } 100%{ background:transparent; } }
   .slip-ev.nuevo{ animation:slipNuevo 1.4s ease-out 1; }
@@ -995,7 +995,7 @@
   .pbub{ position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; width:88px; height:88px; margin-left:auto; border-radius:50%; border:0; cursor:pointer; background:radial-gradient(circle at 30% 25%, #ffe27a, #f2b705 70%); color:#1a1405; box-shadow:0 10px 28px rgba(0,0,0,.55), 0 0 0 4px rgba(255,213,74,.18); font:inherit; }
   .pbub b{ font-size:21px; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; }
   .pbub small{ font-size:10px; font-weight:800; opacity:.7; margin-top:2px; }
-  .pbub .pb-n{ position:absolute; top:-4px; right:-2px; min-width:26px; height:26px; padding:0 6px; border-radius:13px; background:#1a1d26; color:#ffd54a; border:2px solid #f2b705; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:900; }
+  .pbub .pb-n{ position:absolute; top:-4px; right:-2px; min-width:26px; height:26px; padding:0 6px; border-radius:13px; background:#272218; color:#ffd54a; border:2px solid #f2b705; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:900; }
   .pbub.pulso{ animation:pbPulso .6s ease 1; }
   @keyframes pbPulso{ 0%{ transform:scale(1);} 40%{ transform:scale(1.18);} 100%{ transform:scale(1);} }
   #payFlotante .slip-cerrar{ display:flex; justify-content:flex-end; padding:6px 10px 0; }
@@ -2777,10 +2777,10 @@ function renderFinanceCharts(rows){
       datasets: [{
         label: 'Saldo actual',
         data: FINANCE_ACCOUNTS.map(a=>financeBalance(a.id)),
-        backgroundColor: FINANCE_ACCOUNTS.map(a=>a.type==='banco' ? '#3B82F6' : '#D4A017')
+        backgroundColor: FINANCE_ACCOUNTS.map(a=>a.type==='banco' ? '#d8b458' : '#D4A017')
       }]
     },
-    options: { plugins:{ legend:{ display:false } }, scales:{ y:{ ticks:{ color:'#9AA7BD' } }, x:{ ticks:{ color:'#9AA7BD', font:{size:10} } } } }
+    options: { plugins:{ legend:{ display:false } }, scales:{ y:{ ticks:{ color:'#b8af9e' } }, x:{ ticks:{ color:'#b8af9e', font:{size:10} } } } }
   });
 
   // Línea: total acumulado por fecha, usando TODOS los movimientos (no solo los filtrados) para que la tendencia sea real.
@@ -2799,7 +2799,7 @@ function renderFinanceCharts(rows){
       labels: dates.map(d=>fmtDate(d)),
       datasets: [{ label:'Total general', data: totals, borderColor:'#22C55E', backgroundColor:'rgba(34,197,94,0.15)', fill:true, tension:0.25 }]
     },
-    options: { plugins:{ legend:{ display:false } }, scales:{ y:{ ticks:{ color:'#9AA7BD' } }, x:{ ticks:{ color:'#9AA7BD', font:{size:10} } } } }
+    options: { plugins:{ legend:{ display:false } }, scales:{ y:{ ticks:{ color:'#b8af9e' } }, x:{ ticks:{ color:'#b8af9e', font:{size:10} } } } }
   });
 }
 
@@ -2807,7 +2807,7 @@ function openFinanceMovementForm(rerender, editId){
   const existing = editId ? state.financeMovements.find(x=>x.id===editId) : null;
   openModal(`
     <h3>${existing ? 'Editar movimiento' : 'Registrar movimiento'}</h3>
-    ${existing && existing.transferId ? `<div style="background:#1C2E4A; color:#8FC1FF; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">Este movimiento forma parte de una transferencia. Si lo editas, el otro lado (caja o banco) no cambia automáticamente — revísalo también si hace falta.</div>` : ''}
+    ${existing && existing.transferId ? `<div style="background:#524013; color:#e9d6a4; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:14px;">Este movimiento forma parte de una transferencia. Si lo editas, el otro lado (caja o banco) no cambia automáticamente — revísalo también si hace falta.</div>` : ''}
     <div class="field"><label>Cuenta</label>
       <select id="f-finAcc">
         ${FINANCE_ACCOUNTS.map(a=>`<option value="${a.id}" ${existing&&existing.accountId===a.id?'selected':''}>${a.name} (${a.type==='banco'?'Banco':'Caja'})</option>`).join('')}
@@ -5820,7 +5820,7 @@ function buildCollageImage(canvases){
   const out = document.createElement('canvas');
   out.width = totalW; out.height = totalH;
   const ctx = out.getContext('2d');
-  ctx.fillStyle = '#0D1117';
+  ctx.fillStyle = '#16130d';
   ctx.fillRect(0, 0, totalW, totalH);
   canvases.forEach((c, i)=>{
     const col = i % cols, row = Math.floor(i / cols);
@@ -6395,8 +6395,8 @@ const FLYER_SECCIONES = [
   { key:'vipBets', titulo:'APUESTAS VIP', archivo:'VIP', color:'#E6C47E' },
   { key:'freeBets', titulo:'APUESTAS GRATIS', archivo:'Gratis', color:'#4FD1C5' },
   { key:'liveBets', titulo:'APUESTAS LIVE', archivo:'Live', color:'#FF7A59' },
-  { key:'gifts', titulo:'REGALITO DEL DÍA', archivo:'Regalito', color:'#B48CFF' },
-  { key:'stakes', titulo:'STAKE DE PAGO', archivo:'Stake', color:'#5AA9FF' }
+  { key:'gifts', titulo:'REGALITO DEL DÍA', archivo:'Regalito', color:'#e9d4a1' },
+  { key:'stakes', titulo:'STAKE DE PAGO', archivo:'Stake', color:'#dfc279' }
 ];
 
 const DIAS_CORTO = ['LUN','MAR','MIÉ','JUE','VIE','SÁB'];
@@ -6548,16 +6548,16 @@ async function flyerDibujarUnico(seccion, datos, lunes, filas, escudos){
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const ctx = c.getContext('2d'), col = seccion.color;
   const cerradas = datos.won + datos.lost, pct = cerradas ? Math.round(datos.won * 100 / cerradas) : 0;
-  ctx.fillStyle = '#07080b'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0b0906'; ctx.fillRect(0, 0, W, H);
   let g = ctx.createRadialGradient(W/2, 130, 40, W/2, 130, 900); g.addColorStop(0, col + '30'); g.addColorStop(1, 'transparent'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, 1100);
   g = ctx.createRadialGradient(W/2, H, 20, W/2, H, 700); g.addColorStop(0, col + '1c'); g.addColorStop(1, 'transparent'); ctx.fillStyle = g; ctx.fillRect(0, H - 900, W, 900);
   ctx.strokeStyle = col + '88'; ctx.lineWidth = 3; flyerRRect(ctx, 30, 30, W-60, H-60, 26); ctx.stroke();
   // cabecera
   const logo = await winCargarLogo();
   if(logo){ ctx.save(); ctx.beginPath(); ctx.arc(130, 126, 56, 0, Math.PI*2); ctx.clip(); ctx.drawImage(logo, 74, 70, 112, 112); ctx.restore(); ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(130, 126, 59, 0, Math.PI*2); ctx.stroke(); }
-  ctx.textAlign = 'left'; ctx.fillStyle = '#9aa3b2'; ctx.font = '600 20px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 6); ctx.fillText('RESULTADOS DE LA SEMANA', 220, 96); flyerSpacing(ctx, 0);
+  ctx.textAlign = 'left'; ctx.fillStyle = '#b2aa99'; ctx.font = '600 20px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 6); ctx.fillText('RESULTADOS DE LA SEMANA', 220, 96); flyerSpacing(ctx, 0);
   ctx.fillStyle = col; flyerAjustar(ctx, seccion.titulo, 780, '900 {s}px Montserrat, sans-serif', 64, 36); ctx.fillText(seccion.titulo, 220, 156);
-  ctx.fillStyle = '#d8dde6'; ctx.font = '600 24px Inter, sans-serif'; ctx.fillText(flyerRangoTexto(lunes), 220, 196);
+  ctx.fillStyle = '#e4e0d9'; ctx.font = '600 24px Inter, sans-serif'; ctx.fillText(flyerRangoTexto(lunes), 220, 196);
   // anillo de asertividad (izquierda)
   const cx = 215, cy = 345, R = 84;
   ctx.lineCap = 'round'; ctx.lineWidth = 22; ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.stroke();
@@ -6571,15 +6571,15 @@ async function flyerDibujarUnico(seccion, datos, lunes, filas, escudos){
     ctx.textAlign = 'right'; ctx.font = '700 25px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 5); ctx.fillText(etiqueta, 990, y + 49); flyerSpacing(ctx, 0); ctx.textAlign = 'center';
   };
   pill(272, '#3ddc84', datos.won, datos.won === 1 ? 'GANADA' : 'GANADAS'); pill(360, '#ff5a5f', datos.lost, datos.lost === 1 ? 'PERDIDA' : 'PERDIDAS');
-  ctx.fillStyle = '#eef1f6'; ctx.font = '700 26px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(cerradas ? `Acertamos ${datos.won} de ${cerradas}` : 'Sin resultados cerrados', 705, 480);
+  ctx.fillStyle = '#f4f2ef'; ctx.font = '700 26px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(cerradas ? `Acertamos ${datos.won} de ${cerradas}` : 'Sin resultados cerrados', 705, 480);
   // franja por día
   const cw = 140, gap = 12, x0 = (W - (6*cw + 5*gap)) / 2;
   datos.dias.forEach((d, i)=>{
     const x = x0 + i*(cw+gap), hay = d.w + d.l > 0;
     const borde = !hay ? 'rgba(255,255,255,.18)' : d.w > d.l ? '#3ddc84' : d.l > d.w ? '#ff5a5f' : '#f5c542';
     flyerRRect(ctx, x, 512, cw, 72, 16); ctx.fillStyle = 'rgba(255,255,255,.04)'; ctx.fill(); ctx.strokeStyle = borde; ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.fillStyle = '#9aa3b2'; ctx.font = '600 18px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 3); ctx.fillText(DIAS_CORTO[i], x + cw/2, 538); flyerSpacing(ctx, 0);
-    ctx.fillStyle = hay ? '#ffffff' : '#5b6372'; ctx.font = '800 30px Montserrat, sans-serif'; ctx.fillText(hay ? `${d.w}-${d.l}` : '–', x + cw/2, 572);
+    ctx.fillStyle = '#b2aa99'; ctx.font = '600 18px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 3); ctx.fillText(DIAS_CORTO[i], x + cw/2, 538); flyerSpacing(ctx, 0);
+    ctx.fillStyle = hay ? '#ffffff' : '#726a5a'; ctx.font = '800 30px Montserrat, sans-serif'; ctx.fillText(hay ? `${d.w}-${d.l}` : '–', x + cw/2, 572);
   });
   // detalle de las apuestas: cuadrícula de 1 a 4 columnas, siempre dentro del 4:5
   ctx.fillStyle = col; ctx.font = '700 20px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 6); ctx.fillText('DETALLE DE LAS APUESTAS', W/2, 622); flyerSpacing(ctx, 0);
@@ -6626,7 +6626,7 @@ async function flyerDibujarUnico(seccion, datos, lunes, filas, escudos){
     const alto = lineas.length * (tam + 4) + (hayDet ? 24 : 0);
     let by = y + (CH - alto) / 2 + tam;
     lineas.forEach((l)=>{ ctx.fillText(l, tx, by); by += tam + 4; });
-    if(hayDet){ ctx.fillStyle = '#aab2c0'; ctx.fillText(flyerAjustar(ctx, f.seleccion, maxT, '600 {s}px Inter, sans-serif', cols === 1 ? 22 : 17, 12), tx, by + 2); }
+    if(hayDet){ ctx.fillStyle = '#c0b8a9'; ctx.fillText(flyerAjustar(ctx, f.seleccion, maxT, '600 {s}px Inter, sans-serif', cols === 1 ? 22 : 17, 12), tx, by + 2); }
     // resultado y cuota (derecha)
     const ph = cols === 1 ? 46 : CH >= 76 ? 32 : 28, qh = f.cuota ? (cols === 1 ? 34 : 26) : 0;
     const top = y + (CH - ph - qh) / 2, px = x + CW - 12 - RW;
@@ -6638,7 +6638,7 @@ async function flyerDibujarUnico(seccion, datos, lunes, filas, escudos){
     if(f.cuota){ ctx.fillStyle = col; ctx.font = '800 ' + (cols === 1 ? 28 : cols >= 3 ? 20 : 22) + 'px Montserrat, sans-serif'; ctx.fillText('@' + f.cuota.toFixed(2), px + RW/2, top + ph + qh - 4); }
   });
   // pie
-  ctx.textAlign = 'center'; ctx.fillStyle = '#9aa3b2'; ctx.font = '600 18px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 5); ctx.fillText('RESULTADOS REALES · SIN EDITAR', W/2, 1268); flyerSpacing(ctx, 0);
+  ctx.textAlign = 'center'; ctx.fillStyle = '#b2aa99'; ctx.font = '600 18px "Chakra Petch", sans-serif'; flyerSpacing(ctx, 5); ctx.fillText('RESULTADOS REALES · SIN EDITAR', W/2, 1268); flyerSpacing(ctx, 0);
   ctx.fillStyle = col; ctx.font = '800 28px Montserrat, sans-serif'; ctx.fillText('PAYWIN  ·  ' + WIN_TELEFONO, W/2, 1304);
   return c;
 }
@@ -6844,7 +6844,7 @@ async function winMarcaAgua(base64, mediaType, tipo){
       if(w > lado * 0.98){ fuente = Math.floor(fuente * (lado * 0.98) / w); ctx.font = `800 ${fuente}px Arial, Helvetica, sans-serif`; w = Math.ceil(ctx.measureText(etiqueta).width) + Math.round(fuente * 1.6); }
       const h = Math.round(fuente * 1.9);
       const rx = Math.max(4, Math.min(c.width - w - 4, cx - Math.round(w/2))), ry = Math.min(c.height - h - 4, y + Math.round(lado * 0.95));
-      ctx.fillStyle = '#12141a'; ctx.strokeStyle = '#d9b45a'; ctx.lineWidth = Math.max(2, Math.round(fuente * 0.12));
+      ctx.fillStyle = '#1b1710'; ctx.strokeStyle = '#d9b45a'; ctx.lineWidth = Math.max(2, Math.round(fuente * 0.12));
       ctx.beginPath(); ctx.roundRect ? ctx.roundRect(rx, ry, w, h, h/2) : ctx.rect(rx, ry, w, h); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#f2d27a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(etiqueta, rx + w/2, ry + h/2 + 1);
@@ -8027,7 +8027,7 @@ function payFiltroRango(f){
 }
 function payFiltroBarraHTML(f, attr){
   const b = (m, t)=>`<button type="button" class="btn ${f.modo === m ? '' : 'secondary'}" ${attr}="${m}" style="padding:6px 12px; font-size:12.5px;">${t}</button>`;
-  return `<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">${b('hoy','Hoy')}${b('ayer','Ayer')}${b('7d','Últimos 7 días')}<input type="date" ${attr}-fecha value="${esc(f.fecha||'')}" style="padding:5px 8px; font-size:12.5px; background:#0f1320; color:#fff; border:1px solid #2a2f3c; border-radius:8px;"></div>`;
+  return `<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">${b('hoy','Hoy')}${b('ayer','Ayer')}${b('7d','Últimos 7 días')}<input type="date" ${attr}-fecha value="${esc(f.fecha||'')}" style="padding:5px 8px; font-size:12.5px; background:#1d1911; color:#fff; border:1px solid #3e3627; border-radius:8px;"></div>`;
 }
 function enviadasHoyHTML(){
   const hoy = payHoyEC(); const enRango = payFiltroRango(payEnvFiltro);
@@ -8197,20 +8197,20 @@ function payBoletoCanvas(x){
   const H = 150 + bloques.reduce((a,b)=>a + 120 + b.patas.length*74, 0) + 150;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
-  g.fillStyle = '#12151d'; g.fillRect(0,0,W,H);
+  g.fillStyle = '#1d1911'; g.fillRect(0,0,W,H);
   const ft = (px, w)=> `${w||600} ${px}px -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
   const recorta = (t, max, font)=>{ g.font = font; t = String(t||''); while(g.measureText(t).width > max && t.length > 4) t = t.slice(0,-2); return t; };
   const total = x.cuota || payProducto(sels);
   const hayBB = bloques.some(b=>b.bb);
   g.fillStyle = '#f2b84b'; g.font = ft(30, 800); g.textBaseline = 'alphabetic';
   g.fillText('🎟 MI BOLETO', PAD, 62);
-  g.fillStyle = '#8e96ad'; g.font = ft(22, 600);
+  g.fillStyle = '#ada28e'; g.font = ft(22, 600);
   g.fillText((x.cupo ? x.cupo + ' · ' : '') + (hayBB ? 'Bet Builder' : (sels.length > 1 ? 'Combinada' : 'Simple')) + ' · PayWin', PAD, 98);
-  g.fillStyle = '#2a2f3d'; g.fillRect(PAD, 118, W-2*PAD, 2);
+  g.fillStyle = '#3f3627'; g.fillRect(PAD, 118, W-2*PAD, 2);
   let y = 150;
   bloques.forEach(b=>{
     const em = payDeporteEmoji('', b.sl.partido, b.sl.pick, b.sl.deporte);
-    g.font = ft(26, 600); g.fillStyle = '#8e96ad';
+    g.font = ft(26, 600); g.fillStyle = '#ada28e';
     g.fillText(em + '  ' + [b.sl.hora, b.bb ? 'BB' : ''].filter(Boolean).join(' · '), PAD, y + 22);
     g.fillStyle = '#ffffff'; g.font = ft(36, 800);
     g.fillText(recorta(b.sl.partido, W - 2*PAD - 150, ft(36, 800)), PAD, y + 74);
@@ -8220,15 +8220,15 @@ function payBoletoCanvas(x){
     b.patas.forEach((pt, i)=>{
       g.fillStyle = '#ffd54a'; g.beginPath(); g.arc(PAD + 16, y + 20, 11, 0, Math.PI*2); g.fill();
       if(i < b.patas.length - 1){ g.fillRect(PAD + 14, y + 30, 4, 60); }
-      g.fillStyle = '#8e96ad'; g.font = ft(21, 600); g.fillText(pt.mercado, PAD + 50, y + 14);
+      g.fillStyle = '#ada28e'; g.font = ft(21, 600); g.fillText(pt.mercado, PAD + 50, y + 14);
       g.fillStyle = '#ffffff'; g.font = ft(28, 700);
       g.fillText(recorta(pt.texto, W - 2*PAD - 60, ft(28, 700)), PAD + 50, y + 48);
       y += 74;
     });
-    y += 10; g.fillStyle = '#2a2f3d'; g.fillRect(PAD, y, W-2*PAD, 2); y += 30;
+    y += 10; g.fillStyle = '#3f3627'; g.fillRect(PAD, y, W-2*PAD, 2); y += 30;
   });
   g.fillStyle = '#f2b84b'; g.fillRect(0, H - 120, W, 120);
-  g.fillStyle = '#12151d'; g.font = ft(28, 800); g.fillText('CUOTA TOTAL', PAD, H - 52);
+  g.fillStyle = '#1d1911'; g.font = ft(28, 800); g.fillText('CUOTA TOTAL', PAD, H - 52);
   g.font = ft(58, 900); g.textAlign = 'right'; g.fillText(payFmtCuota(total), W - PAD, H - 44); g.textAlign = 'left';
   return c;
 }
@@ -8328,7 +8328,7 @@ function payEventoHTML(s, liga, acciones, nuevo, editIdx){
     : `<span>${esc(s.partido||'')}</span>`;
   return `<div class="slip-ev ${nuevo ? 'nuevo' : ''}">
     <div class="slip-meta"><span>${emoji}</span>${bb || patas.length > 1 ? '<span class="slip-badge" style="padding:1px 6px; font-size:10.5px;">BB</span>' : ''}<span>${esc(payFechaCorta())}${s.hora ? ' • ' + esc(s.hora) : ''}${liga && !String(liga).includes('/') ? ' • ' + esc(liga) : ''}</span></div>
-    <div class="slip-teams">${teams}${editIdx != null ? `<span class="slip-odd" data-pay-edcuota="${editIdx}" style="cursor:pointer; border-bottom:1px dashed #8e96ad;" title="Toca para poner la cuota real de la casa">${esc(payFmtCuota(s.cuota))} ✎</span>` : `<span class="slip-odd">${esc(payFmtCuota(s.cuota))}</span>`}</div>
+    <div class="slip-teams">${teams}${editIdx != null ? `<span class="slip-odd" data-pay-edcuota="${editIdx}" style="cursor:pointer; border-bottom:1px dashed #ada28e;" title="Toca para poner la cuota real de la casa">${esc(payFmtCuota(s.cuota))} ✎</span>` : `<span class="slip-odd">${esc(payFmtCuota(s.cuota))}</span>`}</div>
     <div class="slip-tl">${patas.map((p,j)=>`<div class="slip-leg" style="position:relative;"><div class="slip-mkt">${esc(p.mercado)}</div><div class="slip-sel">${p.jugador ? payLogoHTML(p.jugador,'jug') : ''}<span>${esc(p.texto)}</span></div>${editIdx != null ? `<button type="button" data-pay-xpata="${editIdx}:${j}" title="No está en la casa: quitar esta línea" style="position:absolute; right:0; top:50%; transform:translateY(-50%); background:rgba(255,90,90,.12); color:#ff7a7a; border:1px solid rgba(255,90,90,.4); border-radius:8px; width:30px; height:30px; font-size:15px; cursor:pointer;">✕</button>` : ''}</div>`).join('')}${editIdx != null && s.revisar ? '<div style="font-size:11.5px; color:#ffd966; margin-top:4px;">⚠️ Quitaste una línea: toca la cuota y pon la real de la casa.</div>' : ''}</div>
     ${acciones ? `<div class="slip-acts">${acciones}</div>` : ''}
   </div>`;
@@ -8433,7 +8433,7 @@ function pintarBandejaPay(){
       <span class="slip-badge ${tipo[1]}">${tipo[0]}</span>
       <span class="slip-chip">${nPatas} ${nPatas>1 ? 'selecciones' : 'selección'}</span>
       <span class="slip-total"><small>Mi boleto · cuota total</small><b>${total.toFixed(2)}</b></span>
-      <span style="color:#8e96ad;">${payFlotanteAbierto ? '▴' : '▾'}</span>
+      <span style="color:#ada28e;">${payFlotanteAbierto ? '▴' : '▾'}</span>
     </button>
     ${payFlotanteAbierto ? `<div class="slip-cuerpo">${eventos}
       <div class="slip-foot">
@@ -9107,9 +9107,9 @@ function payEditarLineas(titulo, lineas, onSave){
     openModal(`<h3>✏️ ${esc(titulo)}</h3>
       <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Cambia lo que haga falta (una línea bloqueada o no disponible): el partido, la selección o la cuota. La cuota total se recalcula sola.</div>
       ${L.map((l,i)=>`<div style="border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:8px;">
-        <div style="display:flex; gap:6px; align-items:center;"><input data-pe-p="${i}" value="${esc(l.partido)}" placeholder="Partido (Local vs Visitante)" style="flex:1; min-width:0; background:#0f1320; color:#fff; border:1px solid #2a2f3c; border-radius:8px; padding:8px 10px; font:inherit;"><button type="button" class="btn secondary" data-pe-x="${i}" style="padding:6px 10px;">✕</button></div>
-        <textarea data-pe-k="${i}" rows="2" placeholder="Selección" style="width:100%; margin-top:6px; background:#0f1320; color:#fff; border:1px solid #2a2f3c; border-radius:8px; padding:8px 10px; font:inherit;">${esc(l.pick)}</textarea>
-        <input data-pe-c="${i}" value="${esc(l.cuota)}" inputmode="decimal" placeholder="Cuota" style="width:100px; margin-top:6px; background:#0f1320; color:#fff; border:1px solid #2a2f3c; border-radius:8px; padding:8px 10px; font:inherit;">
+        <div style="display:flex; gap:6px; align-items:center;"><input data-pe-p="${i}" value="${esc(l.partido)}" placeholder="Partido (Local vs Visitante)" style="flex:1; min-width:0; background:#1d1911; color:#fff; border:1px solid #3e3627; border-radius:8px; padding:8px 10px; font:inherit;"><button type="button" class="btn secondary" data-pe-x="${i}" style="padding:6px 10px;">✕</button></div>
+        <textarea data-pe-k="${i}" rows="2" placeholder="Selección" style="width:100%; margin-top:6px; background:#1d1911; color:#fff; border:1px solid #3e3627; border-radius:8px; padding:8px 10px; font:inherit;">${esc(l.pick)}</textarea>
+        <input data-pe-c="${i}" value="${esc(l.cuota)}" inputmode="decimal" placeholder="Cuota" style="width:100px; margin-top:6px; background:#1d1911; color:#fff; border:1px solid #3e3627; border-radius:8px; padding:8px 10px; font:inherit;">
       </div>`).join('')}
       <button type="button" class="btn secondary" id="peAdd" style="width:100%;">+ Agregar línea</button>
       <div style="margin-top:10px; font-weight:800;">Cuota total: <span style="color:var(--gold, #D4AF6A);">${L.length && tot > 1 ? tot.toFixed(2) : '-'}</span></div>
@@ -9295,7 +9295,7 @@ function openPayChat(pregunta){
   openModal(`
     <style>
       #payOrb{ width:96px; height:96px; border-radius:50%; margin:4px auto 6px; background:radial-gradient(circle at 35% 30%, #fff3cf, #D4AF6A 45%, #7a5a1c 100%); box-shadow:0 0 22px rgba(212,175,106,.45); transition:transform .3s, box-shadow .3s; }
-      #payOrb[data-estado="listening"]{ animation:payPulse 1s ease-in-out infinite; box-shadow:0 0 34px rgba(110,200,255,.7); background:radial-gradient(circle at 35% 30%, #eaf8ff, #6ec8ff 45%, #1d5a85 100%); }
+      #payOrb[data-estado="listening"]{ animation:payPulse 1s ease-in-out infinite; box-shadow:0 0 34px rgba(227,201,137,.7); background:radial-gradient(circle at 35% 30%, #fbf7ed, #e3c989 45%, #83661e 100%); }
       #payOrb[data-estado="thinking"]{ animation:paySpin 1.2s linear infinite; box-shadow:0 0 30px rgba(212,175,106,.8); }
       #payOrb[data-estado="speaking"]{ animation:payPulse .55s ease-in-out infinite; box-shadow:0 0 40px rgba(212,175,106,.9); }
       @keyframes payPulse{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.12);} }
@@ -9544,10 +9544,10 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
   }
 }
 </script>
-<div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
+<div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#b2aa99; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '22 nov, 14:45';
+const PANEL_VERSION = '22 nov, 15:10';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
@@ -9712,19 +9712,19 @@ const PANEL_VERSION = '22 nov, 14:45';
 <style id="premium">
 /* ===== Pay Win Premium (/v2): capa visual + dashboard nuevo. No cambia ninguna función del panel. ===== */
 :root{
-  --bg:#06080C; --surface:rgba(18,23,32,.72); --surface-2:rgba(26,33,45,.78); --border:rgba(255,255,255,.075);
-  --text:#EEF1F6; --muted:#8793A7;
-  --gold:#D9B26B; --gold-hi:#F4E1B0; --gold-lo:#B98A3E;
-  --accent:var(--gold); --accent-light:var(--gold-hi); --accent-dim:rgba(217,178,107,.16);
+  --bg:#070604; --surface:rgba(31,26,18,.72); --surface-2:rgba(43,37,27,.78); --border:rgba(255,255,255,.075);
+  --text:#f4f2ef; --muted:#a79c87;
+  --gold:#E2B84B; --gold-hi:#F8E7A8; --gold-lo:#B5832A;
+  --accent:var(--gold); --accent-light:var(--gold-hi); --accent-dim:rgba(226,184,75,.16);
   --win:#43D9A0; --win-dim:rgba(67,217,160,.14); --loss:#FF6B72; --loss-dim:rgba(255,107,114,.14); --pending:#F0BE4D;
   --display:'Sora','Montserrat',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif;
   --pm-line:rgba(255,255,255,.07); --pm-r:20px;
 }
 body{
   background:
-    radial-gradient(900px 520px at 8% -8%, rgba(217,178,107,.17), transparent 62%),
-    radial-gradient(700px 480px at 104% 4%, rgba(70,110,200,.10), transparent 60%),
-    radial-gradient(800px 520px at 60% 112%, rgba(217,178,107,.09), transparent 62%),
+    radial-gradient(900px 520px at 8% -8%, rgba(226,184,75,.17), transparent 62%),
+    radial-gradient(700px 480px at 104% 4%, rgba(226,184,75,.07), transparent 60%),
+    radial-gradient(800px 520px at 60% 112%, rgba(226,184,75,.09), transparent 62%),
     var(--bg) !important;
   background-attachment:fixed !important;
   font-feature-settings:'cv11','ss01'; -webkit-font-smoothing:antialiased;
@@ -9735,23 +9735,23 @@ body{
 
 /* tarjetas de cristal con filo dorado */
 .card,.finance-acc-card,.score-cell{
-  background:linear-gradient(180deg, rgba(27,34,47,.74), rgba(15,19,27,.74)) !important;
+  background:linear-gradient(180deg, rgba(45,39,28,.74), rgba(26,22,15,.74)) !important;
   border:1px solid var(--pm-line) !important; border-radius:var(--pm-r) !important;
   box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 18px 40px -22px rgba(0,0,0,.75);
   -webkit-backdrop-filter:blur(14px) saturate(1.3); backdrop-filter:blur(14px) saturate(1.3);
   position:relative;
 }
-.card::before{ content:''; position:absolute; left:18px; right:18px; top:0; height:1px; background:linear-gradient(90deg, transparent, rgba(244,225,176,.38), transparent); pointer-events:none; }
+.card::before{ content:''; position:absolute; left:18px; right:18px; top:0; height:1px; background:linear-gradient(90deg, transparent, rgba(248,231,168,.38), transparent); pointer-events:none; }
 .card-title{ font-family:var(--display); text-transform:none !important; letter-spacing:0 !important; font-size:15px !important; color:var(--text) !important; font-weight:600 !important; }
 
 /* botones */
-.btn:not(.secondary):not(.danger){ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)) !important; color:#1A1306 !important; border:0 !important; font-weight:700; box-shadow:0 8px 22px -10px rgba(217,178,107,.7), 0 1px 0 rgba(255,255,255,.5) inset; transition:transform .15s, box-shadow .15s, filter .15s; }
+.btn:not(.secondary):not(.danger){ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)) !important; color:#1A1306 !important; border:0 !important; font-weight:700; box-shadow:0 8px 22px -10px rgba(226,184,75,.7), 0 1px 0 rgba(255,255,255,.5) inset; transition:transform .15s, box-shadow .15s, filter .15s; }
 .btn:not(.secondary):not(.danger):hover{ transform:translateY(-1px); filter:brightness(1.05); }
 .btn:active{ transform:scale(.98); }
 .btn.secondary{ background:rgba(255,255,255,.04) !important; border:1px solid var(--pm-line) !important; color:var(--text) !important; }
 :focus-visible{ outline:2px solid var(--gold-hi); outline-offset:2px; border-radius:8px; }
 input,select,textarea{ border-radius:12px !important; }
-input:focus,select:focus,textarea:focus{ border-color:rgba(217,178,107,.55) !important; box-shadow:0 0 0 3px rgba(217,178,107,.14) !important; outline:none; }
+input:focus,select:focus,textarea:focus{ border-color:rgba(226,184,75,.55) !important; box-shadow:0 0 0 3px rgba(226,184,75,.14) !important; outline:none; }
 
 /* etiquetas de estado: verde para ganadas */
 .badge{ border-radius:999px; letter-spacing:.2px; }
@@ -9763,7 +9763,7 @@ tr{ transition:background .15s; } tbody tr:hover{ background:rgba(255,255,255,.0
 
 /* dock */
 #sidebar{ -webkit-backdrop-filter:blur(26px) saturate(1.5); backdrop-filter:blur(26px) saturate(1.5); }
-.nav-item.active .nav-icon,.nav-item.active .nav-label{ text-shadow:0 0 18px rgba(244,225,176,.35); }
+.nav-item.active .nav-icon,.nav-item.active .nav-label{ text-shadow:0 0 18px rgba(248,231,168,.35); }
 
 /* carga con esqueleto */
 .loading{ color:transparent !important; position:relative; min-height:220px; border-radius:var(--pm-r); overflow:hidden; background:linear-gradient(100deg, rgba(255,255,255,.03) 20%, rgba(255,255,255,.08) 40%, rgba(255,255,255,.03) 60%) 0 0/220% 100%; animation:pmShimmer 1.3s linear infinite; }
@@ -9778,7 +9778,7 @@ tr{ transition:background .15s; } tbody tr:hover{ background:rgba(255,255,255,.0
 .pm-date{ color:var(--muted); font-size:13.5px; margin-top:6px; } .pm-date::first-letter{ text-transform:uppercase; }
 .pm-actions{ display:flex; gap:8px; flex-wrap:wrap; }
 .pm-chip{ display:inline-flex; align-items:center; gap:7px; padding:9px 14px; border-radius:999px; background:rgba(255,255,255,.045); border:1px solid var(--pm-line); color:var(--text); font-size:13px; font-weight:600; cursor:pointer; transition:background .15s, border-color .15s, transform .15s; }
-.pm-chip:hover{ background:rgba(217,178,107,.12); border-color:rgba(217,178,107,.4); transform:translateY(-1px); }
+.pm-chip:hover{ background:rgba(226,184,75,.12); border-color:rgba(226,184,75,.4); transform:translateY(-1px); }
 .pm-kpis{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:16px; }
 .pm-kpi{ padding:18px 18px 14px; overflow:hidden; display:flex; flex-direction:column; min-height:168px; }
 .pm-kpi .l{ color:var(--muted); font-size:12.5px; font-weight:600; }
@@ -9828,27 +9828,27 @@ tr{ transition:background .15s; } tbody tr:hover{ background:rgba(255,255,255,.0
 
 /* ===== Un solo dorado en todo el panel ===== */
 .day-tab{ border-radius:999px !important; border:1px solid var(--pm-line) !important; background:rgba(255,255,255,.035) !important; color:var(--muted) !important; padding:8px 14px !important; font-weight:600; white-space:nowrap; }
-.day-tab:hover{ border-color:rgba(217,178,107,.45) !important; color:var(--text) !important; }
-.day-tab.active{ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo)) !important; color:#1A1306 !important; border-color:transparent !important; box-shadow:0 8px 20px -10px rgba(217,178,107,.7); }
+.day-tab:hover{ border-color:rgba(226,184,75,.45) !important; color:var(--text) !important; }
+.day-tab.active{ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo)) !important; color:#1A1306 !important; border-color:transparent !important; box-shadow:0 8px 20px -10px rgba(226,184,75,.7); }
 .day-tab .day-tab-sub{ margin-left:6px; opacity:.75; font-weight:500; font-size:.92em; }
 /* secciones del stake: pocas a la vista, el resto en un menú */
 .sec-tabs{ align-items:center; gap:8px; flex-wrap:nowrap !important; overflow-x:auto; padding-bottom:6px; scrollbar-width:none; }
 .sec-tabs::-webkit-scrollbar{ display:none; }
 .sec-tabs .day-tab{ flex:none; }
-.sec-more{ flex:none; width:auto !important; max-width:230px; padding:8px 14px !important; border-radius:999px !important; background:rgba(217,178,107,.12) !important; border:1px solid rgba(217,178,107,.45) !important; color:var(--gold-hi) !important; font-weight:700; cursor:pointer; }
-.sec-more option,.sec-more optgroup{ background:#10151D; color:#EEF1F6; }
+.sec-more{ flex:none; width:auto !important; max-width:230px; padding:8px 14px !important; border-radius:999px !important; background:rgba(226,184,75,.12) !important; border:1px solid rgba(226,184,75,.45) !important; color:var(--gold-hi) !important; font-weight:700; cursor:pointer; }
+.sec-more option,.sec-more optgroup{ background:#1b1711; color:#f4f2ef; }
 
 /* ===== Win con el mismo look premium ===== */
-.win-qg{ --c:#D9B26B !important; background:linear-gradient(180deg, rgba(27,34,47,.7), rgba(14,18,26,.7)) !important; border:1px solid var(--pm-line) !important; border-radius:20px !important; padding:14px 14px 16px !important; box-shadow:0 18px 40px -24px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.04) inset; -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); }
+.win-qg{ --c:#E2B84B !important; background:linear-gradient(180deg, rgba(45,39,28,.7), rgba(24,21,15,.7)) !important; border:1px solid var(--pm-line) !important; border-radius:20px !important; padding:14px 14px 16px !important; box-shadow:0 18px 40px -24px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.04) inset; -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); }
 .win-qg-t{ font-family:var(--display); font-size:13px !important; font-weight:600 !important; color:var(--gold-hi) !important; letter-spacing:0; }
 .win-quick-btn{ border-radius:999px !important; border:1px solid var(--pm-line) !important; background:rgba(255,255,255,.04) !important; color:var(--text) !important; font:600 13px var(--body) !important; padding:9px 15px !important; }
 .win-quick-btn svg,.win-qg .win-quick-btn svg{ color:var(--gold) !important; }
-.win-quick-btn:hover{ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo)) !important; color:#1A1306 !important; border-color:transparent !important; box-shadow:0 10px 22px -12px rgba(217,178,107,.8) !important; transform:translateY(-1px); }
+.win-quick-btn:hover{ background:linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo)) !important; color:#1A1306 !important; border-color:transparent !important; box-shadow:0 10px 22px -12px rgba(226,184,75,.8) !important; transform:translateY(-1px); }
 .win-quick-btn:hover svg{ color:#1A1306 !important; }
 .win-power-btn{ border-radius:999px !important; font-family:var(--body) !important; font-weight:700 !important; }
 .win-status,.win-live-transcript{ font-family:var(--body) !important; }
 .win-type-toggle{ border-radius:999px !important; font-family:var(--body) !important; }
-.ftab{ --c:#D9B26B !important; border-radius:999px !important; }
+.ftab{ --c:#E2B84B !important; border-radius:999px !important; }
 .ftab-panel{ border-top:1px solid var(--pm-line) !important; }
 .fstep span{ background:var(--gold) !important; }
 @media (max-width:640px){ .win-quick-btn{ font-size:12.5px !important; padding:8px 12px !important; } .win-qgrid{ gap:10px !important; } }
