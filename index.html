@@ -6,6 +6,10 @@
 <title>Panel Administración Pay Win</title>
 <!-- Permite instalarlo en el celular (Agregar a pantalla de inicio) y que abra como app, sin barra de Safari -->
 <link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin>
 <meta name="theme-color" content="#0D1117">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1234,12 +1238,55 @@ function coerceRow(key, row){
   return { event:String(row.event||''), seleccion:String(row.seleccion||''), id:String(row.id||''), sport:row.sport||'', pick:row.pick||'', odds:Number(row.odds)||0, stake:Number(row.stake)||0, recipient:row.recipient||'', date:row.date||'', result:row.result||'pending', imageUrl:String(row.imageUrl||''), imageWonUrl:String(row.imageWonUrl||''), returned:Number(row.returned)||0, ganancia:Number(row.ganancia)||0 };
 }
 
+// ---------- Caché local (IndexedDB): el panel abre al instante con lo último que vio y se actualiza detrás ----------
+// Solo acelera la apertura: cada guardado sigue trayendo y mezclando lo del servidor (persist), así que nada se pisa.
+const CACHE_DB = 'paywin-cache-v1';
+let cacheDbP = null;
+function cacheDb(){
+  if(cacheDbP) return cacheDbP;
+  cacheDbP = new Promise((ok)=>{
+    try{
+      const rq = indexedDB.open(CACHE_DB, 1);
+      rq.onupgradeneeded = ()=>{ try{ rq.result.createObjectStore('k'); }catch(e){} };
+      rq.onsuccess = ()=>ok(rq.result);
+      rq.onerror = ()=>ok(null);
+      rq.onblocked = ()=>ok(null);
+    }catch(e){ ok(null); }
+  });
+  return cacheDbP;
+}
+async function cacheLeer(keys){
+  const db = await cacheDb(); if(!db) return null;
+  return new Promise((ok)=>{
+    try{
+      const tx = db.transaction('k', 'readonly'), st = tx.objectStore('k'), out = {};
+      keys.forEach(k=>{ const r = st.get(k); r.onsuccess = ()=>{ if(r.result !== undefined) out[k] = r.result; }; });
+      tx.oncomplete = ()=>ok(out);
+      tx.onerror = tx.onabort = ()=>ok(null);
+    }catch(e){ ok(null); }
+  });
+}
+async function cacheGuardar(key){
+  try{
+    const db = await cacheDb(); if(!db || !Array.isArray(state[key])) return;
+    db.transaction('k', 'readwrite').objectStore('k').put(state[key], key);
+  }catch(e){}
+}
+async function cacheBorrar(){
+  try{ const db = await cacheDb(); if(db) db.transaction('k', 'readwrite').objectStore('k').clear(); }catch(e){}
+}
+
 async function fetchSheetKey(key){
   try{
     const res = await fetch(`${SHEETS_API_URL}?sheet=${SHEET_NAMES[key]}`);
     const json = await res.json();
     state[key] = filtrarCorte(key, (json.data || []).map(row => coerceRow(key, row)));
-  }catch(e){ console.error('Error cargando', key, e); state[key] = []; state.syncError = true; state.failedKeys.push(key); }
+    cacheGuardar(key);
+  }catch(e){
+    console.error('Error cargando', key, e);
+    if(!(state.desdeCache && state.desdeCache[key])) state[key] = [];
+    state.syncError = true; state.failedKeys.push(key);
+  }
 }
 
 // Antes esto traía las 19 hojas de Google Sheets UNA POR UNA (await adentro de un for), así que
@@ -1251,23 +1298,41 @@ async function loadAll(){
   const main = document.getElementById('main');
   const winKeys = ['winMemory', 'winOutbox', 'winReminders', 'winTemplates', 'winDifusion', 'winGanadas'];
   const otherKeys = Object.keys(SHEET_NAMES).filter(k => !winKeys.includes(k));
+  const necesarias = state.view === 'win' ? winKeys : Object.keys(SHEET_NAMES);
 
+  // 1) Si ya se había abierto antes en este aparato, se muestra YA lo último guardado (se actualiza detrás).
+  const cache = await cacheLeer(necesarias);
+  const hayCache = !!cache && necesarias.every(k => Array.isArray(cache[k]));
+  if(hayCache){
+    state.desdeCache = {};
+    necesarias.forEach(k => { state[k] = cache[k]; state.desdeCache[k] = true; });
+    Object.keys(SHEET_NAMES).forEach(k => { if(!Array.isArray(state[k])) state[k] = []; });
+    state.loaded = true;
+    render();
+    if(state.view !== 'win') animateCounts(document.getElementById('main'));
+  }
+  const firma = ()=>necesarias.map(k=>JSON.stringify(state[k] || [])).join('|');
+  const antes = hayCache ? firma() : '';
+  const hayModal = ()=>{ const m = document.getElementById('modalOverlay'); return !!(m && m.classList.contains('open')); };
+  const repintar = ()=>{ if(!hayCache || firma() !== antes){ if(!hayCache || !hayModal()) render(); } };
+
+  // 2) Se trae lo actualizado de las hojas (todas a la vez) y se repinta solo si algo cambió.
   if(state.view === 'win'){
     await Promise.all(winKeys.map(fetchSheetKey));
     state.loaded = true;
-    render();
+    repintar();
     await Promise.all(otherKeys.map(fetchSheetKey));
     await migrateStakeSales();
     render();
     return;
   }
 
-  main.innerHTML = '<div class="loading">Conectando con tu hoja de Google Sheets...</div>';
+  if(!hayCache) main.innerHTML = '<div class="loading">Conectando con tu hoja de Google Sheets...</div>';
   await Promise.all(Object.keys(SHEET_NAMES).map(fetchSheetKey));
   await migrateStakeSales();
   state.loaded = true;
-  render();
-  animateCounts(document.getElementById('main'));
+  repintar();
+  if(!hayCache) animateCounts(document.getElementById('main'));
 }
 
 // IMPORTANTE (varios dispositivos a la vez): antes esto mandaba SIEMPRE el arreglo completo
@@ -1336,6 +1401,7 @@ async function persist(key, options = {}){
       body: JSON.stringify({ sheet: SHEET_NAMES[key], data: toSend })
     });
     state.syncError = false;
+    cacheGuardar(key);
     render(); // por si llegó algo nuevo de otro dispositivo en la mezcla
   }catch(e){
     console.error('Error guardando', key, e);
@@ -9425,6 +9491,7 @@ async function attemptLogin(){
 document.getElementById('loginBtn').addEventListener('click', attemptLogin);
 document.getElementById('loginPass').addEventListener('keydown', (e)=>{ if(e.key==='Enter') attemptLogin(); });
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  cacheBorrar();
   localStorage.removeItem('panelVipAuth');
   localStorage.removeItem('panelRole');
   location.reload();
@@ -9445,7 +9512,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '20 nov, 14:20';
+const PANEL_VERSION = '22 nov, 13:20';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
