@@ -140,6 +140,10 @@ function conMasparley(texto) {
   return `${t}\n\n🔴 *¿No quieres pagar el 15% que te cobra Ecuabet?* Regístrate en *MASPARLEY*: no cobra nada y es exactamente igual, solo que de color rojo 👉 ${MASPARLEY_LINK}`;
 }
 
+// Imágenes FIJAS de piezas del protocolo: si un paso está aquí, sale esta foto (el texto sigue siendo el de la publicidad guardada).
+// "beneficios recargar" = la foto del Regalito del día (recarga mínima + stakes gratis + VIP), subida el 22 nov 2026.
+const IMAGEN_FIJA = { 'protocolo beneficios recargar': 'https://panel-paywin.vercel.app/protocolo-beneficios.jpg' };
+
 async function enviarPaso(step, templates, botUrl, botKey) {
   const tpl = templates.get(norm(step.nombre));
   if (!tpl) return false; // todavía no se guardó esa publicidad -- se salta sin tumbar el resto
@@ -147,7 +151,7 @@ async function enviarPaso(step, templates, botUrl, botKey) {
   // "base64" queda de respaldo solo para publicidades guardadas ANTES de este cambio.
   const vigente = await numeroVigente();
   for (const jid of step.destinos) {
-    await enviarAlBot(botUrl, botKey, jid, conMasparley(corregirTelefono(tpl.texto || '', vigente)), tpl.imageUrl ? '' : (tpl.base64 || ''), tpl.imageUrl || '', tpl.mediaType || 'image/jpeg');
+    await enviarAlBot(botUrl, botKey, jid, conMasparley(corregirTelefono(tpl.texto || '', vigente)), IMAGEN_FIJA[norm(step.nombre)] ? '' : (tpl.imageUrl ? '' : (tpl.base64 || '')), IMAGEN_FIJA[norm(step.nombre)] || tpl.imageUrl || '', IMAGEN_FIJA[norm(step.nombre)] ? 'image/jpeg' : (tpl.mediaType || 'image/jpeg'));
   }
   return true;
 }
