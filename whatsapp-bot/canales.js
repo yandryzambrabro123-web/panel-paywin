@@ -166,11 +166,36 @@ async function publicar({ clave, texto, imagenes, titulo }) {
   return { ok: true, enviados: enviados.length };
 }
 
-// Saca a los miembros anotados (ban + unban: pueden volver con un link nuevo) y borra los mensajes anotados.
+// Vacía el canal: PRIMERO borra todo el contenido y luego saca a los miembros anotados (ban + unban: pueden volver con un link nuevo).
 async function vaciar({ clave, conservar }) {
   const c = await canalDe(clave);
   if (!c) throw new Error(`Falta el canal de ${clave}.`);
   const fijos = new Set((conservar || []).map(String));
+
+  // 1) Contenido: manda un mensaje de prueba para saber cuál es el último código y borra de 1 hasta ese código en tandas de 100.
+  let borrados = 0, noBorrados = 0, motivo = '', ultimo = 0;
+  const motivos = {};
+  const anotar = (e) => { const m = String((e && e.message) || e).replace(/^Telegram[^:]*:\s*/i, '').slice(0, 140); motivos[m] = (motivos[m] || 0) + 1; if (!motivo) motivo = m; return m; };
+  try {
+    const sonda = await H.tg('sendMessage', { chat_id: c.chatId, text: '🧹', disable_notification: true });
+    ultimo = sonda.message_id;
+    for (let ini = 1; ini <= ultimo; ini += 100) {
+      const ids = []; for (let i = ini; i < ini + 100 && i <= ultimo; i++) ids.push(i);
+      try { await H.tg('deleteMessages', { chat_id: c.chatId, message_ids: ids }); borrados += ids.length; }
+      catch (e) {
+        const m = anotar(e);
+        if (/not enough rights|admin|forbidden|rights/i.test(m)) { noBorrados += ultimo - ini + 1; break; } // sin permiso: no sigue intentando uno por uno
+        let seguidos = 0;
+        for (let k = 0; k < ids.length; k++) {
+          try { await H.tg('deleteMessage', { chat_id: c.chatId, message_id: ids[k] }); borrados++; seguidos = 0; }
+          catch (e2) { noBorrados++; seguidos++; anotar(e2); if (seguidos >= 25) { noBorrados += ids.length - k - 1; break; } }
+        }
+      }
+      await pausa(150);
+    }
+  } catch (e) { throw new Error('No pude borrar el contenido: ' + e.message); }
+
+  // 2) Miembros
   const miembros = (await H.leerHoja(HOJA_MIEMBROS)).filter((m) => String(m.chatId) === String(c.chatId));
   let sacados = 0, fallos = 0, conservados = 0;
   const quedan = [];
@@ -183,25 +208,18 @@ async function vaciar({ clave, conservar }) {
     } catch (e) { fallos++; quedan.push(m); }
     await pausa(120);
   }
-  // Borra TODO el contenido: manda un mensaje de prueba para saber cuál es el último código y borra de 1 hasta ese
-  // código en tandas de 100 (lo que no existe se ignora).
-  let borrados = 0, noBorrados = 0;
-  const pendientes = [];
-  try {
-    const sonda = await H.tg('sendMessage', { chat_id: c.chatId, text: '🧹', disable_notification: true });
-    const ultimo = sonda.message_id;
-    for (let ini = 1; ini <= ultimo; ini += 100) {
-      const ids = []; for (let i = ini; i < ini + 100 && i <= ultimo; i++) ids.push(i);
-      try { await H.tg('deleteMessages', { chat_id: c.chatId, message_ids: ids }); borrados += ids.length; }
-      catch (e) {
-        for (const id of ids) { try { await H.tg('deleteMessage', { chat_id: c.chatId, message_id: id }); borrados++; } catch (e2) { noBorrados++; } }
-      }
-      await pausa(150);
-    }
-  } catch (e) { throw new Error('No pude borrar el contenido: ' + e.message); }
   await H.cambiarHoja(HOJA_MIEMBROS, (filas) => [...filas.filter((m) => String(m.chatId) !== String(c.chatId)), ...quedan]);
   await H.cambiarHoja(HOJA_MSGS, (filas) => filas.filter((f) => String(f.chatId) !== String(c.chatId)));
-  return { ok: true, sacados, conservados, fallos, borrados, noBorrados };
+  return { ok: true, sacados, conservados, fallos, borrados, noBorrados, ultimo, motivo };
+}
+
+// Reporte al jefe por Telegram cuando termina de vaciar (corre en segundo plano para no cortarse por tiempo).
+function reporteVaciar(clave, r) {
+  const nom = clave === 'stake' ? 'stake de pago' : 'regalito';
+  let t = `🧹 <b>Canal de ${nom} vaciado</b>\nMiembros sacados: ${r.sacados}${r.fallos ? ` (no pude sacar a ${r.fallos})` : ''}\n`;
+  if (!r.noBorrados) t += `Contenido: borrado todo (mensajes 1 a ${r.ultimo}).`;
+  else t += `⚠️ <b>Contenido: NO se pudo borrar todo</b> (${r.noBorrados} mensajes quedaron).\nMotivo: ${H.esc(r.motivo || 'desconocido')}\n\nRevisa que el bot sea administrador del canal con el permiso <b>"Eliminar mensajes"</b> (y "Publicar mensajes"). Los mensajes de más de 48 horas a veces Telegram no deja borrarlos al bot: en ese caso bórralos tú desde Telegram (selecciona todo y elimina).`;
+  return t;
 }
 
 function montar(app, stakes, extra) {
@@ -273,7 +291,11 @@ function montar(app, stakes, extra) {
     try {
       const b = req.body || {};
       if (!CLAVES.includes(b.clave)) return res.status(400).json({ error: 'Canal inválido.' });
-      res.json(await vaciar({ clave: b.clave, conservar: b.conservar }));
+      res.json({ ok: true, enSegundoPlano: true }); // responde ya; el resultado llega por Telegram al terminar
+      vaciar({ clave: b.clave, conservar: b.conservar })
+        .then((r) => H.tg('sendMessage', { chat_id: H.TG_ADMIN(), parse_mode: 'HTML', text: reporteVaciar(b.clave, r) }))
+        .catch((e) => { console.error('Vaciar canal:', e); return H.tg('sendMessage', { chat_id: H.TG_ADMIN(), text: '⚠️ No pude vaciar el canal: ' + e.message }); })
+        .catch(() => {});
     } catch (e) { console.error('Vaciar canal:', e); res.status(500).json({ error: e.message }); }
   });
 }
