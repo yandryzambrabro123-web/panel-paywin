@@ -3612,7 +3612,7 @@ function renderWin(){
           <div class="win-qg-t">Comunidad</div>
           <div class="win-qrow">
             <button class="win-quick-btn" id="winQuickPartidosBtn" type="button">${winIcon('difusion')}<span>Publicidad del día</span></button>
-            <button class="win-quick-btn" id="winQuickTestiBtn" type="button">${winIcon('testimonio')}<span>Testimonio</span></button>
+            <button class="win-quick-btn" id="winQuickCensBtn" type="button">${winIcon('testimonio')}<span>Mandar apuestas censuradas</span></button>
             <button class="win-quick-btn" id="winQuickFlyersBtn" type="button">${winIcon('difusion')}<span>Flyers de la semana</span></button>
             <button class="win-quick-btn" id="winQuickProtocoloBtn" type="button">${winIcon('sol')}<span>Mandar protocolo de la mañana</span></button>
             <button class="win-quick-btn" id="winQuickComunicadoBtn" type="button">${winIcon('difusion')}<span>Comunicado</span></button>
@@ -3644,7 +3644,7 @@ function renderWin(){
     actualizarPower();
   };
   document.getElementById('winPowerOffBtn').onclick = ()=>{ stopWinListening(); actualizarPower(); };
-  document.getElementById('winQuickTestiBtn').onclick = ()=>{ playWinSfx('action'); openTestimonioUploadModal(); };
+  document.getElementById('winQuickCensBtn').onclick = ()=>{ playWinSfx('action'); openApuestasCensuradasModal(); };
   document.getElementById('winQuickProtocoloBtn').onclick = async ()=>{
     if(!confirm('¿Mandar ahora todo el protocolo de la mañana (buenos días, recargas y retiros, beneficios y apuesta gratis) a los grupos? Esto es REAL: les llega a las comunidades. Si lo mandas ahora, el automático de las 8 a. m. de hoy ya NO lo repite.')) return;
     const btn = document.getElementById('winQuickProtocoloBtn'); const txt = btn.querySelector('span').textContent;
@@ -5691,6 +5691,41 @@ function openTestimonioUploadModal(){
   `);
   wireWinDropzone();
   document.getElementById('submitTestimonioBtn').onclick = submitTestimonio;
+}
+
+// ---------- Apuestas censuradas: captura de lo que mandaste a los grupos privados, con los picks tapados, para el gratis ----------
+function openApuestasCensuradasModal(){
+  openModal(`
+    <h3>Mandar apuestas censuradas</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">Sube la captura de las apuestas que mandaste al grupo privado. En el paso siguiente tapas los picks con el dedo o el mouse y se manda al gratis para que vean que sí mandas apuestas.</div>
+    <div id="winDropzone" style="border:2px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center; cursor:pointer; margin:14px 0;">
+      <div style="font-size:26px; margin-bottom:6px;">📎</div>
+      <div style="font-size:13px; color:var(--muted);">Arrastra, haz clic o pega la captura</div>
+      <div id="winDropPreview"></div>
+    </div>
+    <input id="winFileInput" type="file" accept="image/*" style="display:none;">
+    <div class="field"><label>¿A qué grupo va?</label>${winGroupPickerHTML('f-censGroups', ['Gratis 1','Gratis 2','Gratis 3'])}</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="submitCensBtn">Tapar picks</button>
+    </div>
+  `);
+  wireWinDropzone();
+  document.getElementById('submitCensBtn').onclick = submitApuestasCensuradas;
+}
+async function submitApuestasCensuradas(){
+  const grupos = getCheckedWinGroups('f-censGroups');
+  if(!grupos.length){ alert('Marca a qué grupo va.'); return; }
+  if(!winPendingFile){ alert('Sube la captura primero.'); return; }
+  const file = winPendingFile;
+  const hacer = async ()=>{
+    const canvas = await winCensorEditor(file, 'Tapa los picks de las apuestas');
+    if(!canvas){ openApuestasCensuradasModal(); return; }
+    const compressed = canvasToCompressed(canvas);
+    const thumb = canvasToThumbnail(canvas);
+    openWinCaptionConfirm('contenido', grupos, 'Así quedaron las apuestas de hoy en nuestro grupo privado 🔒 (los picks van tapados). ¿Quieres entrar y verlas completas? Escríbeme y te cuento cómo.', thumb || compressed.previewUrl, { base64: compressed.base64, mediaType: compressed.mediaType }, { kind: 'contenido', destino: grupos.join(', '), code: 'Es una captura de las apuestas que el dueño mandó al grupo privado (VIP), con los picks tapados a mano, para mostrar en el grupo gratis que sí manda apuestas. No reveles ni inventes picks, cuotas ni equipos; solo invita a entrar al grupo privado.' }, hacer);
+  };
+  await hacer();
 }
 
 // Redibuja la imagen ORIGINAL (no la comprimida que se manda a leer, para mejor nitidez) en
@@ -9626,7 +9661,7 @@ if(localStorage.getItem('panelVipAuth') === 'true'){
 <div id="panelVersion" style="position:fixed; left:8px; bottom:4px; font-size:10px; color:#9aa3b2; opacity:.5; z-index:5; pointer-events:none;"></div>
 <script>
 // Si el navegador dejó guardada una copia vieja del panel, se detecta y se recarga sola la versión nueva.
-const PANEL_VERSION = '23 nov, 14:40';
+const PANEL_VERSION = '24 nov, 10:30';
 (function(){
   const el = document.getElementById('panelVersion'); if(el) el.textContent = 'versión ' + PANEL_VERSION;
   async function revisar(){
